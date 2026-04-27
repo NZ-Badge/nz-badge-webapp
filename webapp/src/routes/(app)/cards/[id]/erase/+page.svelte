@@ -7,6 +7,7 @@
 	import { connection } from '$lib/stores/webserial.svelte';
 
 	let { data } = $props();
+	const useMifareEnabled = () => data.use_mifare;
 
 	let WriterClass: typeof WebSerialCardWriter | null = null;
 	let writer: WebSerialCardWriter | null = null;
@@ -20,7 +21,7 @@
 	const serialSupported = browser && 'serial' in navigator;
 
 	// Se use_mifare è false, vai direttamente al soft-delete senza mostrare la scelta
-	if (!data.use_mifare) {
+	if (!useMifareEnabled()) {
 		deleteMode = 'soft';
 		step = 'deleting';
 	}

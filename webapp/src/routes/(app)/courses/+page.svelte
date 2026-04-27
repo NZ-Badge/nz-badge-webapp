@@ -16,12 +16,10 @@
 
 	let syncing = $state(false);
 	let syncError = $state<string | null>(null);
-	let syncResult = $state<{ enrollmentsCreated: number; subscribersCreated: number } | null>(null);
 
 	async function handleSync() {
 		syncing = true;
 		syncError = null;
-		syncResult = null;
 		try {
 			const res = await fetch('/api/v1/courses/sync', {
 				method: 'POST',
@@ -32,8 +30,7 @@
 				syncError = json.error ?? `Errore server (${res.status})`;
 				return;
 			}
-			const json = await res.json();
-			syncResult = json.data ?? json;
+			await res.json();
 			location.reload();
 		} catch (err) {
 			syncError = err instanceof Error ? err.message : 'Errore sconosciuto';

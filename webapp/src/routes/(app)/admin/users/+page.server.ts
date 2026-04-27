@@ -5,10 +5,10 @@ import { AuthError, requireAdmin } from '$lib/services/auth';
 export const load: PageServerLoad = async ({ locals }) => {
 	try {
 		const user = await locals.verifyAdmin();
-		
+
 		// Only admin can access user management
 		requireAdmin(user);
-		
+
 		return {};
 	} catch (err) {
 		if (err instanceof AuthError) {

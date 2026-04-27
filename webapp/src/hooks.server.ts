@@ -21,10 +21,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event, {
 		transformPageChunk: ({ html }) => {
 			// Inject CSP nonce into script tags
-			return html.replace(
-				/<script/g,
-				`<script nonce="${cspNonce}"`
-			);
+			return html.replace(/<script/g, `<script nonce="${cspNonce}"`);
 		}
 	});
 
@@ -72,32 +69,36 @@ export const handleError: HandleServerError = async ({ error, event, status, mes
 		const errorStack = error instanceof Error ? error.stack : undefined;
 
 		// Log structured error to stdout/stderr for log aggregation
-		console.error(JSON.stringify({
-			level: 'error',
-			timestamp,
-			status,
-			url,
-			method: event.request.method,
-			message: sanitizeErrorMessage(message),
-			error: sanitizeErrorMessage(errorMessage),
-			stack: errorStack ? sanitizeErrorMessage(errorStack) : undefined,
-			type: 'fatal_error',
-			requestId: crypto.randomUUID?.() || generateRequestId()
-		}));
+		console.error(
+			JSON.stringify({
+				level: 'error',
+				timestamp,
+				status,
+				url,
+				method: event.request.method,
+				message: sanitizeErrorMessage(message),
+				error: sanitizeErrorMessage(errorMessage),
+				stack: errorStack ? sanitizeErrorMessage(errorStack) : undefined,
+				type: 'fatal_error',
+				requestId: crypto.randomUUID?.() || generateRequestId()
+			})
+		);
 	}
 
 	// For 4xx errors, log at warning level
 	if (status >= 400 && status < 500) {
-		console.warn(JSON.stringify({
-			level: 'warn',
-			timestamp,
-			status,
-			url,
-			method: event.request.method,
-			message: sanitizeErrorMessage(message),
-			type: 'client_error',
-			requestId: crypto.randomUUID?.() || generateRequestId()
-		}));
+		console.warn(
+			JSON.stringify({
+				level: 'warn',
+				timestamp,
+				status,
+				url,
+				method: event.request.method,
+				message: sanitizeErrorMessage(message),
+				type: 'client_error',
+				requestId: crypto.randomUUID?.() || generateRequestId()
+			})
+		);
 	}
 
 	// Return safe error message to client
@@ -111,18 +112,5 @@ export const handleError: HandleServerError = async ({ error, event, status, mes
  * Generate simple request ID for tracking
  */
 function generateRequestId(): string {
-	return Array.from({ length: 16 }, () =>
-		Math.floor(Math.random() * 16).toString(16)
-	).join('');
-}
-
-// Type augmentation for locals
-declare global {
-	namespace App {
-		interface Locals {
-			verifyDevice: () => ReturnType<typeof verifyDeviceToken>;
-			verifyAdmin: () => ReturnType<typeof verifyAdminSession>;
-			cspNonce: string;
-		}
-	}
+	return Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 }

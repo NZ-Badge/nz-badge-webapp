@@ -6,7 +6,7 @@
 	<h1 class="text-2xl font-bold">Diagnostica card</h1>
 	<CardQuickReader
 		title="Lettore card"
-		description='Avvicina il badge al lettore e clicca "Leggi carta".'
+		description={'Avvicina il badge al lettore e clicca "Leggi carta".'}
 		showLog={true}
 	/>
 </div>

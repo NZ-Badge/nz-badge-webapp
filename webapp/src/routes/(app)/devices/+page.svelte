@@ -21,7 +21,8 @@
 	import { Pencil, Trash2, Plus, Copy, Check, Usb } from '@lucide/svelte';
 	import { browser } from '$app/environment';
 	import { onDestroy } from 'svelte';
-	import { connection, connect, disconnect } from '$lib/stores/webserial.svelte';
+	import { Label } from '$lib/components/ui/label';
+	import { connection, disconnect } from '$lib/stores/webserial.svelte';
 	import { WebSerialProvisioner } from '$lib/utils/webserial-provisioner';
 	import type { ProvisionLogEntry, ProvisionState } from '$lib/utils/webserial-provisioner';
 
@@ -273,8 +274,9 @@
 		</DialogHeader>
 		<form method="POST" action="?/create" use:enhance class="space-y-4">
 			<div class="space-y-2">
-				<label class="text-sm font-medium">ID dispositivo</label>
+				<Label for="create-device-id" class="text-sm font-medium">ID dispositivo</Label>
 				<Input
+					id="create-device-id"
 					name="deviceId"
 					placeholder="e.g., reader_entrata"
 					bind:value={newDeviceId}
@@ -288,8 +290,9 @@
 			</div>
 
 			<div class="space-y-2">
-				<label class="text-sm font-medium">Tipo dispositivo</label>
+				<Label for="create-device-type" class="text-sm font-medium">Tipo dispositivo</Label>
 				<select
+					id="create-device-type"
 					name="deviceType"
 					bind:value={newDeviceType}
 					class="w-full rounded border px-3 py-2 text-sm"
@@ -300,8 +303,15 @@
 			</div>
 
 			<div class="space-y-2">
-				<label class="text-sm font-medium">Posizione (opzionale)</label>
-				<Input name="location" placeholder="e.g., Ingresso principale" bind:value={newLocation} />
+				<Label for="create-device-location" class="text-sm font-medium">
+					Posizione (opzionale)
+				</Label>
+				<Input
+					id="create-device-location"
+					name="location"
+					placeholder="e.g., Ingresso principale"
+					bind:value={newLocation}
+				/>
 			</div>
 
 			{#if form?.error && form?.action === 'create'}
@@ -333,7 +343,7 @@
 
 			{#if provisionToken}
 				<div class="space-y-2">
-					<label class="text-sm font-medium">Token dispositivo (JWT)</label>
+					<p class="text-sm font-medium">Token dispositivo (JWT)</p>
 					<div class="flex gap-2">
 						<code class="flex-1 overflow-x-auto rounded bg-gray-100 px-3 py-2 text-xs break-all">
 							{provisionToken}
@@ -534,19 +544,23 @@
 				<input type="hidden" name="id" value={editDevice.id} />
 
 				<div class="space-y-2">
-					<label class="text-sm font-medium">ID dispositivo</label>
-					<Input value={editDevice.deviceId} disabled class="bg-gray-100" />
+					<Label for="edit-device-id" class="text-sm font-medium">ID dispositivo</Label>
+					<Input id="edit-device-id" value={editDevice.deviceId} disabled class="bg-gray-100" />
 					<p class="text-xs text-gray-500">L’ID dispositivo non può essere modificato.</p>
 				</div>
 
 				<div class="space-y-2">
-					<label class="text-sm font-medium">Posizione</label>
-					<Input name="location" value={editDevice.location || ''} />
+					<Label for="edit-device-location" class="text-sm font-medium">Posizione</Label>
+					<Input id="edit-device-location" name="location" value={editDevice.location || ''} />
 				</div>
 
 				<div class="space-y-2">
-					<label class="text-sm font-medium">Stato</label>
-					<select name="active" class="w-full rounded border px-3 py-2 text-sm">
+					<Label for="edit-device-active" class="text-sm font-medium">Stato</Label>
+					<select
+						id="edit-device-active"
+						name="active"
+						class="w-full rounded border px-3 py-2 text-sm"
+					>
 						<option value="true" selected={editDevice.active}>Attivo</option>
 						<option value="false" selected={!editDevice.active}>Disabilitato</option>
 					</select>

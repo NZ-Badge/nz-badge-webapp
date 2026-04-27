@@ -2,7 +2,11 @@ import type { ZodError } from 'zod';
 
 const JSON_CONTENT_TYPE = 'application/json';
 
-function jsonResponse(body: string, status: number, extraHeaders?: Record<string, string>): Response {
+function jsonResponse(
+	body: string,
+	status: number,
+	extraHeaders?: Record<string, string>
+): Response {
 	const bytes = Buffer.byteLength(body, 'utf8');
 	return new Response(body, {
 		status,
@@ -29,7 +33,12 @@ export function multiStatus(response: {
 	rejected: number;
 	server_time: string;
 	results: Array<{ index: number; status: number; reason?: string }>;
-	actions: Array<{ uid: string; action: 'confirm' | 'unknown' | 'ignored'; user_name?: string; ignored_reason?: string }>;
+	actions: Array<{
+		uid: string;
+		action: 'confirm' | 'unknown' | 'ignored';
+		user_name?: string;
+		ignored_reason?: string;
+	}>;
 }): Response {
 	return jsonResponse(JSON.stringify({ success: true, ...response }), 207);
 }

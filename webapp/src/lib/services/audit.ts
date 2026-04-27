@@ -5,7 +5,7 @@
 
 import { db } from '$lib/db';
 import { auditLog } from '$lib/db/schema';
-import { hashForAudit, maskEmail, maskUid } from '$lib/utils/security';
+import { maskEmail, maskUid } from '$lib/utils/security';
 import type { RequestEvent } from '@sveltejs/kit';
 
 // Action types for audit logging
@@ -54,10 +54,20 @@ interface AuditEntry {
 /**
  * Sanitize data for audit log - remove sensitive fields
  */
-function sanitizeAuditData(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+function sanitizeAuditData(
+	data: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
 	if (!data) return undefined;
 
-	const sensitiveFields = ['password', 'passwordHash', 'token', 'tokenHash', 'keyA', 'keyB', 'secret'];
+	const sensitiveFields = [
+		'password',
+		'passwordHash',
+		'token',
+		'tokenHash',
+		'keyA',
+		'keyB',
+		'secret'
+	];
 	const sanitized: Record<string, unknown> = {};
 
 	for (const [key, value] of Object.entries(data)) {
@@ -121,11 +131,14 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
 	} catch (err) {
 		// Never throw from audit logging - log to console as fallback
 		console.error('[AUDIT] Failed to write audit log:', err);
-		console.error('[AUDIT] Entry:', JSON.stringify({
-			...entry,
-			dataBefore: '[sanitized]',
-			dataAfter: '[sanitized]'
-		}));
+		console.error(
+			'[AUDIT] Entry:',
+			JSON.stringify({
+				...entry,
+				dataBefore: '[sanitized]',
+				dataAfter: '[sanitized]'
+			})
+		);
 	}
 }
 

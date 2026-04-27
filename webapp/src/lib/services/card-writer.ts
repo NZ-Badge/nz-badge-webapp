@@ -125,7 +125,9 @@ export class CardWriterError extends Error {
 // ───────────────────────────────────────────────────────────────────────────────
 
 function generateHexKey(): string {
-	return Buffer.from(crypto.getRandomValues(new Uint8Array(6))).toString('hex').toUpperCase();
+	return Buffer.from(crypto.getRandomValues(new Uint8Array(6)))
+		.toString('hex')
+		.toUpperCase();
 }
 
 function oneYearFromNow(): Date {
@@ -153,9 +155,7 @@ function validateCardUid(uid: string): boolean {
  * Authorize a card write operation
  * Step 1: Create session with keys
  */
-export async function authorizeCardWrite(
-	subscriberId: number
-): Promise<{
+export async function authorizeCardWrite(subscriberId: number): Promise<{
 	session_token: string;
 	key_a: string | null;
 	key_b: string | null;
@@ -196,10 +196,7 @@ export async function authorizeCardWrite(
 		.limit(1);
 
 	if (existingCard?.status === 'active') {
-		throw new CardWriterError(
-			'Subscriber already has an active card',
-			'INVALID_STATE'
-		);
+		throw new CardWriterError('Subscriber already has an active card', 'INVALID_STATE');
 	}
 
 	// Retrieve MIFARE configuration (useMifare + useSingleKey + optional global keys)
@@ -400,21 +397,14 @@ export async function authorizeCardErase(
 	}
 
 	// Fetch card
-	const [card] = await db
-		.select()
-		.from(cardRfid)
-		.where(eq(cardRfid.id, validId))
-		.limit(1);
+	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
 		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
 	}
 
 	if (!['active', 'disabled', 'deleted'].includes(card.status ?? '')) {
-		throw new CardWriterError(
-			`Card cannot be erased (status: ${card.status})`,
-			'INVALID_STATE'
-		);
+		throw new CardWriterError(`Card cannot be erased (status: ${card.status})`, 'INVALID_STATE');
 	}
 
 	const useMifare = await isMifareEnabled();
@@ -481,10 +471,12 @@ export async function confirmCardErase(
 		action: 'CARD_ERASE',
 		entityType: 'card',
 		entityId: session.cardId,
-		dataBefore: cardBefore ? {
-			status: cardBefore.status,
-			subscriberId: cardBefore.subscriberId
-		} : undefined,
+		dataBefore: cardBefore
+			? {
+					status: cardBefore.status,
+					subscriberId: cardBefore.subscriberId
+				}
+			: undefined,
 		dataAfter: {
 			status: 'deleted',
 			deletedAt: new Date().toISOString()
@@ -505,10 +497,7 @@ export async function confirmCardErase(
 /**
  * Restore a soft-deleted card
  */
-export async function restoreCard(
-	cardId: number,
-	adminUser: User
-): Promise<void> {
+export async function restoreCard(cardId: number, adminUser: User): Promise<void> {
 	// Validate card ID
 	const validId = sanitizeId(cardId);
 	if (!validId) {
@@ -516,11 +505,7 @@ export async function restoreCard(
 	}
 
 	// Fetch card
-	const [card] = await db
-		.select()
-		.from(cardRfid)
-		.where(eq(cardRfid.id, validId))
-		.limit(1);
+	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
 		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
@@ -564,21 +549,14 @@ export async function softDeleteCard(
 	}
 
 	// Fetch card
-	const [card] = await db
-		.select()
-		.from(cardRfid)
-		.where(eq(cardRfid.id, validId))
-		.limit(1);
+	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
 		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
 	}
 
 	if (!['active', 'disabled'].includes(card.status ?? '')) {
-		throw new CardWriterError(
-			`Card cannot be deleted (status: ${card.status})`,
-			'INVALID_STATE'
-		);
+		throw new CardWriterError(`Card cannot be deleted (status: ${card.status})`, 'INVALID_STATE');
 	}
 
 	// Soft delete
@@ -604,10 +582,7 @@ export async function softDeleteCard(
 /**
  * Enable a disabled card
  */
-export async function enableCard(
-	cardId: number,
-	adminUser: User
-): Promise<void> {
+export async function enableCard(cardId: number, adminUser: User): Promise<void> {
 	// Validate card ID
 	const validId = sanitizeId(cardId);
 	if (!validId) {
@@ -615,28 +590,18 @@ export async function enableCard(
 	}
 
 	// Fetch card
-	const [card] = await db
-		.select()
-		.from(cardRfid)
-		.where(eq(cardRfid.id, validId))
-		.limit(1);
+	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
 		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
 	}
 
 	if (card.status !== 'disabled') {
-		throw new CardWriterError(
-			`Card is not disabled (status: ${card.status})`,
-			'INVALID_STATE'
-		);
+		throw new CardWriterError(`Card is not disabled (status: ${card.status})`, 'INVALID_STATE');
 	}
 
 	// Enable card
-	await db
-		.update(cardRfid)
-		.set({ status: 'active' })
-		.where(eq(cardRfid.id, validId));
+	await db.update(cardRfid).set({ status: 'active' }).where(eq(cardRfid.id, validId));
 
 	// Audit log
 	await logAudit({
@@ -652,10 +617,7 @@ export async function enableCard(
 /**
  * Disable an active card
  */
-export async function disableCard(
-	cardId: number,
-	adminUser: User
-): Promise<void> {
+export async function disableCard(cardId: number, adminUser: User): Promise<void> {
 	// Validate card ID
 	const validId = sanitizeId(cardId);
 	if (!validId) {
@@ -663,28 +625,18 @@ export async function disableCard(
 	}
 
 	// Fetch card
-	const [card] = await db
-		.select()
-		.from(cardRfid)
-		.where(eq(cardRfid.id, validId))
-		.limit(1);
+	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
 		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
 	}
 
 	if (card.status !== 'active') {
-		throw new CardWriterError(
-			`Card is not active (status: ${card.status})`,
-			'INVALID_STATE'
-		);
+		throw new CardWriterError(`Card is not active (status: ${card.status})`, 'INVALID_STATE');
 	}
 
 	// Disable card
-	await db
-		.update(cardRfid)
-		.set({ status: 'disabled' })
-		.where(eq(cardRfid.id, validId));
+	await db.update(cardRfid).set({ status: 'disabled' }).where(eq(cardRfid.id, validId));
 
 	// Audit log
 	await logAudit({

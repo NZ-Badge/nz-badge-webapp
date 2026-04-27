@@ -6,7 +6,6 @@
 		Trash2,
 		Shield,
 		User,
-		X,
 		AlertCircle,
 		CheckCircle,
 		Loader2,

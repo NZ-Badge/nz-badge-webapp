@@ -175,7 +175,9 @@
 								{/if}
 							</TableCell>
 							<TableCell class="text-sm">{formatDate(enrollment.preferredDate)}</TableCell>
-							<TableCell class="text-sm">{formatCourseDuration(enrollment.courseDurationDays)}</TableCell>
+							<TableCell class="text-sm"
+								>{formatCourseDuration(enrollment.courseDurationDays)}</TableCell
+							>
 							<TableCell class="text-sm align-top">
 								{#if attendanceSummary}
 									<div class="font-medium">{attendanceSummary.totalLabel}</div>

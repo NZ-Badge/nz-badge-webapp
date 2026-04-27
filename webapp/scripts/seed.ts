@@ -26,7 +26,11 @@ const connection = await mysql.createConnection(databaseUrl);
 const db = drizzle(connection);
 
 // Check if email already exists
-const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+const [existing] = await db
+	.select({ id: users.id })
+	.from(users)
+	.where(eq(users.email, email))
+	.limit(1);
 if (existing) {
 	console.log(`Admin user "${email}" already exists (id: ${existing.id}). Nothing to do.`);
 	await connection.end();

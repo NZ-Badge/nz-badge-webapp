@@ -75,7 +75,11 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		});
 
 		const insertId = (result[0] as { insertId: number }).insertId;
-		const [newRecord] = await db.select().from(subscribers).where(eq(subscribers.id, insertId)).limit(1);
+		const [newRecord] = await db
+			.select()
+			.from(subscribers)
+			.where(eq(subscribers.id, insertId))
+			.limit(1);
 
 		await db.insert(auditLog).values({
 			userId: adminUser.id,

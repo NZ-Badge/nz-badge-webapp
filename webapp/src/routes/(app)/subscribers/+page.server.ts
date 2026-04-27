@@ -77,10 +77,10 @@ function sortSubscribers(
 			case 'card':
 				result =
 					compareWithDirection(
-						(Number(left.hasActiveCard || left.hasNfcPairing) -
-							Number(right.hasActiveCard || right.hasNfcPairing)) ||
-							(Number(left.hasActiveCard) - Number(right.hasActiveCard)) ||
-							(Number(left.hasNfcPairing) - Number(right.hasNfcPairing))
+						Number(left.hasActiveCard || left.hasNfcPairing) -
+							Number(right.hasActiveCard || right.hasNfcPairing) ||
+							Number(left.hasActiveCard) - Number(right.hasActiveCard) ||
+							Number(left.hasNfcPairing) - Number(right.hasNfcPairing)
 					) || compareName(left, right);
 				break;
 			case 'name':
@@ -208,7 +208,8 @@ export const actions: Actions = {
 
 		if (activeCard) {
 			return fail(400, {
-				error: 'Non puoi eliminare un iscritto con una tessera attiva. Rimuovi prima la tessera dalla pagina Tessere.',
+				error:
+					'Non puoi eliminare un iscritto con una tessera attiva. Rimuovi prima la tessera dalla pagina Tessere.',
 				action: 'delete'
 			});
 		}

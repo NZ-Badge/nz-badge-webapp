@@ -48,7 +48,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		const response = await fetch(testUrl.toString(), {
 			method: 'GET',
 			headers: {
-				'Authorization': `Bearer ${apiKey}`,
+				Authorization: `Bearer ${apiKey}`,
 				'Content-Type': 'application/json'
 			},
 			signal: AbortSignal.timeout(10000) // 10 secondi timeout
@@ -72,7 +72,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		}
 	} catch (err) {
 		console.error('[settings/enrollment-api/test] Error:', err);
-		
+
 		if (err instanceof Error) {
 			if (err.name === 'AbortError' || err.message.includes('timeout')) {
 				return ok({
@@ -87,7 +87,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 				});
 			}
 		}
-		
+
 		return serverError();
 	}
 }

@@ -3,10 +3,17 @@
  * Implements XSS prevention, input sanitization, and secure headers
  */
 
-import { env } from '$env/dynamic/private';
-
 // CSP nonce storage for request lifecycle
 const CSP_NONCE_SIZE = 32;
+
+function stripControlCharacters(value: string): string {
+	return Array.from(value)
+		.filter((char) => {
+			const code = char.charCodeAt(0);
+			return (code >= 0x20 || char === '\n' || char === '\r' || char === '\t') && code !== 0x7f;
+		})
+		.join('');
+}
 
 /**
  * Generate a cryptographically secure nonce for CSP
@@ -18,7 +25,11 @@ export function generateCspNonce(): string {
 		return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
 	}
 	// Fallback for server-side
-	return Array.from({ length: CSP_NONCE_SIZE }, () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0')).join('');
+	return Array.from({ length: CSP_NONCE_SIZE }, () =>
+		Math.floor(Math.random() * 256)
+			.toString(16)
+			.padStart(2, '0')
+	).join('');
 }
 
 /**
@@ -38,7 +49,7 @@ export function generateCspHeader(nonce: string): string {
 		"frame-ancestors 'none'",
 		"base-uri 'self'",
 		"form-action 'self'",
-		"upgrade-insecure-requests"
+		'upgrade-insecure-requests'
 	];
 
 	return directives.join('; ').replace('${nonce}', nonce);
@@ -57,7 +68,7 @@ export function generateSecurityHeaders(nonce: string): Record<string, string> {
 		'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=self',
 		'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
 		'Cache-Control': 'no-store, max-age=0',
-		'Pragma': 'no-cache'
+		Pragma: 'no-cache'
 	};
 }
 
@@ -115,12 +126,13 @@ export function sanitizeEmail(email: string): string | null {
 	if (!email || typeof email !== 'string') return null;
 
 	const trimmed = email.trim().toLowerCase();
-	const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+	const emailRegex =
+		/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 	if (!emailRegex.test(trimmed)) return null;
 
 	// Additional check for dangerous characters
-	if (/[<>\"']/.test(trimmed)) return null;
+	if (/[<>"']/.test(trimmed)) return null;
 
 	return trimmed;
 }
@@ -167,9 +179,8 @@ export function sanitizeSearchQuery(query: string, maxLength = 100): string {
 	}
 
 	// Remove control characters and potential injection patterns
-	sanitized = sanitized
-		.replace(/[\x00-\x1F\x7F]/g, '') // Control characters
-		.replace(/[<>\"']/g, '') // HTML special chars
+	sanitized = stripControlCharacters(sanitized)
+		.replace(/[<>"']/g, '') // HTML special chars
 		.replace(/[;|&$`]/g, ''); // Shell special chars
 
 	return sanitized;
@@ -259,9 +270,10 @@ export function maskEmail(email: string): string {
 	if (!email || !email.includes('@')) return '***';
 
 	const [local, domain] = email.split('@');
-	const maskedLocal = local.length > 2
-		? local.charAt(0) + '*'.repeat(local.length - 2) + local.charAt(local.length - 1)
-		: '*'.repeat(local.length);
+	const maskedLocal =
+		local.length > 2
+			? local.charAt(0) + '*'.repeat(local.length - 2) + local.charAt(local.length - 1)
+			: '*'.repeat(local.length);
 
 	return `${maskedLocal}@${domain}`;
 }
@@ -326,7 +338,9 @@ export function generateSecureToken(length = 32): string {
 	if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
 		const array = new Uint8Array(length);
 		crypto.getRandomValues(array);
-		return Array.from(array, (byte) => byte.toString(36).padStart(2, '0')).join('').slice(0, length);
+		return Array.from(array, (byte) => byte.toString(36).padStart(2, '0'))
+			.join('')
+			.slice(0, length);
 	}
 	// Fallback
 	return Array.from({ length }, () => Math.random().toString(36).charAt(2)).join('');

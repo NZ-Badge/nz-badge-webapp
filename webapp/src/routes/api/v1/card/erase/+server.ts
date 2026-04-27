@@ -1,6 +1,13 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
-import { ok, badRequest, unauthorized, notFound, serverError, formatZodError } from '$lib/utils/api';
+import {
+	ok,
+	badRequest,
+	unauthorized,
+	notFound,
+	serverError,
+	formatZodError
+} from '$lib/utils/api';
 import { authorizeCardErase } from '$lib/services/card-writer';
 import { AuthError } from '$lib/services/auth';
 

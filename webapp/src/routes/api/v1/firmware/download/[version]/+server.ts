@@ -25,12 +25,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const [release] = await db
 		.select()
 		.from(firmwareReleases)
-		.where(
-			and(
-				eq(firmwareReleases.version, version),
-				eq(firmwareReleases.isActive, true)
-			)
-		)
+		.where(and(eq(firmwareReleases.version, version), eq(firmwareReleases.isActive, true)))
 		.limit(1);
 
 	if (!release) return notFound('firmware version not found or not active');
@@ -46,10 +41,10 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	return new Response(buffer, {
 		status: 200,
 		headers: {
-			'Content-Type':        'application/octet-stream',
-			'Content-Length':      buffer.length.toString(),
+			'Content-Type': 'application/octet-stream',
+			'Content-Length': buffer.length.toString(),
 			'Content-Disposition': `attachment; filename="reader-station-${version}.bin"`,
-			'Cache-Control':       'no-store'
+			'Cache-Control': 'no-store'
 		}
 	});
 }

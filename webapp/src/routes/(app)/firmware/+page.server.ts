@@ -39,7 +39,7 @@ export const actions: Actions = {
 		try {
 			const user = await locals.verifyAdmin();
 			requireAdmin(user);
-		} catch (err) {
+		} catch {
 			return fail(401, { action: 'upload', error: 'Non autorizzato' });
 		}
 

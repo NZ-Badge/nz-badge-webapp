@@ -67,7 +67,11 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			let offset = 0;
 			while (true) {
 				const rows = await db
-					.select({ record: attendance, firstName: subscribers.firstName, lastName: subscribers.lastName })
+					.select({
+						record: attendance,
+						firstName: subscribers.firstName,
+						lastName: subscribers.lastName
+					})
 					.from(attendance)
 					.leftJoin(subscribers, eq(attendance.subscriberId, subscribers.id))
 					.where(where)

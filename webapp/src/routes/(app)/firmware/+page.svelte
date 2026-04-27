@@ -14,8 +14,8 @@
 
 	let { data, form } = $props();
 
-	let version  = $state('');
-	let notes    = $state('');
+	let version = $state('');
+	let notes = $state('');
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let uploading = $state(false);
 
@@ -28,14 +28,16 @@
 	function formatDate(d: Date | null | string): string {
 		if (!d) return '—';
 		return new Date(d).toLocaleDateString('it-IT', {
-			day: '2-digit', month: '2-digit', year: 'numeric'
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
 		});
 	}
 
 	$effect(() => {
 		if (form?.action === 'upload' && form?.success) {
 			version = '';
-			notes   = '';
+			notes = '';
 			if (fileInput) fileInput.value = '';
 		}
 	});
@@ -112,7 +114,9 @@
 				<p class="text-sm text-red-600">{form.error}</p>
 			{/if}
 			{#if form?.action === 'upload' && form?.success}
-				<p class="text-sm text-green-700">Release v{form.version} caricata. Clicca <strong>Attiva</strong> per distribuirla ai device.</p>
+				<p class="text-sm text-green-700">
+					Release v{form.version} caricata. Clicca <strong>Attiva</strong> per distribuirla ai device.
+				</p>
 			{/if}
 
 			<Button type="submit" disabled={uploading}>
@@ -140,8 +144,11 @@
 					<TableRow>
 						<TableCell class="font-mono font-semibold">{release.version}</TableCell>
 						<TableCell class="text-sm text-gray-600">{formatDate(release.createdAt)}</TableCell>
-						<TableCell class="text-sm text-gray-600">{formatBytes(release.fileSizeBytes)}</TableCell>
-						<TableCell class="font-mono text-xs text-gray-500">{release.sha256.slice(0, 12)}…</TableCell>
+						<TableCell class="text-sm text-gray-600">{formatBytes(release.fileSizeBytes)}</TableCell
+						>
+						<TableCell class="font-mono text-xs text-gray-500"
+							>{release.sha256.slice(0, 12)}…</TableCell
+						>
 						<TableCell>
 							{#if release.isActive}
 								<Badge variant="default" class="bg-green-600">Attiva</Badge>
@@ -149,7 +156,10 @@
 								<Badge variant="secondary">Inattiva</Badge>
 							{/if}
 						</TableCell>
-						<TableCell class="text-sm text-gray-600 max-w-xs truncate" title={release.releaseNotes ?? ''}>
+						<TableCell
+							class="text-sm text-gray-600 max-w-xs truncate"
+							title={release.releaseNotes ?? ''}
+						>
 							{release.releaseNotes || '—'}
 						</TableCell>
 						<TableCell>
@@ -162,7 +172,12 @@
 								{:else}
 									<form method="POST" action="?/deactivate" use:enhance>
 										<input type="hidden" name="id" value={release.id} />
-										<Button type="submit" size="sm" variant="ghost" class="text-orange-600 hover:text-orange-700">
+										<Button
+											type="submit"
+											size="sm"
+											variant="ghost"
+											class="text-orange-600 hover:text-orange-700"
+										>
 											Ritira
 										</Button>
 									</form>
@@ -182,7 +197,7 @@
 	</div>
 
 	<p class="text-xs text-gray-400">
-		Solo una release può essere attiva per tipo di device. Attivarne una disattiva automaticamente le altre.
-		Un device non scarica aggiornamenti se nessuna release è attiva.
+		Solo una release può essere attiva per tipo di device. Attivarne una disattiva automaticamente
+		le altre. Un device non scarica aggiornamenti se nessuna release è attiva.
 	</p>
 </div>

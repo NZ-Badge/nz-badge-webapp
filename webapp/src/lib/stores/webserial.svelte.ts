@@ -261,7 +261,7 @@ export async function disconnect(): Promise<void> {
 			await port.close();
 			console.log('[WebSerial] Disconnected');
 		}
-	} catch (err) {
+	} catch {
 		// Ignore close errors - port may already be closed
 		console.log('[WebSerial] Disconnect (port already closed)');
 	}

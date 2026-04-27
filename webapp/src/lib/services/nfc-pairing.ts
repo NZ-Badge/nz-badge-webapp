@@ -26,9 +26,11 @@ export function startPairing(subscriberId: number): number {
 	return expiresAt;
 }
 
-export function getPairingStatus(
-	subscriberId: number
-): { status: 'pending' | 'completed' | 'expired'; pairedUid?: string; expiresAt?: number } {
+export function getPairingStatus(subscriberId: number): {
+	status: 'pending' | 'completed' | 'expired';
+	pairedUid?: string;
+	expiresAt?: number;
+} {
 	const session = sessions.get(subscriberId);
 	if (!session) return { status: 'expired' };
 	if (session.status === 'pending' && Date.now() > session.expiresAt) {

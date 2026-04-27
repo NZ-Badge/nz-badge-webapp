@@ -14,7 +14,10 @@ export const attendanceEventSchema = z.object({
 // 1b. attendanceEventSchemaV2 — Schema evento conforme al protocollo
 export const attendanceEventSchemaV2 = z.object({
 	uid: z.string().regex(UID_PATTERN),
-	uid_raw: z.string().regex(/^[A-F0-9]{8,14}$/).optional(),
+	uid_raw: z
+		.string()
+		.regex(/^[A-F0-9]{8,14}$/)
+		.optional(),
 	timestamp: z.string().datetime(),
 	type: z.enum(['entry', 'exit']),
 	device_time_raw: z.string().datetime({ offset: true }).optional()

@@ -6,7 +6,7 @@
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/db';
 import { users, type NewUser, type User } from '$lib/db/schema';
-import { eq, ne, count as countFn } from 'drizzle-orm';
+import { eq, count as countFn } from 'drizzle-orm';
 import { hashPassword, requireAdmin, AuthError } from '$lib/services/auth';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
@@ -41,6 +41,7 @@ const userIdSchema = z.object({
 // Sanitize user object for response (remove password hash)
 function sanitizeUser(user: User) {
 	const { passwordHash, ...sanitized } = user;
+	void passwordHash;
 	return sanitized;
 }
 

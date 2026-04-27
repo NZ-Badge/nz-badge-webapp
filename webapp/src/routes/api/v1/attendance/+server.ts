@@ -12,7 +12,7 @@ import { processSingleAttendance } from '$lib/services/attendance';
 import { AuthError } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { attendance, subscribers } from '$lib/db/schema';
-import { and, eq, gte, inArray, like, lte, sql } from 'drizzle-orm';
+import { and, gte, inArray, like, lte, sql } from 'drizzle-orm';
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
 const deviceRequestLog = new Map<string, number[]>();
@@ -53,7 +53,11 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	// Process
 	try {
-		const result = await processSingleAttendance(parsed.data.events, deviceId, parsed.data.queue_status);
+		const result = await processSingleAttendance(
+			parsed.data.events,
+			deviceId,
+			parsed.data.queue_status
+		);
 
 		return ok({
 			accepted: result.accepted,
@@ -82,7 +86,12 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 	}
 
 	try {
-		if (typeof body === 'object' && body !== null && 'all' in body && (body as { all: unknown }).all === true) {
+		if (
+			typeof body === 'object' &&
+			body !== null &&
+			'all' in body &&
+			(body as { all: unknown }).all === true
+		) {
 			// Delete all matching filters
 			const f = (body as { filters?: Record<string, string> }).filters ?? {};
 			const filters = [];
@@ -110,7 +119,8 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 			return ok({ deleted: result[0].affectedRows });
 		} else if (typeof body === 'object' && body !== null && 'ids' in body) {
 			const ids = (body as { ids: unknown }).ids;
-			if (!Array.isArray(ids) || ids.length === 0) return badRequest('ids must be a non-empty array');
+			if (!Array.isArray(ids) || ids.length === 0)
+				return badRequest('ids must be a non-empty array');
 			const numericIds = ids.map(Number).filter((n) => !isNaN(n) && n > 0);
 			if (numericIds.length === 0) return badRequest('No valid IDs provided');
 			const result = await db.delete(attendance).where(inArray(attendance.id, numericIds));

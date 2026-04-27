@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}
 
 	const allSettings = await db.select().from(settings);
-	
+
 	// Converti in oggetto con valori tipizzati
 	const settingsMap: Record<string, boolean | number | string> = {};
 	for (const setting of allSettings) {

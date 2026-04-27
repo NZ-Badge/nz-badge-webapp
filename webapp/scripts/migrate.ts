@@ -5,12 +5,18 @@
  */
 import { drizzle } from 'drizzle-orm/mysql2';
 import { migrate } from 'drizzle-orm/mysql2/migrator';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+interface MigrationRow extends RowDataPacket {
+	id: number;
+	hash: string;
+	tag: string;
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -31,7 +37,7 @@ if (!fs.existsSync(migrationsFolder)) {
 }
 
 // List migration files
-const files = fs.readdirSync(migrationsFolder).filter(f => f.endsWith('.sql'));
+const files = fs.readdirSync(migrationsFolder).filter((f) => f.endsWith('.sql'));
 console.log('Found migration files:', files);
 
 // Check journal
@@ -39,7 +45,7 @@ const journalPath = path.join(migrationsFolder, 'meta', '_journal.json');
 if (fs.existsSync(journalPath)) {
 	const journal = JSON.parse(fs.readFileSync(journalPath, 'utf-8'));
 	console.log('Journal entries:', journal.entries?.length || 0);
-	console.log('Journal tags:', journal.entries?.map((e: {tag: string}) => e.tag).join(', '));
+	console.log('Journal tags:', journal.entries?.map((e: { tag: string }) => e.tag).join(', '));
 } else {
 	console.warn('WARNING: Journal file not found at', journalPath);
 }
@@ -49,8 +55,10 @@ const connection = await mysql.createConnection(databaseUrl);
 
 // Check existing migrations in DB
 try {
-	const [rows] = await connection.query('SELECT id, hash, tag FROM __drizzle_migrations ORDER BY id');
-	console.log('Existing migrations in DB:', (rows as any[]).map(r => r.id).join(', ') || 'none');
+	const [rows] = await connection.query<MigrationRow[]>(
+		'SELECT id, hash, tag FROM __drizzle_migrations ORDER BY id'
+	);
+	console.log('Existing migrations in DB:', rows.map((row) => row.id).join(', ') || 'none');
 } catch (e) {
 	console.warn('Could not query existing migrations:', e);
 }
@@ -58,9 +66,9 @@ try {
 try {
 	const db = drizzle(connection);
 	console.log('Running pending migrations...');
-	
+
 	const result = await migrate(db, { migrationsFolder });
-	
+
 	console.log('Migrations result:', result);
 	console.log('Migrations complete.');
 } catch (error) {

@@ -76,7 +76,13 @@ export async function getOrCreateGlobalKeys(): Promise<MifareKeyPair> {
 		.limit(1);
 
 	// Se esistono e hanno valori validi, le restituisco
-	if (keyRecord && keyRecord.keyA && keyRecord.keyB && keyRecord.keyA.length === 12 && keyRecord.keyB.length === 12) {
+	if (
+		keyRecord &&
+		keyRecord.keyA &&
+		keyRecord.keyB &&
+		keyRecord.keyA.length === 12 &&
+		keyRecord.keyB.length === 12
+	) {
 		return {
 			keyA: keyRecord.keyA,
 			keyB: keyRecord.keyB

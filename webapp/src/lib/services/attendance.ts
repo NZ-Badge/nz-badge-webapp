@@ -1,5 +1,5 @@
 import { eq, and, desc, lt, sql, gte } from 'drizzle-orm';
-import type { MySql2Database, MySql2Transaction } from 'drizzle-orm/mysql2';
+import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { db } from '$lib/db';
 import * as schema from '$lib/db/schema';
 import { attendance, cardRfid, subscribers, settings } from '$lib/db/schema';
@@ -8,7 +8,8 @@ import { formatToRomeISO, toDatabaseDateTime } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
 
 // Tipo per il database o transazione
-type DbOrTx = MySql2Database<typeof schema> | MySql2Transaction<any, any>;
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type DbOrTx = MySql2Database<typeof schema> | DbTransaction;
 
 // ±30 days tolerance in milliseconds
 const TOLERANCE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -48,21 +49,17 @@ export interface BatchAttendanceResult {
 	actions: AttendanceAction[];
 }
 
-function mapTypeToEventType(type: 'entry' | 'exit'): 'entry' | 'exit' {
-	return type === 'entry' ? 'entry' : 'exit';
-}
-
 /**
  * Carica i settings di configurazione per le presenze
  */
 async function loadAttendanceSettings(tx?: DbOrTx): Promise<AttendanceSettings> {
 	const dbInstance = tx ?? db;
-	
+
 	const allSettings = await dbInstance.select().from(settings);
-	
+
 	let resetEntryTypeDaily = true; // default
 	let minSwipeIntervalMinutes = 15; // default
-	
+
 	for (const setting of allSettings) {
 		if (setting.key === 'reset_entry_type_daily') {
 			resetEntryTypeDaily = setting.value === 'true';
@@ -70,7 +67,7 @@ async function loadAttendanceSettings(tx?: DbOrTx): Promise<AttendanceSettings> 
 			minSwipeIntervalMinutes = parseInt(setting.value, 10) || 15;
 		}
 	}
-	
+
 	return {
 		resetEntryTypeDaily,
 		minSwipeIntervalMinutes
@@ -88,13 +85,13 @@ async function isWithinMinInterval(
 	tx?: DbOrTx
 ): Promise<boolean> {
 	if (minIntervalMinutes <= 0) return false;
-	
+
 	const dbInstance = tx ?? db;
-	
+
 	// Calcola il timestamp minimo (current - interval)
 	const currentDate = new Date(currentTimestamp);
 	const minDate = new Date(currentDate.getTime() - minIntervalMinutes * 60 * 1000);
-	
+
 	// Cerca se c'è un evento recente per questa card
 	const [recentEvent] = await dbInstance
 		.select({ id: attendance.id })
@@ -106,7 +103,7 @@ async function isWithinMinInterval(
 			)
 		)
 		.limit(1);
-	
+
 	return !!recentEvent;
 }
 
@@ -128,14 +125,18 @@ async function determineNextEventType(
 	tx?: DbOrTx
 ): Promise<'entry' | 'exit'> {
 	const dbInstance = tx ?? db;
-	
+
 	// Ottieni la data del timestamp corrente (normalizzata a mezzanotte)
 	const currentDate = new Date(currentTimestamp);
-	const currentDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-	
+	const currentDay = new Date(
+		currentDate.getFullYear(),
+		currentDate.getMonth(),
+		currentDate.getDate()
+	);
+
 	// Converte il timestamp per il confronto SQL
 	const dbTimestamp = toDatabaseDateTime(currentTimestamp);
-	
+
 	// Cerca l'ultimo evento per questa card (prima del timestamp corrente)
 	const [lastEvent] = await dbInstance
 		.select({
@@ -143,34 +144,33 @@ async function determineNextEventType(
 			readTimestamp: attendance.readTimestamp
 		})
 		.from(attendance)
-		.where(
-			and(
-				eq(attendance.cardUid, cardUid),
-				lt(attendance.readTimestamp, sql`${dbTimestamp}`)
-			)
-		)
+		.where(and(eq(attendance.cardUid, cardUid), lt(attendance.readTimestamp, sql`${dbTimestamp}`)))
 		.orderBy(desc(attendance.readTimestamp))
 		.limit(1);
-	
+
 	// Se non c'è storia, è un entry
 	if (!lastEvent) {
 		return 'entry';
 	}
-	
+
 	// Se l'ultimo evento era exit, il prossimo è entry
 	if (lastEvent.eventType === 'exit') {
 		return 'entry';
 	}
-	
+
 	// Se resetEntryTypeDaily è false, alterna sempre (entry -> exit)
 	if (!resetEntryTypeDaily) {
 		return 'exit';
 	}
-	
+
 	// Se l'ultimo evento era entry, controlla se è dello stesso giorno
 	const lastEventDate = new Date(lastEvent.readTimestamp);
-	const lastEventDay = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), lastEventDate.getDate());
-	
+	const lastEventDay = new Date(
+		lastEventDate.getFullYear(),
+		lastEventDate.getMonth(),
+		lastEventDate.getDate()
+	);
+
 	// Se è dello stesso giorno, è un exit; altrimenti è un entry (nuova giornata)
 	return lastEventDay.getTime() === currentDay.getTime() ? 'exit' : 'entry';
 }
@@ -184,7 +184,7 @@ export async function processSingleAttendance(
 	const now = Date.now();
 	let accepted = 0;
 	let rejected = 0;
-	
+
 	// Carica i settings una sola volta
 	const attendanceSettings = await loadAttendanceSettings();
 
@@ -228,14 +228,14 @@ export async function processSingleAttendance(
 
 		const cardActive = cardRow?.card?.status === 'active';
 		const validated = cardActive && withinTolerance;
-		
+
 		// Verifica intervallo minimo tra strisciate
 		const withinInterval = await isWithinMinInterval(
 			event.uid,
 			timestampToUse,
 			attendanceSettings.minSwipeIntervalMinutes
 		);
-		
+
 		if (withinInterval) {
 			// Strisciata troppo vicina alla precedente — non registrare, segnala al device
 			const nextEventType = await determineNextEventType(
@@ -246,7 +246,9 @@ export async function processSingleAttendance(
 			actions.push({
 				uid: event.uid,
 				action: 'ignored',
-				user_name: cardRow?.subscriber ? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim() : undefined,
+				user_name: cardRow?.subscriber
+					? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
+					: undefined,
 				type: nextEventType,
 				ignored_reason: `min_interval_${attendanceSettings.minSwipeIntervalMinutes}min`
 			});
@@ -315,14 +317,14 @@ export async function processBatchAttendance(
 	// Mappa per tracciare gli eventi "virtuali" creati durante il batch
 	// Chiave: cardUid, Valore: { eventType, readTimestamp }
 	const virtualEvents = new Map<string, { eventType: 'entry' | 'exit'; readTimestamp: string }[]>();
-	
+
 	// Mappa per tracciare le strisciate nel batch (per controllo intervallo)
 	const batchSwipeTimes = new Map<string, number>();
 
 	await db.transaction(async (tx) => {
 		// Carica i settings una sola volta per la transazione
 		const attendanceSettings = await loadAttendanceSettings(tx);
-		
+
 		for (let i = 0; i < events.length; i++) {
 			const event = events[i];
 			// Usa device_time_raw come fallback per il timestamp se presente
@@ -339,18 +341,18 @@ export async function processBatchAttendance(
 
 			const cardActive = cardRow?.card?.status === 'active';
 			const validated = cardActive && withinTolerance;
-			
+
 			// Verifica intervallo minimo (controlla sia nel batch che nel DB)
 			const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60 * 1000;
 			let withinInterval = false;
-			
+
 			if (minIntervalMs > 0) {
 				// Controlla se c'è una strisciata recente nello stesso batch
 				const lastBatchTime = batchSwipeTimes.get(event.uid);
-				if (lastBatchTime && (eventTime - lastBatchTime) < minIntervalMs) {
+				if (lastBatchTime && eventTime - lastBatchTime < minIntervalMs) {
 					withinInterval = true;
 				}
-				
+
 				// Se non trovato nel batch, controlla nel DB
 				if (!withinInterval) {
 					withinInterval = await isWithinMinInterval(
@@ -360,28 +362,35 @@ export async function processBatchAttendance(
 						tx
 					);
 				}
-				
+
 				// Aggiorna il timestamp dell'ultima strisciata nel batch
 				batchSwipeTimes.set(event.uid, eventTime);
 			}
-			
+
 			if (withinInterval) {
 				// Strisciata troppo vicina - determina il tipo per coerenza
 				const currentDate = new Date(timestampToUse);
-				const currentDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-				
+				const currentDay = new Date(
+					currentDate.getFullYear(),
+					currentDate.getMonth(),
+					currentDate.getDate()
+				);
+
 				const cardVirtualEvents = virtualEvents.get(event.uid) ?? [];
-				const lastVirtualEvent = cardVirtualEvents.length > 0 
-					? cardVirtualEvents[cardVirtualEvents.length - 1] 
-					: null;
-				
+				const lastVirtualEvent =
+					cardVirtualEvents.length > 0 ? cardVirtualEvents[cardVirtualEvents.length - 1] : null;
+
 				let nextEventType: 'entry' | 'exit';
 				if (lastVirtualEvent) {
 					if (lastVirtualEvent.eventType === 'exit') {
 						nextEventType = 'entry';
 					} else {
 						const lastEventDate = new Date(lastVirtualEvent.readTimestamp);
-						const lastEventDay = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), lastEventDate.getDate());
+						const lastEventDay = new Date(
+							lastEventDate.getFullYear(),
+							lastEventDate.getMonth(),
+							lastEventDate.getDate()
+						);
 						nextEventType = lastEventDay.getTime() === currentDay.getTime() ? 'exit' : 'entry';
 					}
 				} else {
@@ -392,12 +401,14 @@ export async function processBatchAttendance(
 						tx
 					);
 				}
-				
+
 				// Strisciata troppo vicina — non registrare, segnala al device
 				actions.push({
 					uid: event.uid,
 					action: 'ignored',
-					user_name: cardRow?.subscriber ? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim() : undefined,
+					user_name: cardRow?.subscriber
+						? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
+						: undefined,
 					type: nextEventType,
 					ignored_reason: `min_interval_${attendanceSettings.minSwipeIntervalMinutes}min`
 				});
@@ -407,16 +418,19 @@ export async function processBatchAttendance(
 			// Determina il tipo di evento (entry/exit)
 			// Per il batch, consideriamo anche gli eventi precedenti nello stesso batch
 			let nextEventType: 'entry' | 'exit';
-			
+
 			const currentDate = new Date(timestampToUse);
-			const currentDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
-			
+			const currentDay = new Date(
+				currentDate.getFullYear(),
+				currentDate.getMonth(),
+				currentDate.getDate()
+			);
+
 			// Cerca nell'ultimo evento virtuale creato nello stesso batch per questa card
 			const cardVirtualEvents = virtualEvents.get(event.uid) ?? [];
-			const lastVirtualEvent = cardVirtualEvents.length > 0 
-				? cardVirtualEvents[cardVirtualEvents.length - 1] 
-				: null;
-			
+			const lastVirtualEvent =
+				cardVirtualEvents.length > 0 ? cardVirtualEvents[cardVirtualEvents.length - 1] : null;
+
 			if (lastVirtualEvent) {
 				// C'è un evento precedente nello stesso batch
 				if (lastVirtualEvent.eventType === 'exit') {
@@ -424,8 +438,12 @@ export async function processBatchAttendance(
 				} else {
 					// Controlla se è dello stesso giorno
 					const lastEventDate = new Date(lastVirtualEvent.readTimestamp);
-					const lastEventDay = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), lastEventDate.getDate());
-					
+					const lastEventDay = new Date(
+						lastEventDate.getFullYear(),
+						lastEventDate.getMonth(),
+						lastEventDate.getDate()
+					);
+
 					// Se resetEntryTypeDaily è false, alterna sempre
 					if (!attendanceSettings.resetEntryTypeDaily) {
 						nextEventType = 'exit';

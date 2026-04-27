@@ -123,6 +123,10 @@
 		let uid: string;
 
 		if (session.use_mifare) {
+			if (!session.key_a || !session.key_b) {
+				throw new Error('Chiavi MIFARE mancanti per la sessione di scrittura');
+			}
+
 			// Modalità MIFARE: scrivi dati sul settore della carta
 			const writeResponse = await writer.writeCard({
 				user_id: data.subscriber.id,

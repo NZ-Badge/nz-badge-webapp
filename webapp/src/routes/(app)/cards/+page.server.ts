@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
 import { cardRfid, subscribers } from '$lib/db/schema';
-import { eq, count, ne, and } from 'drizzle-orm';
+import { eq, count, ne } from 'drizzle-orm';
 
 const PAGE_SIZE = 25;
 

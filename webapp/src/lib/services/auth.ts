@@ -156,7 +156,7 @@ export async function verifyAdminSession(cookies: {
 
 	// Verify user still has admin/staff role
 	const validRoles = ['admin', 'staff'] as const;
-	if (!user.role || !validRoles.includes(user.role as typeof validRoles[number])) {
+	if (!user.role || !validRoles.includes(user.role as (typeof validRoles)[number])) {
 		console.warn('[AUTH] User lacks required role:', userId, user.role);
 		throw new AuthError('Insufficient permissions', 'FORBIDDEN');
 	}
@@ -168,9 +168,7 @@ export async function verifyAdminSession(cookies: {
  * Create a new session for admin user
  * Returns the JWT token to be set as cookie
  */
-export async function createAdminSession(
-	user: User
-): Promise<{ token: string; expires: Date }> {
+export async function createAdminSession(user: User): Promise<{ token: string; expires: Date }> {
 	const now = Math.floor(Date.now() / 1000);
 	const exp = now + SESSION_DURATION_HOURS * 3600;
 

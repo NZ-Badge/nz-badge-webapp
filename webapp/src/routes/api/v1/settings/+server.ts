@@ -1,11 +1,16 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq, count, and, not, inArray } from 'drizzle-orm';
+import { eq, count, not } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { settings, cardRfid } from '$lib/db/schema';
 import { ok, badRequest, unauthorized, serverError, conflict } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
-import { getMifareKeyConfig, regenerateGlobalKeys, setSingleKeyMode, isSingleKeyModeEnabled } from '$lib/services/mifare-keys';
-import { getEnrollmentApiConfig, setEnrollmentApiConfig } from '$lib/services/enrollments';
+import {
+	getMifareKeyConfig,
+	regenerateGlobalKeys,
+	setSingleKeyMode,
+	isSingleKeyModeEnabled
+} from '$lib/services/mifare-keys';
+import { setEnrollmentApiConfig } from '$lib/services/enrollments';
 import { z } from 'zod';
 
 // Schema per validare l'aggiornamento dei settings
@@ -51,7 +56,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 
 	try {
 		const allSettings = await db.select().from(settings);
-		
+
 		// Converti in oggetto con valori tipizzati
 		const settingsMap: Record<string, boolean | number | string> = {};
 		for (const setting of allSettings) {
@@ -127,8 +132,8 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 					if (activeCards > 0) {
 						return conflict(
 							`Impossibile abilitare la modalità chiave unica: esistono ${activeCards} card attive nel sistema. ` +
-							`Tutte le card devono essere disattivate o cancellate prima di attivare questa opzione. ` +
-							`Una volta attivata, le card esistenti non funzioneranno più.`,
+								`Tutte le card devono essere disattivate o cancellate prima di attivare questa opzione. ` +
+								`Una volta attivata, le card esistenti non funzioneranno più.`,
 							{ active_cards_count: activeCards }
 						);
 					}
@@ -177,8 +182,8 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 		// Recupera i settings aggiornati e la configurazione MIFARE
 		const allSettings = await db.select().from(settings);
 		const mifareConfig = await getMifareKeyConfig();
-		
-		return ok({ 
+
+		return ok({
 			settings: allSettings,
 			mifare_keys: mifareConfig
 		});

@@ -86,7 +86,8 @@
 					<TableRow>
 						<TableCell>
 							<a href="/subscribers/{sub.id}" class="font-medium hover:underline">
-								{sub.firstName} {sub.lastName}
+								{sub.firstName}
+								{sub.lastName}
 							</a>
 						</TableCell>
 						<TableCell>{sub.email}</TableCell>
@@ -112,6 +113,6 @@
 					</TableRow>
 				{/each}
 			</TableBody>
-			</Table>
-		{/if}
-	</div>
+		</Table>
+	{/if}
+</div>

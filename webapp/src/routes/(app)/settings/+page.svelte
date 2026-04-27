@@ -27,29 +27,34 @@
 	} from '@lucide/svelte';
 
 	let { data } = $props();
+	const getInitialValues = () => data.values;
+	const getInitialMifareKeys = () => data.mifareKeys;
+	const getInitialActiveCardsCount = () => data.activeCardsCount ?? 0;
+	const getInitialWebhookSecret = () => data.webhookSecret ?? null;
+	const getInitialEnrollmentApiConfig = () => data.enrollmentApiConfig;
 
 	// Stato locale dei settings
-	let resetEntryTypeDaily = $state(data.values.reset_entry_type_daily ?? true);
-	let minSwipeIntervalMinutes = $state(data.values.min_swipe_interval_minutes ?? 15);
-	let useMifare = $state(data.values.use_mifare ?? false);
-	let useSingleMifareKey = $state(data.values.use_single_mifare_key ?? false);
+	let resetEntryTypeDaily = $state(getInitialValues().reset_entry_type_daily ?? true);
+	let minSwipeIntervalMinutes = $state(getInitialValues().min_swipe_interval_minutes ?? 15);
+	let useMifare = $state(getInitialValues().use_mifare ?? false);
+	let useSingleMifareKey = $state(getInitialValues().use_single_mifare_key ?? false);
 
 	// Stato MIFARE keys
-	let mifareKeys = $state(data.mifareKeys);
+	let mifareKeys = $state(getInitialMifareKeys());
 
 	// Stato card attive
-	let activeCardsCount = $state(data.activeCardsCount ?? 0);
+	let activeCardsCount = $state(getInitialActiveCardsCount());
 
 	// Stato webhook
-	let webhookSecret = $state<string | null>(data.webhookSecret ?? null);
+	let webhookSecret = $state<string | null>(getInitialWebhookSecret());
 	let webhookSecretVisible = $state(false);
 	let generatingSecret = $state(false);
 	let copiedUrl = $state(false);
 	let copiedSecret = $state(false);
 
 	// Stato Enrollment API
-	let enrollmentApiUrl = $state(data.enrollmentApiConfig.url ?? '');
-	let enrollmentApiKey = $state(data.enrollmentApiConfig.key ?? '');
+	let enrollmentApiUrl = $state(getInitialEnrollmentApiConfig().url ?? '');
+	let enrollmentApiKey = $state(getInitialEnrollmentApiConfig().key ?? '');
 	let apiKeyVisible = $state(false);
 	let testingApi = $state(false);
 	let testResult = $state<{ success: boolean; message: string } | null>(null);
@@ -133,7 +138,7 @@
 		showSingleKeyWarning = false;
 
 		// Se stiamo abilitando la modalità chiave unica e ci sono card attive, mostra avviso
-		if (useSingleMifareKey && activeCardsCount > 0 && !data.values.use_single_mifare_key) {
+		if (useSingleMifareKey && activeCardsCount > 0 && !getInitialValues().use_single_mifare_key) {
 			showSingleKeyWarning = true;
 			saving = false;
 			return;
@@ -206,7 +211,7 @@
 		} catch (err) {
 			// Rollback on error
 			useMifare = previous;
-			if (!previous) useSingleMifareKey = data.values.use_single_mifare_key ?? false;
+			if (!previous) useSingleMifareKey = getInitialValues().use_single_mifare_key ?? false;
 			saveError = err instanceof Error ? err.message : 'Errore sconosciuto';
 		}
 	}

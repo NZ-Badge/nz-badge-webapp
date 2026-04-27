@@ -41,7 +41,9 @@ export const subscribers = mysqlTable(
 		purchaseDate: date('purchase_date'),
 		courseStartDate: date('course_start_date'),
 		courseEndDate: date('course_end_date'),
-		status: mysqlEnum('status', ['active', 'completed', 'suspended', 'cancelled']).default('active'),
+		status: mysqlEnum('status', ['active', 'completed', 'suspended', 'cancelled']).default(
+			'active'
+		),
 		note: text(),
 		createdAt: timestamp('created_at').defaultNow(),
 		updatedAt: timestamp('updated_at').defaultNow().onUpdateNow()
@@ -102,7 +104,9 @@ export const enrollmentSyncLog = mysqlTable('enrollment_sync_log', {
 	subscribersCreated: int('subscribers_created').notNull().default(0),
 	errors: int().notNull().default(0),
 	errorMsg: text('error_msg'),
-	triggeredBy: mysqlEnum('triggered_by', ['manual', 'scheduled', 'webhook']).notNull().default('manual')
+	triggeredBy: mysqlEnum('triggered_by', ['manual', 'scheduled', 'webhook'])
+		.notNull()
+		.default('manual')
 });
 
 // ── card_rfid ────────────────────────────────────────────────────────────────
@@ -120,7 +124,9 @@ export const cardRfid = mysqlTable(
 		sector: int().default(4),
 		writeDate: timestamp('write_date'),
 		expirationDate: date('expiration_date'),
-		status: mysqlEnum('status', ['active', 'disabled', 'replaced', 'lost', 'deleted']).default('active'),
+		status: mysqlEnum('status', ['active', 'disabled', 'replaced', 'lost', 'deleted']).default(
+			'active'
+		),
 		deletedAt: timestamp('deleted_at'),
 		writtenByUserId: int('written_by_user_id').references(() => users.id),
 		writtenByDevice: varchar('written_by_device', { length: 100 })
@@ -226,41 +232,38 @@ export const mifareKeys = mysqlTable(
 export const firmwareReleases = mysqlTable(
 	'firmware_releases',
 	{
-		id:              int().primaryKey().autoincrement(),
-		version:         varchar({ length: 32 }).unique().notNull(),
-		deviceType:      varchar('device_type', { length: 64 }).notNull().default('reader-station'),
-		filePath:        varchar('file_path', { length: 255 }).notNull(),
-		fileSizeBytes:   int('file_size_bytes').notNull(),
-		sha256:          varchar({ length: 64 }).notNull(),
-		isActive:        boolean('is_active').notNull().default(false),
-		releaseNotes:    text('release_notes'),
-		createdAt:       timestamp('created_at').defaultNow(),
+		id: int().primaryKey().autoincrement(),
+		version: varchar({ length: 32 }).unique().notNull(),
+		deviceType: varchar('device_type', { length: 64 }).notNull().default('reader-station'),
+		filePath: varchar('file_path', { length: 255 }).notNull(),
+		fileSizeBytes: int('file_size_bytes').notNull(),
+		sha256: varchar({ length: 64 }).notNull(),
+		isActive: boolean('is_active').notNull().default(false),
+		releaseNotes: text('release_notes'),
+		createdAt: timestamp('created_at').defaultNow(),
 		createdByUserId: int('created_by_user_id').references(() => users.id)
 	},
-	(t) => [
-		index('idx_fw_device_type').on(t.deviceType),
-		index('idx_fw_active').on(t.isActive)
-	]
+	(t) => [index('idx_fw_device_type').on(t.deviceType), index('idx_fw_active').on(t.isActive)]
 );
 
 // ── Inferred TypeScript types ─────────────────────────────────────────────────
-export type User             = typeof users.$inferSelect;
-export type NewUser          = typeof users.$inferInsert;
-export type UserRole         = 'admin' | 'staff';
-export type Subscriber       = typeof subscribers.$inferSelect;
-export type NewSubscriber    = typeof subscribers.$inferInsert;
-export type Enrollment       = typeof enrollments.$inferSelect;
-export type NewEnrollment    = typeof enrollments.$inferInsert;
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type UserRole = 'admin' | 'staff';
+export type Subscriber = typeof subscribers.$inferSelect;
+export type NewSubscriber = typeof subscribers.$inferInsert;
+export type Enrollment = typeof enrollments.$inferSelect;
+export type NewEnrollment = typeof enrollments.$inferInsert;
 export type EnrollmentSyncLog = typeof enrollmentSyncLog.$inferSelect;
-export type CardRfid         = typeof cardRfid.$inferSelect;
-export type NewCardRfid      = typeof cardRfid.$inferInsert;
-export type Attendance       = typeof attendance.$inferSelect;
-export type NewAttendance    = typeof attendance.$inferInsert;
-export type DeviceReg        = typeof deviceRegistry.$inferSelect;
-export type NewDeviceReg     = typeof deviceRegistry.$inferInsert;
-export type Setting          = typeof settings.$inferSelect;
-export type NewSetting       = typeof settings.$inferInsert;
-export type MifareKey        = typeof mifareKeys.$inferSelect;
-export type NewMifareKey     = typeof mifareKeys.$inferInsert;
-export type FirmwareRelease  = typeof firmwareReleases.$inferSelect;
+export type CardRfid = typeof cardRfid.$inferSelect;
+export type NewCardRfid = typeof cardRfid.$inferInsert;
+export type Attendance = typeof attendance.$inferSelect;
+export type NewAttendance = typeof attendance.$inferInsert;
+export type DeviceReg = typeof deviceRegistry.$inferSelect;
+export type NewDeviceReg = typeof deviceRegistry.$inferInsert;
+export type Setting = typeof settings.$inferSelect;
+export type NewSetting = typeof settings.$inferInsert;
+export type MifareKey = typeof mifareKeys.$inferSelect;
+export type NewMifareKey = typeof mifareKeys.$inferInsert;
+export type FirmwareRelease = typeof firmwareReleases.$inferSelect;
 export type NewFirmwareRelease = typeof firmwareReleases.$inferInsert;

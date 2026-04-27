@@ -19,7 +19,8 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		const [existing] = await db.select().from(cardRfid).where(eq(cardRfid.id, id)).limit(1);
 		if (!existing) return notFound('Card not found');
-		if (existing.status !== 'disabled') return badRequest(`Card non è disabilitata (stato: ${existing.status})`);
+		if (existing.status !== 'disabled')
+			return badRequest(`Card non è disabilitata (stato: ${existing.status})`);
 
 		await db.update(cardRfid).set({ status: 'active' }).where(eq(cardRfid.id, id));
 

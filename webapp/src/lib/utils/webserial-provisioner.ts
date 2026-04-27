@@ -14,7 +14,7 @@ const USB_FILTERS = [
 	{ usbVendorId: 0x303a }, // ESP32-S3 native USB
 	{ usbVendorId: 0x10c4 }, // CP210x (Silicon Labs)
 	{ usbVendorId: 0x1a86 }, // CH340 / CH341 / CH9102
-	{ usbVendorId: 0x0403 }  // FT232x (FTDI)
+	{ usbVendorId: 0x0403 } // FT232x (FTDI)
 ];
 
 // Timeout massimo (ms) in attesa di conferma dal firmware dopo l'invio del comando.
@@ -110,7 +110,7 @@ export class WebSerialProvisioner {
 		}
 
 		this.setState('listening');
-		this.log('Connesso. Resetta il dispositivo ora (premi il tasto RESET sull\'ESP).', 'info');
+		this.log("Connesso. Resetta il dispositivo ora (premi il tasto RESET sull'ESP).", 'info');
 
 		// Avvia il loop senza await — gira in background
 		this.readLoop();
@@ -145,13 +145,10 @@ export class WebSerialProvisioner {
 
 	private async onSendTimeout(): Promise<void> {
 		if (this.state !== 'sending' || this.cancelled) return;
-		this.log(
-			'Nessuna conferma ricevuta entro il timeout.',
-			'error'
-		);
+		this.log('Nessuna conferma ricevuta entro il timeout.', 'error');
 		this.log(
 			'Il dispositivo si è probabilmente riavviato ma la disconnessione USB non è stata rilevata (ESP32-S3 USB CDC). ' +
-			'Verifica il display del reader: se mostra "OFFLINE" o l\'AP WiFi, il provisioning è andato a buon fine.',
+				'Verifica il display del reader: se mostra "OFFLINE" o l\'AP WiFi, il provisioning è andato a buon fine.',
 			'info'
 		);
 		this.setState('error');

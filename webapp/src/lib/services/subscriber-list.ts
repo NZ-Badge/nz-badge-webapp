@@ -73,11 +73,7 @@ export async function enrichSubscribersForList(
 	const ids = subscriberRows.map((subscriber) => subscriber.id);
 	if (ids.length === 0) return [];
 
-	const [
-		activeCards,
-		enrollmentRows,
-		attendanceRows
-	] = await Promise.all([
+	const [activeCards, enrollmentRows, attendanceRows] = await Promise.all([
 		db
 			.select({ subscriberId: cardRfid.subscriberId, type: cardRfid.type })
 			.from(cardRfid)
@@ -111,7 +107,10 @@ export async function enrichSubscribersForList(
 
 	const rfidCardIds = new Set<number>();
 	const nfcCardIds = new Set<number>();
-	const latestEnrollmentBySubscriber = new Map<number, SubscriberEnrollmentRow & { subscriberId: number | null }>();
+	const latestEnrollmentBySubscriber = new Map<
+		number,
+		SubscriberEnrollmentRow & { subscriberId: number | null }
+	>();
 	const attendanceBySubscriber = new Map<number, SubscriberAttendanceRow[]>();
 	const latestEntryBySubscriber = new Map<number, Date | string>();
 

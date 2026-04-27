@@ -21,7 +21,10 @@ export const load: PageServerLoad = async () => {
 		[{ onlineDevices }],
 		enrollmentRows
 	] = await Promise.all([
-		db.select({ activeSubscribers: count() }).from(subscribers).where(eq(subscribers.status, 'active')),
+		db
+			.select({ activeSubscribers: count() })
+			.from(subscribers)
+			.where(eq(subscribers.status, 'active')),
 		db
 			.select({ todayAttendance: count() })
 			.from(attendance)
@@ -51,7 +54,10 @@ export const load: PageServerLoad = async () => {
 	const currentMonthEnrollments = enrollmentRows.filter((enrollment) =>
 		enrollmentMatchesMonth(enrollment, now)
 	);
-	const currentMonthEnrollmentBySubscriber = new Map<number, (typeof currentMonthEnrollments)[number]>();
+	const currentMonthEnrollmentBySubscriber = new Map<
+		number,
+		(typeof currentMonthEnrollments)[number]
+	>();
 
 	for (const enrollment of currentMonthEnrollments) {
 		if (enrollment.subscriberId == null) continue;

@@ -111,8 +111,8 @@ declare global {
 	}
 
 	interface WindowEventMap {
-		'connect': SerialConnectionEvent;
-		'disconnect': SerialConnectionEvent;
+		connect: SerialConnectionEvent;
+		disconnect: SerialConnectionEvent;
 	}
 }
 

@@ -59,7 +59,7 @@ export const actions: Actions = {
 		try {
 			const user = await locals.verifyAdmin();
 			requireAdmin(user);
-		} catch (err) {
+		} catch {
 			return fail(401, { action: 'create', error: 'Non autorizzato' });
 		}
 
@@ -131,7 +131,7 @@ export const actions: Actions = {
 		try {
 			const user = await locals.verifyAdmin();
 			requireAdmin(user);
-		} catch (err) {
+		} catch {
 			return fail(401, { action: 'update', error: 'Non autorizzato' });
 		}
 
@@ -165,7 +165,7 @@ export const actions: Actions = {
 		try {
 			const user = await locals.verifyAdmin();
 			requireAdmin(user);
-		} catch (err) {
+		} catch {
 			return fail(401, { action: 'delete', error: 'Non autorizzato' });
 		}
 

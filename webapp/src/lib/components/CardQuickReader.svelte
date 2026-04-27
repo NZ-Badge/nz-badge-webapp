@@ -153,10 +153,10 @@
 	{/if}
 
 	{#if connection.state === 'connected'}
-			<div class={showLog ? 'grid gap-6 lg:grid-cols-2' : 'h-full'}>
-				<Card class={stretch ? 'h-full' : ''}>
-					<CardHeader>
-						<div class="flex items-start justify-between gap-4">
+		<div class={showLog ? 'grid gap-6 lg:grid-cols-2' : 'h-full'}>
+			<Card class={stretch ? 'h-full' : ''}>
+				<CardHeader>
+					<div class="flex items-start justify-between gap-4">
 						<div class="space-y-1">
 							<CardTitle>{title}</CardTitle>
 							<CardDescription>{description}</CardDescription>
@@ -168,10 +168,10 @@
 						{/if}
 					</div>
 				</CardHeader>
-					<CardContent class={stretch ? 'flex h-full flex-col space-y-4' : 'space-y-4'}>
-						<Button onclick={readCard} disabled={loading}>
-							{loading ? 'Lettura in corso...' : 'Leggi carta'}
-						</Button>
+				<CardContent class={stretch ? 'flex h-full flex-col space-y-4' : 'space-y-4'}>
+					<Button onclick={readCard} disabled={loading}>
+						{loading ? 'Lettura in corso...' : 'Leggi carta'}
+					</Button>
 
 					{#if loading}
 						<div class="space-y-2">
@@ -276,10 +276,10 @@
 			{/if}
 		</div>
 	{:else}
-			<Card class={stretch ? 'h-full' : ''}>
-				<CardHeader>
-					<CardTitle>{title}</CardTitle>
-					<CardDescription>{description}</CardDescription>
+		<Card class={stretch ? 'h-full' : ''}>
+			<CardHeader>
+				<CardTitle>{title}</CardTitle>
+				<CardDescription>{description}</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
 				<div

@@ -26,7 +26,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		filters.push(eq(enrollments.status, status as 'PENDING' | 'SUBMITTED' | 'COMPLETED'));
 	}
 	if (!showPast) {
-		const today = new Date().toISOString().slice(0, 10);
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
 		filters.push(or(isNull(enrollments.preferredDate), gte(enrollments.preferredDate, today)));
 	}
 

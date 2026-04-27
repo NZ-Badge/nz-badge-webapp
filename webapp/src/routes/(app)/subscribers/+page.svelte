@@ -18,7 +18,15 @@
 	} from '$lib/components/ui/dialog';
 	import SubscriberFormDialog from '$lib/components/SubscriberFormDialog.svelte';
 	import { enhance } from '$app/forms';
-	import { Pencil, Trash2, CreditCard, Smartphone, ArrowUp, ArrowDown, ArrowUpDown } from '@lucide/svelte';
+	import {
+		Pencil,
+		Trash2,
+		CreditCard,
+		Smartphone,
+		ArrowUp,
+		ArrowDown,
+		ArrowUpDown
+	} from '@lucide/svelte';
 	import { browser } from '$app/environment';
 	import { connection } from '$lib/stores/webserial.svelte';
 
@@ -107,7 +115,9 @@
 	}
 
 	function subscriberHasLinkedCard(
-		sub: ((typeof data.subscribers)[0] & { hasActiveCard?: boolean; hasNfcPairing?: boolean }) | null
+		sub:
+			| ((typeof data.subscribers)[0] & { hasActiveCard?: boolean; hasNfcPairing?: boolean })
+			| null
 	) {
 		return Boolean(sub?.hasActiveCard || sub?.hasNfcPairing);
 	}
@@ -284,6 +294,16 @@
 								<span title="NFC smartphone">
 									<Smartphone size={14} class="text-green-500" />
 								</span>
+							{:else}
+								<Button
+									size="sm"
+									variant="outline"
+									class="h-7 px-2 text-xs"
+									onclick={() => openPairing(sub)}
+								>
+									<Smartphone size={14} />
+									Abbina NFC
+								</Button>
 							{/if}
 						</div>
 					</TableCell>
@@ -351,7 +371,9 @@
 		{#if subscriberHasLinkedCard(deleteSubscriber)}
 			<div class="space-y-3 text-sm">
 				<p>
-					Non puoi eliminare <strong>{deleteSubscriber?.firstName} {deleteSubscriber?.lastName}</strong>
+					Non puoi eliminare <strong
+						>{deleteSubscriber?.firstName} {deleteSubscriber?.lastName}</strong
+					>
 					finché ha una tessera abbinata.
 				</p>
 				<p class="text-muted-foreground">

@@ -20,17 +20,16 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	db.update(deviceRegistry)
 		.set({ firmwareVersion: currentVersion })
 		.where(eq(deviceRegistry.deviceId, device.deviceId))
-		.catch(() => { /* ignore */ });
+		.catch(() => {
+			/* ignore */
+		});
 
 	// Cerca release attiva per reader-station
 	const [active] = await db
 		.select()
 		.from(firmwareReleases)
 		.where(
-			and(
-				eq(firmwareReleases.deviceType, 'reader-station'),
-				eq(firmwareReleases.isActive, true)
-			)
+			and(eq(firmwareReleases.deviceType, 'reader-station'), eq(firmwareReleases.isActive, true))
 		)
 		.limit(1);
 

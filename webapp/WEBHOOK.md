@@ -1,205 +1,141 @@
-# Webhook Iscrizioni
+# Enrollment Sync And Webhook
 
-Documentazione per l'integrazione del webhook che permette al server remoto di inviare le iscrizioni in push alla webapp, invece di attendere la sincronizzazione manuale o schedulata.
+La webapp supporta due meccanismi complementari per importare iscrizioni:
 
-## Panoramica
+- sync pull verso un'API esterna
+- webhook push verso `POST /api/v1/webhooks/enrollments`
 
-Il webhook segue lo stesso comportamento della sincronizzazione REST:
+Entrambi i flussi convergono in `src/lib/services/enrollments.ts` e aggiornano:
 
-- **Upsert**: se l'iscrizione (`id`) è già presente nel database, il record viene **aggiornato** con i nuovi dati (stato, note, date, ecc.).
-- **Multi-partecipanti**: quando `participants[]` è presente, viene creato un subscriber **per ogni partecipante**, usando l'email specifica di ciascun partecipante (non più l'email dell'acquirente).
-- **Log**: ogni chiamata webhook crea un record in `enrollment_sync_log` con `triggered_by = 'webhook'`.
+- `enrollments`
+- `subscribers`
+- `enrollment_sync_log`
 
 ## Configurazione
 
-### 1. Generare il secret
+La configurazione non usa variabili ambiente dedicate. Viene salvata nella tabella `settings`:
 
-Dal pannello Admin → **Impostazioni**, nella sezione **Webhook Iscrizioni**, clicca **Genera secret**.
+- `enrollment_api_url`
+- `enrollment_api_key`
+- `webhook_enrollment_secret`
 
-Il secret è una stringa esadecimale a 64 caratteri (32 byte random). Copialo e configuralo sul server remoto.
+Dal pannello `/settings` e' possibile:
 
-> **Importante:** il secret è visibile una volta sola dopo la generazione. Conservalo in un posto sicuro. Se lo perdi, rigeneralo (il vecchio smette di funzionare immediatamente).
+- salvare URL e API key del sistema esterno
+- testare la connessione con `POST /api/v1/settings/enrollment-api/test`
+- leggere o rigenerare il secret webhook
 
-### 2. Configurare il server remoto
+## Sync pull
 
-Il server remoto deve inviare una richiesta `POST` all'endpoint webhook ad ogni nuova iscrizione, passando il secret nell'header `X-Webhook-Secret`.
+Endpoint admin:
 
-## Endpoint
-
+```text
+POST /api/v1/courses/sync
 ```
+
+Comportamento:
+
+- richiede sessione admin
+- legge `enrollment_api_url` e `enrollment_api_key` da `settings`
+- chiama `GET {apiUrl}/api/v1/enrollments?status=COMPLETED&page=N&limit=100`
+- importa/upserta le iscrizioni nel DB locale
+- registra l'esito in `enrollment_sync_log` con `triggered_by = 'manual'`
+
+L'endpoint di test connessione usa lo stesso backend, ma interroga solo una pagina minima per verificare raggiungibilita' e autenticazione.
+
+## Webhook push
+
+Endpoint:
+
+```text
 POST /api/v1/webhooks/enrollments
 ```
 
-### Headers richiesti
+Header richiesti:
 
-| Header | Valore |
-|--------|--------|
-| `Content-Type` | `application/json` |
-| `X-Webhook-Secret` | `<secret generato in Admin>` |
+| Header             | Valore                       |
+| ------------------ | ---------------------------- |
+| `Content-Type`     | `application/json`           |
+| `X-Webhook-Secret` | secret generato dalla webapp |
 
-### Payload
+Il secret viene confrontato con `timingSafeEqual`.
 
-Il corpo della richiesta è un oggetto JSON con i dati dell'iscrizione:
+Se il secret non e' stato ancora generato, il server restituisce `401`.
 
-```json
-{
-  "id": "string",
-  "orderId": "string",
-  "orderName": "string | null",
-  "lineItemId": "string",
-  "productId": "string | null",
-  "productTitle": "string | null",
-  "variantTitle": "string | null",
-  "quantity": 2,
-  "customerEmail": "acquirente@esempio.it",
-  "customerDisplayName": "string | null",
-  "participants": [
-    {
-      "index": 1,
-      "firstName": "Mario",
-      "lastName": "Rossi",
-      "email": "mario.rossi@esempio.it",
-      "phone": "+39 333 1234567 | null",
-      "fiscalCode": "RSSMRA80A01H501Z | null"
-    },
-    {
-      "index": 2,
-      "firstName": "Laura",
-      "lastName": "Bianchi",
-      "email": "laura.bianchi@esempio.it",
-      "phone": null,
-      "fiscalCode": null
-    }
-  ],
-  "firstName": "string | null (deprecated)",
-  "lastName": "string | null (deprecated)",
-  "phone": "string | null (deprecated)",
-  "fiscalCode": "string | null (deprecated)",
-  "preferredDate": "2025-06-15 | null",
-  "notes": "string | null",
-  "submittedAt": "2025-04-01T10:00:00Z | null",
-  "status": "SUBMITTED | COMPLETED",
-  "createdAt": "2025-04-01T10:00:00Z",
-  "updatedAt": "2025-04-01T10:00:00Z"
-}
-```
+## Payload accettato
 
-#### Campi obbligatori
+Il payload atteso e' allineato allo schema Zod definito direttamente nell'endpoint webhook.
 
-- `id`, `orderId`, `lineItemId`, `customerEmail`, `status`, `createdAt`, `updatedAt`
-- Ogni partecipante in `participants[]` deve avere: `index`, `firstName`, `lastName`, `email`
-
-#### Note sui partecipanti
-
-- **`participants[]`**: array che contiene i dati di ogni partecipante all'iscrizione. Per ogni partecipante viene creato un subscriber separato con la propria email.
-- **`customerEmail`**: email dell'acquirente (chi ha fatto l'ordine), usata solo come riferimento. I subscriber vengono creati usando l'email del singolo partecipante.
-- **Campi deprecated**: `firstName`, `lastName`, `phone`, `fiscalCode` a livello root sono deprecati — usare i corrispondenti campi dentro `participants[]`.
-
-Il formato è identico agli oggetti restituiti dall'endpoint REST `/api/v1/enrollments` del server remoto, quindi lo stesso codice di serializzazione può essere riusato.
-
-### Risposta
-
-**200 OK** — iscrizione elaborata (o già esistente):
+Campi principali:
 
 ```json
 {
-  "success": true,
-  "data": {
-    "enrollmentsFound": 1,
-    "enrollmentsCreated": 2,
-    "subscribersCreated": 2,
-    "errors": 0
-  }
+	"id": "enr_123",
+	"orderId": "ord_456",
+	"orderName": "#1042",
+	"lineItemId": "line_789",
+	"productId": "prod_001",
+	"productTitle": "Corso Primo Soccorso",
+	"variantTitle": "Edizione Giugno 2026",
+	"quantity": 2,
+	"customerEmail": "buyer@example.com",
+	"customerDisplayName": "Mario Rossi",
+	"participants": [
+		{
+			"index": 1,
+			"firstName": "Mario",
+			"lastName": "Rossi",
+			"email": "mario@example.com",
+			"phone": "+39 333 1234567",
+			"fiscalCode": "RSSMRA80A01H501Z"
+		}
+	],
+	"preferredDate": "2026-06-15",
+	"notes": "Preferenza mattino",
+	"submittedAt": "2026-04-01T10:00:00Z",
+	"status": "COMPLETED",
+	"createdAt": "2026-04-01T09:58:00Z",
+	"updatedAt": "2026-04-01T10:00:00Z"
 }
 ```
 
-- `enrollmentsCreated: N` → N enrollment inseriti (uno per partecipante)
-- `enrollmentsCreated: 0` → iscrizione già presente, aggiornata
-- `subscribersCreated: N` → N subscriber creati automaticamente dalle email dei partecipanti
+Vincoli rilevanti:
 
-**401 Unauthorized** — secret mancante, non valido, o webhook non ancora configurato.
+- `status` ammesso: `SUBMITTED` oppure `COMPLETED`
+- `PENDING` viene ignorato dalla logica applicativa
+- `participants[]` puo' essere vuoto, ma se presente ogni elemento deve rispettare lo schema dell'endpoint
 
-**400 Bad Request** — payload JSON non valido o campi mancanti/errati.
+## Regole applicative
 
-**500 Internal Server Error** — errore interno, ritenta con backoff esponenziale.
+- l'iscrizione viene identificata da `external_id`
+- una chiamata webhook crea comunque un record in `enrollment_sync_log` con `triggered_by = 'webhook'`
+- se l'iscrizione esiste gia', viene aggiornata
+- quando `participants[]` e' valorizzato, il servizio puo' associare o creare subscriber separati
+- i campi root `firstName`, `lastName`, `phone`, `fiscalCode` sono mantenuti per compatibilita', ma la logica recente privilegia `participants[]`
 
-## Esempio di chiamata
+## Gestione secret
 
-```bash
-curl -X POST https://tuodominio.example.com/api/v1/webhooks/enrollments \
-  -H "Content-Type: application/json" \
-  -H "X-Webhook-Secret: a3f8c2...il-tuo-secret" \
-  -d '{
-    "id": "enr_123abc",
-    "orderId": "ord_456def",
-    "orderName": "#1042",
-    "lineItemId": "li_789ghi",
-    "productId": "prod_001",
-    "productTitle": "Corso Primo Soccorso",
-    "variantTitle": "Edizione Giugno 2025",
-    "quantity": 2,
-    "customerEmail": "mario.rossi@esempio.it",
-    "customerDisplayName": "Mario Rossi",
-    "participants": [
-      {
-        "index": 1,
-        "firstName": "Mario",
-        "lastName": "Rossi",
-        "email": "mario.rossi@esempio.it",
-        "phone": "+39 333 1234567",
-        "fiscalCode": "RSSMRA80A01H501Z"
-      },
-      {
-        "index": 2,
-        "firstName": "Laura",
-        "lastName": "Bianchi",
-        "email": "laura.bianchi@esempio.it",
-        "phone": null,
-        "fiscalCode": null
-      }
-    ],
-    "preferredDate": "2025-06-15",
-    "notes": "Preferisco il mattino",
-    "submittedAt": "2025-04-01T10:00:00Z",
-    "status": "COMPLETED",
-    "createdAt": "2025-04-01T09:58:00Z",
-    "updatedAt": "2025-04-01T10:00:00Z"
-  }'
-```
+Endpoint admin:
 
-## Sicurezza
-
-- Il secret viene confrontato con `timingSafeEqual` (nessuna vulnerabilità timing-attack).
-- Il secret è memorizzato nella tabella `settings` del database, non in variabili d'ambiente, per permettere la rotazione senza riavvio del server.
-- Se non è stato ancora generato nessun secret, tutte le chiamate ricevono `401`.
-
-## Rotazione del secret
-
-1. In Admin → Impostazioni → Webhook Iscrizioni, clicca **Rigenera secret**.
-2. Copia il nuovo secret.
-3. Aggiorna la configurazione del server remoto.
-4. Il vecchio secret è immediatamente invalidato.
-
-> Coordina la rotazione con il team che gestisce il server remoto per evitare interruzioni.
-
-## Gestione degli errori sul server remoto
-
-Si consiglia di implementare sul server remoto:
-
-- **Retry con backoff esponenziale** in caso di risposta `5xx` (es. 3 tentativi: 10s, 30s, 90s).
-- **Nessun retry** in caso di risposta `4xx` (secret errato o payload non valido — richiede intervento manuale).
-- **Idempotenza garantita**: in caso di dubbio, reinviare la stessa iscrizione è sicuro — se `id` esiste già, il record viene aggiornato con i dati più recenti.
-
-## API di gestione secret (Admin)
-
-Oltre all'interfaccia grafica, il secret può essere gestito via API (richiede sessione admin):
-
-```bash
-# Leggere il secret corrente
-GET /api/v1/webhooks/enrollments/secret
-
-# Generare / rigenerare il secret
+```text
+GET  /api/v1/webhooks/enrollments/secret
 POST /api/v1/webhooks/enrollments/secret
 ```
 
-Entrambi gli endpoint richiedono il cookie di sessione admin (`session`).
+Uso tipico:
+
+1. generare il secret dalla UI o via `POST`
+2. configurare il secret sul sistema remoto
+3. inviare webhook firmati tramite header `X-Webhook-Secret`
+4. ruotare il secret quando necessario
+
+La rotazione invalida immediatamente il valore precedente.
+
+## Risposte attese
+
+- `200`: payload accettato ed elaborato
+- `400`: JSON o payload non valido
+- `401`: secret assente, errato o webhook non configurato
+- `500`: errore interno
+
+In caso di `5xx`, il mittente remoto dovrebbe implementare retry con backoff. In caso di `4xx`, e' piu' corretto fermarsi e correggere configurazione o payload.
