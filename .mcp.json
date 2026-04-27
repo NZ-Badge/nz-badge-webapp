@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "kicad": {
+      "command": "uvx",
+      "args": ["kicad-mcp-server", "--project-path", "/home/zod/ztmp"],
+      "env": {
+        "KICAD_MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

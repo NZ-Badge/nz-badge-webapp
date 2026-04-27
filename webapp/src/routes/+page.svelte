@@ -1,0 +1,1 @@
+<!-- Redirect handled server-side -->

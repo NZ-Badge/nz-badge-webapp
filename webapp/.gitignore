@@ -1,0 +1,18 @@
+node_modules
+/build
+/tests
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+!.env.test
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+
+/localfiles

@@ -1,0 +1,118 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1772064000000,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772150400000,
+      "tag": "0001_rename_italian_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773100800000,
+      "tag": "0002_card_rfid_soft_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773100800000,
+      "tag": "0003_settings_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773100800000,
+      "tag": "0004_mifare_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773100800000,
+      "tag": "0005_card_rfid_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773100800000,
+      "tag": "0006_single_key_default_true",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773187200000,
+      "tag": "0007_use_mifare_setting",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773594543898,
+      "tag": "0008_firmware_releases",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772184107000,
+      "tag": "0009_users_name_and_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772184307000,
+      "tag": "0010_users_name_and_role_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775048984957,
+      "tag": "0011_enrollments",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1775053745031,
+      "tag": "0011_flowery_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1775174400000,
+      "tag": "0012_enrollment_api_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775260800000,
+      "tag": "0013_seed_admin_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1776211200000,
+      "tag": "0014_enrollment_duration_days",
+      "breakpoints": true
+    }
+  ]
+}

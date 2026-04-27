@@ -1,0 +1,23 @@
+name: ril-presenze
+type: generic
+docroot: ""
+php_version: "8.3"
+webserver_type: nginx-fpm
+router_http_port: "80"
+router_https_port: "443"
+nodejs_version: "20"
+bind_all_interfaces: true
+database:
+  type: mysql
+  version: "8.0"
+web_environment:
+  - DATABASE_URL=mysql://db:db@db/db
+  - NODE_ENV=development
+  - SEED_ADMIN_EMAIL=admin@test.com
+  - SEED_ADMIN_PASSWORD=password123
+# Expose Vite dev server (runs inside container at port 5173)
+web_extra_exposed_ports:
+  - name: vite-dev
+    container_port: 5173
+    http_port: 5173
+    https_port: 5174
