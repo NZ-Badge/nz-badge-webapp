@@ -1,13 +1,43 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import { verifyDeviceToken, verifyAdminSession } from '$lib/services/auth';
 import { generateCspNonce, generateSecurityHeaders } from '$lib/utils/security';
 import { dev } from '$app/environment';
+
+function getCanonicalOrigin(): string | null {
+	const value = env.PRIMARY_APP_ORIGIN?.trim();
+	return value ? value.replace(/\/+$/, '') : null;
+}
+
+function getLegacyHosts(): Set<string> {
+	return new Set(
+		(env.LEGACY_APP_HOSTS ?? '')
+			.split(',')
+			.map((host) => host.trim().toLowerCase())
+			.filter(Boolean)
+	);
+}
 
 /**
  * Server hook - Security hardening for healthcare environment
  * Implements CSP, security headers, and secure error handling
  */
 export const handle: Handle = async ({ event, resolve }) => {
+	const canonicalOrigin = getCanonicalOrigin();
+	const legacyHosts = getLegacyHosts();
+
+	if (
+		!dev &&
+		canonicalOrigin &&
+		legacyHosts.has(event.url.hostname.toLowerCase()) &&
+		(event.request.method === 'GET' || event.request.method === 'HEAD') &&
+		!event.url.pathname.startsWith('/api/')
+	) {
+		const canonicalUrl = new URL(event.url.pathname + event.url.search, canonicalOrigin);
+		throw redirect(308, canonicalUrl.toString());
+	}
+
 	// Generate CSP nonce for this request
 	const cspNonce = generateCspNonce();
 	event.locals.cspNonce = cspNonce;

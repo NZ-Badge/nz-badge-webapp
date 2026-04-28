@@ -5,7 +5,14 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	server: {
-		allowedHosts: ['.ddev.site', '.ngrok-free.app', 'web', 'shopify.nicolatomassoni.it']
+		allowedHosts: [
+			'.ddev.site',
+			'.ngrok-free.app',
+			'web',
+			'shopify.nicolatomassoni.it',
+			'rp.intessere.com',
+			'rp.nicolatomassoni.it'
+		]
 	},
 	test: {
 		environment: 'node',

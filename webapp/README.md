@@ -95,6 +95,8 @@ cp .env.example .env
 | --------------------- | ------------ | ------------------------------------------------ |
 | `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script |
 | `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin          |
+| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy |
+| `LEGACY_APP_HOSTS`    | no           | Lista host legacy separati da virgola da reindirizzare all'origin canonica |
 | `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`    |
 | `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                   |
 | `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                   |
@@ -104,6 +106,7 @@ Note:
 
 - configurazione enrollment API e secret webhook non stanno in `.env`: vengono salvati nella tabella `settings`
 - senza `JWT_SECRET` il login admin e la validazione sessione non funzionano
+- con `PRIMARY_APP_ORIGIN` e `LEGACY_APP_HOSTS` puoi mantenere attivi host secondari, ma forzare il browser a usare il dominio principale
 
 ## Setup locale
 
