@@ -18,6 +18,7 @@
 	} from '$lib/components/ui/dialog';
 	import SubscriberFormDialog from '$lib/components/SubscriberFormDialog.svelte';
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import {
 		Pencil,
 		Trash2,
@@ -99,6 +100,7 @@
 
 			pairingUid = resp.uid;
 			pairingStatus = 'success';
+			await invalidateAll();
 		} catch (err) {
 			pairingStatus = 'error';
 			pairingErrorMessage = err instanceof Error ? err.message : 'Errore sconosciuto';

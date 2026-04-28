@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
@@ -31,7 +32,7 @@
 				return;
 			}
 			await res.json();
-			location.reload();
+			await invalidateAll();
 		} catch (err) {
 			syncError = err instanceof Error ? err.message : 'Errore sconosciuto';
 		} finally {

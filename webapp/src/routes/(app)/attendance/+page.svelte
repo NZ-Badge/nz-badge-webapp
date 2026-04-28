@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -144,7 +144,14 @@
 
 			selectedIds = new Set();
 			selectAllFiltered = false;
-			goto(buildUrl(1));
+			const targetUrl = buildUrl(1);
+			const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+			if (targetUrl === currentUrl) {
+				await invalidateAll();
+			} else {
+				await goto(targetUrl);
+			}
 		} catch {
 			alert("Errore durante l'eliminazione. Riprova.");
 		} finally {
