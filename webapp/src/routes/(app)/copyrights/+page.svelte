@@ -6,7 +6,7 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { Copyright, Code, Github, FileText, ExternalLink } from '@lucide/svelte';
+	import { Copyright, Github, FileText, ExternalLink } from '@lucide/svelte';
 
 	const currentYear = new Date().getFullYear();
 
@@ -42,19 +42,17 @@
 					<span>Autore</span>
 				</div>
 				<p class="mt-1 text-sm text-slate-600">Nicola Tomassoni</p>
+				<a
+					href="https://www.nicolatomassoni.it"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="block text-sm text-blue-600 hover:text-blue-700"
+				>
+					www.nicolatomassoni.it
+				</a>
 				<a href="mailto:io@nicolatomassoni.it" class="text-sm text-blue-600 hover:text-blue-700">
 					io@nicolatomassoni.it
 				</a>
-			</div>
-
-			<div class="rounded-lg bg-slate-50 p-4">
-				<div class="flex items-center gap-2 text-sm font-medium text-slate-700">
-					<Code size={16} />
-					<span>Versione software</span>
-				</div>
-				<p class="mt-1 text-sm text-slate-500">
-					WebApp v2.0.0 | Firmware Reader v1.2.0 | Firmware Writer v1.0.0
-				</p>
 			</div>
 		</CardContent>
 	</Card>
@@ -108,13 +106,13 @@
 			</p>
 			<div class="mt-4">
 				<a
-					href="https://github.com/nonzod/ril_presenze"
+					href="https://github.com/NZ-Badge"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
 				>
 					<Github size={16} />
-					github.com/nonzod/ril_presenze
+					github.com/NZ-Badge
 				</a>
 			</div>
 		</CardContent>
