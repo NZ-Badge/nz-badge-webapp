@@ -52,7 +52,7 @@ Endpoint in `src/routes/api/v1/*` usati dai device:
 - check/download firmware OTA
 - health/probe
 
-Dettagli in [DEVICE-API.md](./DEVICE-API.md).
+Dettagli in [DEVICE-API.md](./docs/DEVICE-API.md).
 
 ### 3. Integrazione esterna
 
@@ -62,7 +62,7 @@ Flussi lato sistemi esterni:
 - webhook `POST /api/v1/webhooks/enrollments`
 - gestione del secret webhook e test connessione enrollment API dal pannello impostazioni
 
-Dettagli in [WEBHOOK.md](./WEBHOOK.md).
+Dettagli in [WEBHOOK.md](./docs/WEBHOOK.md).
 
 ## Stack
 
@@ -259,10 +259,10 @@ Solo la release marcata `is_active = true` viene servita.
 
 ## Integrazioni
 
-- [WEBHOOK.md](./WEBHOOK.md): webhook iscrizioni e sync API esterna
-- [DEVICE-API.md](./DEVICE-API.md): endpoint per reader, probe e flussi device-related
-- [SECURITY.md](./SECURITY.md): note tecniche sulle misure di sicurezza effettivamente implementate
-- [SHOPIFY.md](./SHOPIFY.md): stato della documentazione legacy Shopify
+- [WEBHOOK.md](./docs/WEBHOOK.md): webhook iscrizioni e sync API esterna
+- [DEVICE-API.md](./docs/DEVICE-API.md): endpoint per reader, probe e flussi device-related
+- [SECURITY.md](./docs/SECURITY.md): note tecniche sulle misure di sicurezza effettivamente implementate
+- [SHOPIFY.md](./docs/SHOPIFY.md): stato della documentazione legacy Shopify
 
 ## Testing
 
