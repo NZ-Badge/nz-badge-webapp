@@ -1,14 +1,23 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
 import { attendance, subscribers } from '$lib/db/schema';
+import { TIMEZONE } from '$lib/utils/date';
+import { formatInTimeZone } from 'date-fns-tz';
 import { eq, and, like, gte, lte, count, sql } from 'drizzle-orm';
 
 const PAGE_SIZE = 50;
+const DEFAULT_LOOKBACK_DAYS = 30;
+
+function dateInputValueDaysAgo(daysAgo: number): string {
+	const date = new Date();
+	date.setDate(date.getDate() - daysAgo);
+	return formatInTimeZone(date, TIMEZONE, 'yyyy-MM-dd');
+}
 
 export const load: PageServerLoad = async ({ url }) => {
 	const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
-	const from = url.searchParams.get('from') ?? '';
-	const to = url.searchParams.get('to') ?? '';
+	const from = url.searchParams.get('from')?.trim() || dateInputValueDaysAgo(DEFAULT_LOOKBACK_DAYS);
+	const to = url.searchParams.get('to')?.trim() || dateInputValueDaysAgo(0);
 	const subscriber = url.searchParams.get('subscriber')?.trim() ?? '';
 	const device = url.searchParams.get('device')?.trim() ?? '';
 
