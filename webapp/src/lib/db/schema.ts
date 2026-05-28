@@ -11,7 +11,8 @@ import {
 	binary,
 	date,
 	datetime,
-	index
+	index,
+	unique
 } from 'drizzle-orm/mysql-core';
 
 // ── users ────────────────────────────────────────────────────────────────────
@@ -214,6 +215,31 @@ export const settings = mysqlTable('settings', {
 	updatedByUserId: int('updated_by_user_id').references(() => users.id)
 });
 
+// ── weekly_attendance_summary_log ─────────────────────────────────────────────
+export const weeklyAttendanceSummaryLog = mysqlTable(
+	'weekly_attendance_summary_log',
+	{
+		id: int().primaryKey().autoincrement(),
+		weekStartDate: date('week_start_date').notNull(),
+		weekEndDate: date('week_end_date').notNull(),
+		subscriberId: int('subscriber_id').references(() => subscribers.id, { onDelete: 'set null' }),
+		recipientEmail: varchar('recipient_email', { length: 255 }).notNull(),
+		status: mysqlEnum('status', ['sent', 'skipped', 'error']).notNull().default('sent'),
+		sentAt: timestamp('sent_at'),
+		errorMsg: text('error_msg'),
+		createdAt: timestamp('created_at').defaultNow(),
+		updatedAt: timestamp('updated_at').defaultNow().onUpdateNow()
+	},
+	(t) => [
+		unique('weekly_attendance_summary_log_subscriber_week_unique').on(
+			t.subscriberId,
+			t.weekStartDate
+		),
+		index('idx_weekly_summary_week').on(t.weekStartDate, t.weekEndDate),
+		index('idx_weekly_summary_recipient').on(t.recipientEmail)
+	]
+);
+
 // ── mifare_keys ──────────────────────────────────────────────────────────────
 export const mifareKeys = mysqlTable(
 	'mifare_keys',
@@ -264,6 +290,7 @@ export type DeviceReg = typeof deviceRegistry.$inferSelect;
 export type NewDeviceReg = typeof deviceRegistry.$inferInsert;
 export type Setting = typeof settings.$inferSelect;
 export type NewSetting = typeof settings.$inferInsert;
+export type WeeklyAttendanceSummaryLog = typeof weeklyAttendanceSummaryLog.$inferSelect;
 export type MifareKey = typeof mifareKeys.$inferSelect;
 export type NewMifareKey = typeof mifareKeys.$inferInsert;
 export type FirmwareRelease = typeof firmwareReleases.$inferSelect;

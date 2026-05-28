@@ -91,16 +91,22 @@ cp .env.example .env
 
 ### Variabili ambiente
 
-| Variabile             | Obbligatoria | Uso                                              |
-| --------------------- | ------------ | ------------------------------------------------ |
-| `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script |
-| `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin          |
-| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy |
+| Variabile             | Obbligatoria | Uso                                                       |
+| --------------------- | ------------ | --------------------------------------------------------- |
+| `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script          |
+| `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin                   |
+| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy   |
 | `LEGACY_APP_HOSTS`    | no           | Lista host legacy separati da virgola da reindirizzare all'origin canonica |
-| `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`    |
-| `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                   |
-| `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                   |
-| `SEED_ADMIN_NAME`     | no           | Nome admin seed, default `Administrator`         |
+| `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`             |
+| `SMTP_HOST`           | no           | Host SMTP per il job riepilogo settimanale presenze       |
+| `SMTP_PORT`           | no           | Porta SMTP, default `587`                                 |
+| `SMTP_SECURE`         | no           | Usa TLS diretto SMTP, tipicamente `true` con porta `465`  |
+| `SMTP_USER`           | no           | Utente SMTP                                               |
+| `SMTP_PASS`           | no           | Password SMTP                                             |
+| `MAIL_FROM`           | no           | Mittente delle email automatiche                          |
+| `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                            |
+| `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                            |
+| `SEED_ADMIN_NAME`     | no           | Nome admin seed, default `Administrator`                  |
 
 Note:
 
@@ -124,6 +130,18 @@ npm run db:migrate:run
 ```
 
 Questo percorso crea anche le righe iniziali in `settings` richieste da presenze, MIFARE ed enrollment API.
+
+Il runner non carica automaticamente `.env`. Se le variabili non sono gia' esportate nella shell:
+
+```bash
+set -a; source .env; set +a; npm run db:migrate:run
+```
+
+Se `.env` usa l'host DB interno al container, ad esempio `mysql://db:db@db/db`, ma il comando viene lanciato dall'host:
+
+```bash
+set -a; source .env; set +a; DATABASE_URL="${DATABASE_URL/@db\//@127.0.0.1:3306/}" npm run db:migrate:run
+```
 
 Se serve creare il primo amministratore:
 
@@ -162,6 +180,23 @@ npm run dev
 | `npm run db:migrate`     | Comando Drizzle Kit migrate                                 |
 | `npm run db:migrate:run` | Esegue le migration SQL presenti in `src/lib/db/migrations` |
 | `npm run db:seed`        | Crea il primo utente admin                                  |
+| `npm run jobs:weekly-attendance-summary` | Invia il riepilogo settimanale presenze, se abilitato e dovuto |
+
+### Job riepilogo settimanale presenze
+
+Il job puo' essere eseguito ogni giorno: invia email solo il sabato, per la settimana lunedi-venerdi appena conclusa, e salta gli iscritti gia' registrati come inviati in `weekly_attendance_summary_log`.
+
+Esempio crontab:
+
+```cron
+0 8 * * * cd /path/to/webapp && set -a && . ./.env && set +a && npm run jobs:weekly-attendance-summary
+```
+
+Opzioni utili per test manuali:
+
+```bash
+npm run jobs:weekly-attendance-summary -- --dry-run --force --date=2026-05-30
+```
 
 ## Struttura del progetto
 

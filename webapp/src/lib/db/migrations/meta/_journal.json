@@ -120,6 +120,13 @@
 			"when": 1779926400000,
 			"tag": "0015_enrollment_start_end_dates",
 			"breakpoints": true
+		},
+		{
+			"idx": 17,
+			"version": "7",
+			"when": 1779929400000,
+			"tag": "0016_weekly_attendance_summary",
+			"breakpoints": true
 		}
 	]
 }

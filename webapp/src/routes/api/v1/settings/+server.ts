@@ -17,6 +17,7 @@ import { z } from 'zod';
 const settingUpdateSchema = z.object({
 	reset_entry_type_daily: z.boolean().optional(),
 	min_swipe_interval_minutes: z.number().int().min(1).max(1440).optional(),
+	weekly_attendance_summary_enabled: z.boolean().optional(),
 	use_single_mifare_key: z.boolean().optional(),
 	use_mifare: z.boolean().optional(),
 	regenerate_mifare_keys: z.boolean().optional(),
@@ -28,6 +29,7 @@ const settingUpdateSchema = z.object({
 interface SettingsMap {
 	reset_entry_type_daily: boolean;
 	min_swipe_interval_minutes: number;
+	weekly_attendance_summary_enabled: boolean;
 	use_single_mifare_key: boolean;
 	use_mifare: boolean;
 }

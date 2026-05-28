@@ -23,7 +23,8 @@
 		Eye,
 		EyeOff,
 		Link,
-		Shield
+		Shield,
+		Mail
 	} from '@lucide/svelte';
 
 	let { data } = $props();
@@ -36,6 +37,9 @@
 	// Stato locale dei settings
 	let resetEntryTypeDaily = $state(getInitialValues().reset_entry_type_daily ?? true);
 	let minSwipeIntervalMinutes = $state(getInitialValues().min_swipe_interval_minutes ?? 15);
+	let weeklyAttendanceSummaryEnabled = $state(
+		getInitialValues().weekly_attendance_summary_enabled ?? false
+	);
 	let useMifare = $state(getInitialValues().use_mifare ?? false);
 	let useSingleMifareKey = $state(getInitialValues().use_single_mifare_key ?? false);
 
@@ -153,6 +157,7 @@
 				body: JSON.stringify({
 					reset_entry_type_daily: resetEntryTypeDaily,
 					min_swipe_interval_minutes: minSwipeIntervalMinutes,
+					weekly_attendance_summary_enabled: weeklyAttendanceSummaryEnabled,
 					// Invia use_single_mifare_key solo se MIFARE è abilitato
 					...(useMifare ? { use_single_mifare_key: useSingleMifareKey } : {}),
 					// Enrollment API config
@@ -331,6 +336,33 @@
 					/>
 					<span class="text-sm text-gray-600">minuti</span>
 				</div>
+			</div>
+		</CardContent>
+	</Card>
+
+	<Card>
+		<CardHeader>
+			<div class="flex items-center gap-2">
+				<Mail size={20} class="text-gray-700" />
+				<CardTitle>Riepilogo settimanale presenze</CardTitle>
+			</div>
+			<CardDescription>
+				Abilita l'invio automatico del riepilogo ore agli iscritti con strisciate nella settimana
+			</CardDescription>
+		</CardHeader>
+		<CardContent>
+			<div class="flex items-start justify-between gap-4 rounded-lg border p-4">
+				<div class="flex-1 space-y-1">
+					<Label for="weekly-attendance-summary" class="text-base font-medium">
+						Invia riepilogo settimanale
+					</Label>
+					<p class="text-sm text-gray-500">
+						Il comando schedulato puo' essere lanciato ogni giorno: inviera' le email solo il
+						sabato, per la settimana lunedi-venerdi appena conclusa, e non ripetera' invii gia'
+						registrati.
+					</p>
+				</div>
+				<Switch id="weekly-attendance-summary" bind:checked={weeklyAttendanceSummaryEnabled} />
 			</div>
 		</CardContent>
 	</Card>
