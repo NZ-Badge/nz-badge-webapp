@@ -326,6 +326,86 @@ export async function processEnrollment(
 	}
 }
 
+function getCourseName(item: ApiEnrollment): string | null {
+	return item.variantTitle ?? item.productTitle ?? item.enrollmentType?.name ?? null;
+}
+
+async function createSubscriberFromParticipant(
+	item: ApiEnrollment,
+	participant: ApiParticipant
+): Promise<number> {
+	const [newSub] = await db
+		.insert(subscribers)
+		.values({
+			firstName: participant.firstName,
+			lastName: participant.lastName,
+			email: participant.email ?? item.customerEmail,
+			phone: participant.phone ?? null,
+			taxId: participant.fiscalCode ?? null,
+			courseName: getCourseName(item),
+			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null,
+			status: 'active'
+		})
+		.$returningId();
+
+	return newSub.id;
+}
+
+async function updateSubscriberFromParticipant(
+	subscriberId: number,
+	item: ApiEnrollment,
+	participant: ApiParticipant
+): Promise<void> {
+	await db
+		.update(subscribers)
+		.set({
+			firstName: participant.firstName,
+			lastName: participant.lastName,
+			email: participant.email ?? item.customerEmail,
+			phone: participant.phone ?? null,
+			taxId: participant.fiscalCode ?? null,
+			courseName: getCourseName(item),
+			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null
+		})
+		.where(eq(subscribers.id, subscriberId));
+}
+
+async function createSubscriberFromFlatEnrollment(item: ApiEnrollment): Promise<number> {
+	const [newSub] = await db
+		.insert(subscribers)
+		.values({
+			firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
+			lastName: item.lastName ?? (item.customerDisplayName?.split(' ').slice(1).join(' ') || ''),
+			email: item.customerEmail,
+			phone: item.phone ?? null,
+			taxId: item.fiscalCode ?? null,
+			courseName: getCourseName(item),
+			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null,
+			status: 'active'
+		})
+		.$returningId();
+
+	return newSub.id;
+}
+
+async function updateSubscriberFromFlatEnrollment(
+	subscriberId: number,
+	item: ApiEnrollment
+): Promise<void> {
+	await db
+		.update(subscribers)
+		.set({
+			firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
+			lastName: item.lastName ?? (item.customerDisplayName?.split(' ').slice(1).join(' ') || ''),
+			email: item.customerEmail,
+			phone: item.phone ?? null,
+			taxId: item.fiscalCode ?? null,
+			courseName: getCourseName(item),
+			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null
+		})
+		.where(eq(subscribers.id, subscriberId));
+}
+
 async function processSingleParticipant(
 	item: ApiEnrollment,
 	participant: ApiParticipant,
@@ -347,25 +427,22 @@ async function processSingleParticipant(
 		if (!upsert) return;
 		// Reuse the subscriber already linked to this enrollment row
 		subscriberId = existingEnrollment.subscriberId ?? null;
+		if (!subscriberId) {
+			subscriberId = await createSubscriberFromParticipant(item, participant);
+			result.subscribersCreated++;
+		}
 	} else {
 		// First sync: always create a fresh subscriber for this participant
 		// (each participant has their own email from the participants array)
-		const [newSub] = await db
-			.insert(subscribers)
-			.values({
-				firstName: participant.firstName,
-				lastName: participant.lastName,
-				email: participant.email ?? item.customerEmail,
-				phone: participant.phone ?? null,
-				taxId: participant.fiscalCode ?? null,
-				status: 'active'
-			})
-			.$returningId();
-		subscriberId = newSub.id;
+		subscriberId = await createSubscriberFromParticipant(item, participant);
 		result.subscribersCreated++;
 	}
 
 	if (existingEnrollment) {
+		if (subscriberId) {
+			await updateSubscriberFromParticipant(subscriberId, item, participant);
+		}
+
 		// upsert: aggiorna dati anagrafici e corso
 		await db
 			.update(enrollments)
@@ -430,38 +507,25 @@ async function processFlatEnrollment(
 	upsert: boolean
 ): Promise<void> {
 	let subscriberId: number | null = null;
-	const [existingSub] = await db
-		.select({ id: subscribers.id })
-		.from(subscribers)
-		.where(eq(subscribers.email, item.customerEmail))
-		.limit(1);
-
-	if (existingSub) {
-		subscriberId = existingSub.id;
-	} else {
-		const [newSub] = await db
-			.insert(subscribers)
-			.values({
-				firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
-				lastName: item.lastName ?? (item.customerDisplayName?.split(' ').slice(1).join(' ') || ''),
-				email: item.customerEmail,
-				phone: item.phone ?? null,
-				taxId: item.fiscalCode ?? null,
-				status: 'active'
-			})
-			.$returningId();
-		subscriberId = newSub.id;
-		result.subscribersCreated++;
-	}
 
 	const [existing] = await db
-		.select({ id: enrollments.id })
+		.select({ id: enrollments.id, subscriberId: enrollments.subscriberId })
 		.from(enrollments)
 		.where(eq(enrollments.externalId, item.id))
 		.limit(1);
 
 	if (existing) {
 		if (!upsert) return;
+
+		subscriberId = existing.subscriberId ?? null;
+		if (!subscriberId) {
+			subscriberId = await createSubscriberFromFlatEnrollment(item);
+			result.subscribersCreated++;
+		}
+
+		if (subscriberId) {
+			await updateSubscriberFromFlatEnrollment(subscriberId, item);
+		}
 
 		await db
 			.update(enrollments)
@@ -490,6 +554,22 @@ async function processFlatEnrollment(
 			.where(eq(enrollments.externalId, item.id));
 
 		return;
+	}
+
+	const [existingSub] = await db
+		.select({ id: subscribers.id })
+		.from(subscribers)
+		.where(eq(subscribers.email, item.customerEmail))
+		.limit(1);
+
+	if (existingSub) {
+		subscriberId = existingSub.id;
+		if (upsert) {
+			await updateSubscriberFromFlatEnrollment(subscriberId, item);
+		}
+	} else {
+		subscriberId = await createSubscriberFromFlatEnrollment(item);
+		result.subscribersCreated++;
 	}
 
 	await db.insert(enrollments).values({
