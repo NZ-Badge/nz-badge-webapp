@@ -48,6 +48,28 @@ export interface CourseAttendanceSummary {
 	resolvableIssues: CourseAttendanceResolvableIssue[];
 }
 
+export interface SubscriberCourseAttendanceReportInput {
+	subscriberId: number;
+	firstName: string | null;
+	lastName: string | null;
+	email: string | null;
+	enrollments: SubscriberEnrollmentRow[];
+	attendanceRows: SubscriberAttendanceRow[];
+}
+
+export interface SubscriberCourseAttendanceReportRow {
+	subscriberId: number;
+	enrollmentId: number;
+	name: string;
+	email: string;
+	course: string;
+	startDate: Date | string | null;
+	endDate: Date | string | null;
+	totalMinutes: number;
+	totalLabel: string;
+	anomalyCount: number;
+}
+
 function toCourseDateKey(value: Date | string | null): string | null {
 	if (!value) return null;
 	if (typeof value === 'string') return value.slice(0, 10);
@@ -148,5 +170,30 @@ export function buildSubscriberCourseAttendanceSummaries(
 			resolvableIssueCount: calculation.resolvableIssues.length,
 			resolvableIssues: calculation.resolvableIssues
 		};
+	});
+}
+
+export function buildSubscriberCourseAttendanceReportRows(
+	subscribers: SubscriberCourseAttendanceReportInput[]
+): SubscriberCourseAttendanceReportRow[] {
+	return subscribers.flatMap((subscriber) => {
+		const summaries = buildSubscriberCourseAttendanceSummaries(
+			subscriber.enrollments,
+			subscriber.attendanceRows
+		);
+		const name = [subscriber.firstName, subscriber.lastName].filter(Boolean).join(' ').trim();
+
+		return summaries.map((summary) => ({
+			subscriberId: subscriber.subscriberId,
+			enrollmentId: summary.enrollmentId,
+			name,
+			email: subscriber.email ?? '',
+			course: [summary.productTitle, summary.variantTitle].filter(Boolean).join(' - '),
+			startDate: summary.startDate,
+			endDate: summary.endDate,
+			totalMinutes: summary.totalMinutes,
+			totalLabel: summary.totalLabel,
+			anomalyCount: summary.resolvableIssueCount
+		}));
 	});
 }

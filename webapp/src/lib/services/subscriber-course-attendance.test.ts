@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildSubscriberCourseAttendanceSummaries } from '$lib/services/subscriber-course-attendance';
+import {
+	buildSubscriberCourseAttendanceReportRows,
+	buildSubscriberCourseAttendanceSummaries
+} from '$lib/services/subscriber-course-attendance';
 
 describe('buildSubscriberCourseAttendanceSummaries', () => {
 	it('calculates hours only inside the enrollment start/end dates in Europe/Rome', () => {
@@ -57,5 +60,41 @@ describe('buildSubscriberCourseAttendanceSummaries', () => {
 				timestamp: null
 			}
 		]);
+	});
+
+	it('builds export report rows from the same course attendance summary calculation', () => {
+		const [row] = buildSubscriberCourseAttendanceReportRows([
+			{
+				subscriberId: 7,
+				firstName: 'Mario',
+				lastName: 'Rossi',
+				email: 'mario@example.com',
+				enrollments: [
+					{
+						id: 12,
+						productTitle: 'Pilates',
+						variantTitle: 'Maggio 2026',
+						startDate: '2026-05-01',
+						endDate: '2026-05-02'
+					}
+				],
+				attendanceRows: [
+					{ id: 1, eventType: 'entry', readTimestamp: '2026-05-01T08:00:00Z' },
+					{ id: 2, eventType: 'exit', readTimestamp: '2026-05-01T10:00:00Z' },
+					{ id: 3, eventType: 'entry', readTimestamp: '2026-05-01T11:00:00Z' }
+				]
+			}
+		]);
+
+		expect(row).toMatchObject({
+			subscriberId: 7,
+			enrollmentId: 12,
+			name: 'Mario Rossi',
+			email: 'mario@example.com',
+			course: 'Pilates - Maggio 2026',
+			totalMinutes: 120,
+			totalLabel: '2h',
+			anomalyCount: 1
+		});
 	});
 });
