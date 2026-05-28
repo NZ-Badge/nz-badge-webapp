@@ -1,11 +1,12 @@
-import { eq, and, desc, lt, sql, gte } from 'drizzle-orm';
+import { eq, and, desc, lt, sql, gte, lte } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { db } from '$lib/db';
 import * as schema from '$lib/db/schema';
-import { attendance, cardRfid, subscribers, settings } from '$lib/db/schema';
+import { attendance, cardRfid, enrollments, subscribers, settings } from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
-import { formatToRomeISO, toDatabaseDateTime } from '$lib/utils/date';
+import { formatToRomeISO, TIMEZONE, toDatabaseDateTime } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
+import { formatInTimeZone } from 'date-fns-tz';
 
 // Tipo per il database o transazione
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -33,6 +34,11 @@ interface BatchResult {
 	status: 400; // Only rejected events are included (reference v1.1: "Esito per eventi con errori")
 	reason: string;
 }
+
+type AttendanceRejectionReason =
+	| 'unknown_card'
+	| 'timestamp_out_of_range'
+	| 'course_date_out_of_range';
 
 export interface SingleAttendanceResult {
 	accepted: number;
@@ -105,6 +111,54 @@ async function isWithinMinInterval(
 		.limit(1);
 
 	return !!recentEvent;
+}
+
+function getCourseDateKey(timestamp: string): string {
+	return formatInTimeZone(new Date(timestamp), TIMEZONE, 'yyyy-MM-dd');
+}
+
+async function isWithinSubscriberCourseRange(
+	subscriberId: number | null | undefined,
+	timestamp: string,
+	tx?: DbOrTx
+): Promise<boolean> {
+	if (!subscriberId) return false;
+
+	const dbInstance = tx ?? db;
+	const courseDate = new Date(`${getCourseDateKey(timestamp)}T00:00:00.000Z`);
+
+	const [matchingEnrollment] = await dbInstance
+		.select({ id: enrollments.id })
+		.from(enrollments)
+		.where(
+			and(
+				eq(enrollments.subscriberId, subscriberId),
+				lte(enrollments.startDate, courseDate),
+				gte(enrollments.endDate, courseDate)
+			)
+		)
+		.limit(1);
+
+	return !!matchingEnrollment;
+}
+
+async function getAttendanceRejectionReason(params: {
+	cardActive: boolean;
+	subscriberId: number | null | undefined;
+	withinTolerance: boolean;
+	timestamp: string;
+	tx?: DbOrTx;
+}): Promise<AttendanceRejectionReason | null> {
+	if (!params.cardActive) return 'unknown_card';
+	if (!params.withinTolerance) return 'timestamp_out_of_range';
+
+	const withinCourseRange = await isWithinSubscriberCourseRange(
+		params.subscriberId,
+		params.timestamp,
+		params.tx
+	);
+
+	return withinCourseRange ? null : 'course_date_out_of_range';
 }
 
 /**
@@ -227,14 +281,22 @@ export async function processSingleAttendance(
 		}
 
 		const cardActive = cardRow?.card?.status === 'active';
-		const validated = cardActive && withinTolerance;
+		const rejectionReason = await getAttendanceRejectionReason({
+			cardActive,
+			subscriberId: cardRow?.card?.subscriberId,
+			withinTolerance,
+			timestamp: timestampToUse
+		});
+		const validated = rejectionReason === null;
 
 		// Verifica intervallo minimo tra strisciate
-		const withinInterval = await isWithinMinInterval(
-			event.uid,
-			timestampToUse,
-			attendanceSettings.minSwipeIntervalMinutes
-		);
+		const withinInterval = validated
+			? await isWithinMinInterval(
+					event.uid,
+					timestampToUse,
+					attendanceSettings.minSwipeIntervalMinutes
+				)
+			: false;
 
 		if (withinInterval) {
 			// Strisciata troppo vicina alla precedente — non registrare, segnala al device
@@ -340,13 +402,20 @@ export async function processBatchAttendance(
 				.limit(1);
 
 			const cardActive = cardRow?.card?.status === 'active';
-			const validated = cardActive && withinTolerance;
+			const rejectionReason = await getAttendanceRejectionReason({
+				cardActive,
+				subscriberId: cardRow?.card?.subscriberId,
+				withinTolerance,
+				timestamp: timestampToUse,
+				tx
+			});
+			const validated = rejectionReason === null;
 
 			// Verifica intervallo minimo (controlla sia nel batch che nel DB)
 			const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60 * 1000;
 			let withinInterval = false;
 
-			if (minIntervalMs > 0) {
+			if (validated && minIntervalMs > 0) {
 				// Controlla se c'è una strisciata recente nello stesso batch
 				const lastBatchTime = batchSwipeTimes.get(event.uid);
 				if (lastBatchTime && eventTime - lastBatchTime < minIntervalMs) {
@@ -501,7 +570,7 @@ export async function processBatchAttendance(
 				results.push({
 					index: i,
 					status: 400,
-					reason: cardActive ? 'timestamp_out_of_range' : 'unknown_card'
+					reason: rejectionReason ?? 'unknown_card'
 				});
 				actions.push({ uid: event.uid, action: 'unknown', type: nextEventType });
 			}
