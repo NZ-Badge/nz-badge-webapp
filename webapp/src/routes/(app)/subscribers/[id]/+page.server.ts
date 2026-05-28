@@ -58,7 +58,8 @@ export const load: PageServerLoad = async ({ params }) => {
 				orderName: enrollments.orderName,
 				productTitle: enrollments.productTitle,
 				variantTitle: enrollments.variantTitle,
-				preferredDate: enrollments.preferredDate,
+				startDate: enrollments.startDate,
+				endDate: enrollments.endDate,
 				courseDurationDays: enrollments.courseDurationDays,
 				status: enrollments.status,
 				submittedAt: enrollments.submittedAt,
@@ -108,6 +109,64 @@ export const actions: Actions = {
 			.where(eq(subscribers.id, id));
 
 		return { success: true, action: 'update' };
+	},
+
+	updateEnrollmentEndDate: async ({ request, params }) => {
+		const subscriberId = Number(params.id);
+		if (!subscriberId) {
+			return fail(400, { error: 'ID iscritto mancante', action: 'updateEnrollmentEndDate' });
+		}
+
+		const data = await request.formData();
+		const enrollmentId = Number(data.get('enrollmentId'));
+		const rawEndDate = data.get('endDate')?.toString().trim() ?? '';
+
+		if (!enrollmentId) {
+			return fail(400, { error: 'ID iscrizione mancante', action: 'updateEnrollmentEndDate' });
+		}
+
+		if (rawEndDate && !/^\d{4}-\d{2}-\d{2}$/.test(rawEndDate)) {
+			return fail(400, {
+				error: 'Data fine non valida',
+				action: 'updateEnrollmentEndDate',
+				enrollmentId,
+				endDate: rawEndDate
+			});
+		}
+
+		const [enrollment] = await db
+			.select({ startDate: enrollments.startDate })
+			.from(enrollments)
+			.where(and(eq(enrollments.id, enrollmentId), eq(enrollments.subscriberId, subscriberId)))
+			.limit(1);
+
+		if (!enrollment) {
+			return fail(404, {
+				error: 'Iscrizione non trovata',
+				action: 'updateEnrollmentEndDate',
+				enrollmentId
+			});
+		}
+
+		if (
+			rawEndDate &&
+			enrollment.startDate &&
+			new Date(rawEndDate).getTime() < new Date(enrollment.startDate).getTime()
+		) {
+			return fail(400, {
+				error: 'La data fine non può precedere la data inizio',
+				action: 'updateEnrollmentEndDate',
+				enrollmentId,
+				endDate: rawEndDate
+			});
+		}
+
+		await db
+			.update(enrollments)
+			.set({ endDate: rawEndDate ? new Date(rawEndDate) : null })
+			.where(and(eq(enrollments.id, enrollmentId), eq(enrollments.subscriberId, subscriberId)));
+
+		return { success: true, action: 'updateEnrollmentEndDate', enrollmentId };
 	},
 
 	delete: async ({ params }) => {

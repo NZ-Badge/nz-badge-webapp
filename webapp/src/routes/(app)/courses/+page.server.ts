@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (!showPast) {
 		const today = new Date();
 		today.setHours(0, 0, 0, 0);
-		filters.push(or(isNull(enrollments.preferredDate), gte(enrollments.preferredDate, today)));
+		filters.push(or(isNull(enrollments.startDate), gte(enrollments.startDate, today)));
 	}
 
 	const whereClause = filters.length > 0 ? and(...filters) : undefined;
@@ -47,7 +47,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				customerDisplayName: enrollments.customerDisplayName,
 				firstName: enrollments.firstName,
 				lastName: enrollments.lastName,
-				preferredDate: enrollments.preferredDate,
+				startDate: enrollments.startDate,
 				fiscalCode: enrollments.fiscalCode,
 				phone: enrollments.phone,
 				notes: enrollments.notes,
@@ -60,7 +60,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			.from(enrollments)
 			.leftJoin(subscribers, eq(enrollments.subscriberId, subscribers.id))
 			.where(whereClause)
-			.orderBy(desc(enrollments.preferredDate), enrollments.productTitle, enrollments.variantTitle)
+			.orderBy(desc(enrollments.startDate), enrollments.productTitle, enrollments.variantTitle)
 			.limit(MAX_ROWS),
 		db
 			.select({

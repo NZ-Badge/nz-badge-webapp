@@ -17,7 +17,8 @@ export interface SubscriberEnrollmentRow {
 	id: number;
 	productTitle: string | null;
 	variantTitle: string | null;
-	preferredDate: Date | string | null;
+	startDate: Date | string | null;
+	endDate?: Date | string | null;
 }
 
 export interface CourseAttendanceSession {
@@ -46,7 +47,8 @@ export interface CourseAttendanceSummary {
 	enrollmentId: number;
 	productTitle: string | null;
 	variantTitle: string | null;
-	preferredDate: Date | string | null;
+	startDate: Date | string | null;
+	endDate: Date | string | null;
 	periodLabel: string;
 	totalMinutes: number;
 	totalLabel: string;
@@ -123,6 +125,41 @@ function parseCourseMonthFromVariant(
 export function getEnrollmentAttendancePeriod(
 	enrollment: SubscriberEnrollmentRow
 ): { start: number; end: number; label: string } | null {
+	const startDateKey = toCourseDateKey(enrollment.startDate);
+	const endDateKey = toCourseDateKey(enrollment.endDate ?? null);
+
+	if (startDateKey && endDateKey) {
+		const startDate = new Date(`${startDateKey}T00:00:00.000Z`);
+		const endDate = new Date(`${endDateKey}T00:00:00.000Z`);
+		const exclusiveEnd = Date.UTC(
+			endDate.getUTCFullYear(),
+			endDate.getUTCMonth(),
+			endDate.getUTCDate() + 1,
+			0,
+			0,
+			0,
+			0
+		);
+
+		return {
+			start: Date.UTC(
+				startDate.getUTCFullYear(),
+				startDate.getUTCMonth(),
+				startDate.getUTCDate(),
+				0,
+				0,
+				0,
+				0
+			),
+			end: exclusiveEnd,
+			label: `${formatInTimeZone(startDate, TIMEZONE, 'dd/MM/yyyy')} - ${formatInTimeZone(
+				endDate,
+				TIMEZONE,
+				'dd/MM/yyyy'
+			)}`
+		};
+	}
+
 	const fromVariant = parseCourseMonthFromVariant(enrollment.variantTitle);
 	if (fromVariant) {
 		return {
@@ -132,10 +169,9 @@ export function getEnrollmentAttendancePeriod(
 		};
 	}
 
-	const dateKey = toCourseDateKey(enrollment.preferredDate);
-	if (!dateKey) return null;
+	if (!startDateKey) return null;
 
-	const fallbackDate = new Date(`${dateKey}T00:00:00.000Z`);
+	const fallbackDate = new Date(`${startDateKey}T00:00:00.000Z`);
 
 	return {
 		start: Date.UTC(fallbackDate.getUTCFullYear(), fallbackDate.getUTCMonth(), 1, 0, 0, 0, 0),
@@ -167,7 +203,8 @@ export function buildSubscriberCourseAttendanceSummaries(
 				enrollmentId: enrollment.id,
 				productTitle: enrollment.productTitle,
 				variantTitle: enrollment.variantTitle,
-				preferredDate: enrollment.preferredDate,
+				startDate: enrollment.startDate,
+				endDate: enrollment.endDate ?? null,
 				periodLabel: '—',
 				totalMinutes: 0,
 				totalLabel: '—',
@@ -274,7 +311,8 @@ export function buildSubscriberCourseAttendanceSummaries(
 			enrollmentId: enrollment.id,
 			productTitle: enrollment.productTitle,
 			variantTitle: enrollment.variantTitle,
-			preferredDate: enrollment.preferredDate,
+			startDate: enrollment.startDate,
+			endDate: enrollment.endDate ?? null,
 			periodLabel: period.label,
 			totalMinutes,
 			totalLabel: formatMinutes(totalMinutes),

@@ -40,12 +40,13 @@ export const load: PageServerLoad = async () => {
 				subscriberId: enrollments.subscriberId,
 				productTitle: enrollments.productTitle,
 				variantTitle: enrollments.variantTitle,
-				preferredDate: enrollments.preferredDate
+				startDate: enrollments.startDate,
+				endDate: enrollments.endDate
 			})
 			.from(enrollments)
 			.where(isNotNull(enrollments.subscriberId))
 			.orderBy(
-				desc(enrollments.preferredDate),
+				desc(enrollments.startDate),
 				desc(enrollments.externalCreatedAt),
 				desc(enrollments.id)
 			)

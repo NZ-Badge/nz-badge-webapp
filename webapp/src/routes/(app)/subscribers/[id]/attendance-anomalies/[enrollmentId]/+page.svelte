@@ -68,8 +68,12 @@
 				<dd class="font-mono">{data.enrollment.orderName ?? '—'}</dd>
 			</div>
 			<div class="flex gap-2">
-				<dt class="w-32 shrink-0 text-muted-foreground">Data pref.</dt>
-				<dd>{formatDate(data.enrollment.preferredDate)}</dd>
+				<dt class="w-32 shrink-0 text-muted-foreground">Data inizio</dt>
+				<dd>{formatDate(data.enrollment.startDate)}</dd>
+			</div>
+			<div class="flex gap-2">
+				<dt class="w-32 shrink-0 text-muted-foreground">Data fine</dt>
+				<dd>{formatDate(data.enrollment.endDate)}</dd>
 			</div>
 			<div class="flex gap-2">
 				<dt class="w-32 shrink-0 text-muted-foreground">Ore valide</dt>

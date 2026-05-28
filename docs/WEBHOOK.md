@@ -104,6 +104,8 @@ Vincoli rilevanti:
 - `status` ammesso: `SUBMITTED` oppure `COMPLETED`
 - `PENDING` viene ignorato dalla logica applicativa
 - `participants[]` puo' essere vuoto, ma se presente ogni elemento deve rispettare lo schema dell'endpoint
+- `preferredDate` arriva dal remoto e viene salvata localmente come `start_date`
+- `endDate` non arriva dal remoto nel flusso attuale: viene gestita manualmente nella webapp come `end_date`
 
 ## Regole applicative
 

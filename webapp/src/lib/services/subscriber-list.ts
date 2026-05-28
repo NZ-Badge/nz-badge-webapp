@@ -31,31 +31,33 @@ interface EnrichSubscriberListOptions {
 }
 
 export function getEnrollmentSortTime(
-	enrollment: Pick<SubscriberEnrollmentRow, 'preferredDate' | 'variantTitle'>
+	enrollment: Pick<SubscriberEnrollmentRow, 'startDate' | 'endDate' | 'variantTitle'>
 ): number {
-	if (enrollment.preferredDate) {
-		return new Date(enrollment.preferredDate).getTime();
+	if (enrollment.startDate) {
+		return new Date(enrollment.startDate).getTime();
 	}
 
 	const period = getEnrollmentAttendancePeriod({
 		id: 0,
 		productTitle: null,
 		variantTitle: enrollment.variantTitle,
-		preferredDate: enrollment.preferredDate
+		startDate: enrollment.startDate,
+		endDate: enrollment.endDate
 	});
 
 	return period?.start ?? Number.NEGATIVE_INFINITY;
 }
 
 export function enrollmentMatchesMonth(
-	enrollment: Pick<SubscriberEnrollmentRow, 'preferredDate' | 'variantTitle'>,
+	enrollment: Pick<SubscriberEnrollmentRow, 'startDate' | 'endDate' | 'variantTitle'>,
 	referenceDate: Date = new Date()
 ): boolean {
 	const period = getEnrollmentAttendancePeriod({
 		id: 0,
 		productTitle: null,
 		variantTitle: enrollment.variantTitle,
-		preferredDate: enrollment.preferredDate
+		startDate: enrollment.startDate,
+		endDate: enrollment.endDate
 	});
 
 	if (!period) return false;
@@ -84,12 +86,13 @@ export async function enrichSubscribersForList(
 				subscriberId: enrollments.subscriberId,
 				productTitle: enrollments.productTitle,
 				variantTitle: enrollments.variantTitle,
-				preferredDate: enrollments.preferredDate
+				startDate: enrollments.startDate,
+				endDate: enrollments.endDate
 			})
 			.from(enrollments)
 			.where(inArray(enrollments.subscriberId, ids))
 			.orderBy(
-				desc(enrollments.preferredDate),
+				desc(enrollments.startDate),
 				desc(enrollments.externalCreatedAt),
 				desc(enrollments.id)
 			),

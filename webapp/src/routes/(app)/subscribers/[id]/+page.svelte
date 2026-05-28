@@ -52,6 +52,49 @@
 		return new Date(d).toLocaleDateString('it-IT');
 	}
 
+	function dateInputValue(d: Date | string | null | undefined) {
+		if (!d) return '';
+		if (typeof d === 'string') return d.slice(0, 10);
+
+		const year = d.getFullYear();
+		const month = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}`;
+	}
+
+	function enrollmentEndDateValue(enrollment: { id: number; endDate: Date | string | null }) {
+		const actionForm = form as
+			| { action?: string; enrollmentId?: number; endDate?: string; error?: string }
+			| null
+			| undefined;
+
+		if (
+			actionForm?.action === 'updateEnrollmentEndDate' &&
+			actionForm.enrollmentId === enrollment.id &&
+			actionForm.endDate !== undefined
+		) {
+			return actionForm.endDate ?? '';
+		}
+
+		return dateInputValue(enrollment.endDate);
+	}
+
+	function enrollmentEndDateError(enrollmentId: number) {
+		const actionForm = form as
+			| { action?: string; enrollmentId?: number; error?: string }
+			| null
+			| undefined;
+
+		if (
+			actionForm?.action === 'updateEnrollmentEndDate' &&
+			actionForm.enrollmentId === enrollmentId
+		) {
+			return actionForm.error;
+		}
+
+		return undefined;
+	}
+
 	function formatDateTime(d: Date | string | null | undefined) {
 		if (!d) return '—';
 		return new Date(d).toLocaleString('it-IT');
@@ -158,6 +201,7 @@
 						<TableHead>Ordine</TableHead>
 						<TableHead>Corso</TableHead>
 						<TableHead>Data inizio</TableHead>
+						<TableHead>Data fine</TableHead>
 						<TableHead>Durata</TableHead>
 						<TableHead>Ore presenza</TableHead>
 						<TableHead>Anomalie</TableHead>
@@ -166,6 +210,7 @@
 				<TableBody>
 					{#each data.enrollments as enrollment}
 						{@const attendanceSummary = getCourseAttendance(enrollment.id)}
+						{@const endDateError = enrollmentEndDateError(enrollment.id)}
 						<TableRow>
 							<TableCell class="font-mono text-xs">{enrollment.orderName ?? '—'}</TableCell>
 							<TableCell>
@@ -174,7 +219,28 @@
 									<div class="text-xs text-muted-foreground">{enrollment.variantTitle}</div>
 								{/if}
 							</TableCell>
-							<TableCell class="text-sm">{formatDate(enrollment.preferredDate)}</TableCell>
+							<TableCell class="text-sm">{formatDate(enrollment.startDate)}</TableCell>
+							<TableCell class="min-w-48 text-sm">
+								<form
+									method="POST"
+									action="?/updateEnrollmentEndDate"
+									use:enhance
+									class="flex items-center gap-2"
+								>
+									<input type="hidden" name="enrollmentId" value={enrollment.id} />
+									<input
+										type="date"
+										name="endDate"
+										value={enrollmentEndDateValue(enrollment)}
+										class="h-8 rounded-md border px-2 text-sm"
+										aria-label="Data fine corso"
+									/>
+									<Button type="submit" variant="outline" size="sm">Salva</Button>
+								</form>
+								{#if endDateError}
+									<div class="mt-1 text-xs text-red-600">{endDateError}</div>
+								{/if}
+							</TableCell>
 							<TableCell class="text-sm"
 								>{formatCourseDuration(enrollment.courseDurationDays)}</TableCell
 							>

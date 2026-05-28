@@ -97,8 +97,8 @@
 		const map = new Map<string, Omit<DateGroup, 'courseCount' | 'enrollmentCount'>>();
 
 		for (const e of items) {
-			const dateKey = e.preferredDate ? toDateKey(e.preferredDate) : '__no_date__';
-			const dateLabel = e.preferredDate ? formatDateLong(e.preferredDate) : 'Senza data';
+			const dateKey = e.startDate ? toDateKey(e.startDate) : '__no_date__';
+			const dateLabel = e.startDate ? formatDateLong(e.startDate) : 'Senza data';
 
 			if (!map.has(dateKey)) {
 				map.set(dateKey, { dateKey, dateLabel, courses: [] });

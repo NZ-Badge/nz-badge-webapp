@@ -87,7 +87,8 @@ async function loadResolutionContext(subscriberId: number, enrollmentId: number)
 			orderName: enrollments.orderName,
 			productTitle: enrollments.productTitle,
 			variantTitle: enrollments.variantTitle,
-			preferredDate: enrollments.preferredDate,
+			startDate: enrollments.startDate,
+			endDate: enrollments.endDate,
 			status: enrollments.status
 		})
 		.from(enrollments)
