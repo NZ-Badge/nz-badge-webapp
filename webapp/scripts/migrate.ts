@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 interface MigrationRow extends RowDataPacket {
 	id: number;
 	hash: string;
-	tag: string;
+	created_at: number;
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -56,9 +56,12 @@ const connection = await mysql.createConnection(databaseUrl);
 // Check existing migrations in DB
 try {
 	const [rows] = await connection.query<MigrationRow[]>(
-		'SELECT id, hash, tag FROM __drizzle_migrations ORDER BY id'
+		'SELECT id, hash, created_at FROM __drizzle_migrations ORDER BY created_at'
 	);
-	console.log('Existing migrations in DB:', rows.map((row) => row.id).join(', ') || 'none');
+	console.log(
+		'Existing migrations in DB:',
+		rows.map((row) => `${row.id}:${row.created_at}`).join(', ') || 'none'
+	);
 } catch (e) {
 	console.warn('Could not query existing migrations:', e);
 }
