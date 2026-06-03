@@ -42,6 +42,7 @@ const enrollmentSchema = z.object({
 	courseClass: z.string().nullable().optional(),
 	enrollmentType: enrollmentTypeSchema.nullable().optional(),
 	preferredDate: z.string().nullable().optional(),
+	endDate: z.string().nullable().optional(),
 	notes: z.string().nullable().optional(),
 	submittedAt: z.string().nullable().optional(),
 	status: z.enum(['SUBMITTED', 'COMPLETED']),

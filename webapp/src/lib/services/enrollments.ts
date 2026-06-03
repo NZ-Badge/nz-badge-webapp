@@ -46,6 +46,7 @@ export interface ApiEnrollment {
 	courseClass: string | null;
 	enrollmentType: ApiEnrollmentType | null;
 	preferredDate: string | null;
+	endDate?: string | null;
 	notes: string | null;
 	submittedAt: string | null;
 	status: 'PENDING' | 'SUBMITTED' | 'COMPLETED';
@@ -330,6 +331,14 @@ function getCourseName(item: ApiEnrollment): string | null {
 	return item.variantTitle ?? item.productTitle ?? item.enrollmentType?.name ?? null;
 }
 
+function getCourseStartDate(item: ApiEnrollment): Date | null {
+	return item.preferredDate ? new Date(item.preferredDate) : null;
+}
+
+function getCourseEndDate(item: ApiEnrollment): Date | null {
+	return item.endDate ? new Date(item.endDate) : null;
+}
+
 async function createSubscriberFromParticipant(
 	item: ApiEnrollment,
 	participant: ApiParticipant
@@ -343,7 +352,8 @@ async function createSubscriberFromParticipant(
 			phone: participant.phone ?? null,
 			taxId: participant.fiscalCode ?? null,
 			courseName: getCourseName(item),
-			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null,
+			courseStartDate: getCourseStartDate(item),
+			courseEndDate: getCourseEndDate(item),
 			status: 'active'
 		})
 		.$returningId();
@@ -365,7 +375,8 @@ async function updateSubscriberFromParticipant(
 			phone: participant.phone ?? null,
 			taxId: participant.fiscalCode ?? null,
 			courseName: getCourseName(item),
-			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null
+			courseStartDate: getCourseStartDate(item),
+			courseEndDate: getCourseEndDate(item)
 		})
 		.where(eq(subscribers.id, subscriberId));
 }
@@ -380,7 +391,8 @@ async function createSubscriberFromFlatEnrollment(item: ApiEnrollment): Promise<
 			phone: item.phone ?? null,
 			taxId: item.fiscalCode ?? null,
 			courseName: getCourseName(item),
-			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null,
+			courseStartDate: getCourseStartDate(item),
+			courseEndDate: getCourseEndDate(item),
 			status: 'active'
 		})
 		.$returningId();
@@ -401,7 +413,8 @@ async function updateSubscriberFromFlatEnrollment(
 			phone: item.phone ?? null,
 			taxId: item.fiscalCode ?? null,
 			courseName: getCourseName(item),
-			courseStartDate: item.preferredDate ? new Date(item.preferredDate) : null
+			courseStartDate: getCourseStartDate(item),
+			courseEndDate: getCourseEndDate(item)
 		})
 		.where(eq(subscribers.id, subscriberId));
 }
@@ -461,7 +474,8 @@ async function processSingleParticipant(
 				lastName: participant.lastName,
 				phone: participant.phone ?? null,
 				fiscalCode: participant.fiscalCode ?? null,
-				startDate: item.preferredDate ? new Date(item.preferredDate) : null,
+				startDate: getCourseStartDate(item),
+				endDate: getCourseEndDate(item),
 				courseDurationDays: item.enrollmentType?.duration ?? null,
 				notes: item.notes ?? null,
 				submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
@@ -489,7 +503,8 @@ async function processSingleParticipant(
 		lastName: participant.lastName,
 		phone: participant.phone ?? null,
 		fiscalCode: participant.fiscalCode ?? null,
-		startDate: item.preferredDate ? new Date(item.preferredDate) : null,
+		startDate: getCourseStartDate(item),
+		endDate: getCourseEndDate(item),
 		courseDurationDays: item.enrollmentType?.duration ?? null,
 		notes: item.notes ?? null,
 		submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
@@ -544,7 +559,8 @@ async function processFlatEnrollment(
 				lastName: item.lastName ?? null,
 				phone: item.phone ?? null,
 				fiscalCode: item.fiscalCode ?? null,
-				startDate: item.preferredDate ? new Date(item.preferredDate) : null,
+				startDate: getCourseStartDate(item),
+				endDate: getCourseEndDate(item),
 				courseDurationDays: item.enrollmentType?.duration ?? null,
 				notes: item.notes ?? null,
 				submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
@@ -588,7 +604,8 @@ async function processFlatEnrollment(
 		lastName: item.lastName ?? null,
 		phone: item.phone ?? null,
 		fiscalCode: item.fiscalCode ?? null,
-		startDate: item.preferredDate ? new Date(item.preferredDate) : null,
+		startDate: getCourseStartDate(item),
+		endDate: getCourseEndDate(item),
 		courseDurationDays: item.enrollmentType?.duration ?? null,
 		notes: item.notes ?? null,
 		submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
