@@ -70,42 +70,57 @@ Campi principali:
 
 ```json
 {
-	"id": "enr_123",
-	"orderId": "ord_456",
-	"orderName": "#1042",
-	"lineItemId": "line_789",
-	"productId": "prod_001",
-	"productTitle": "Corso Primo Soccorso",
-	"variantTitle": "Edizione Giugno 2026",
-	"quantity": 2,
-	"customerEmail": "buyer@example.com",
-	"customerDisplayName": "Mario Rossi",
-	"participants": [
-		{
-			"index": 1,
-			"firstName": "Mario",
-			"lastName": "Rossi",
-			"email": "mario@example.com",
-			"phone": "+39 333 1234567",
-			"fiscalCode": "RSSMRA80A01H501Z"
-		}
-	],
-	"preferredDate": "2026-06-15",
-	"notes": "Preferenza mattino",
-	"submittedAt": "2026-04-01T10:00:00Z",
-	"status": "COMPLETED",
-	"createdAt": "2026-04-01T09:58:00Z",
-	"updatedAt": "2026-04-01T10:00:00Z"
+  "id": "enr_123",
+  "orderId": "ord_456",
+  "orderName": "#1042",
+  "lineItemId": "line_789",
+  "shopifyLineItemId": "line_789",
+  "internalLineItemId": "line_789",
+  "productId": "prod_001",
+  "variantId": "var_001",
+  "productTitle": "Corso Primo Soccorso",
+  "variantTitle": "Edizione Giugno 2026",
+  "quantity": 2,
+  "customerEmail": "buyer@example.com",
+  "customerDisplayName": "Mario Rossi",
+  "participants": [
+    {
+      "index": 1,
+      "firstName": "Mario",
+      "lastName": "Rossi",
+      "email": "mario@example.com",
+      "phone": null
+    }
+  ],
+  "phone": "+39 333 1234567",
+  "fiscalCode": "RSSMRA80A01H501Z",
+  "vatNumber": "12345678901",
+  "courseClass": "individual",
+  "enrollmentType": {
+    "id": 1,
+    "name": "Corso Romano 5 giorni",
+    "courseClass": "individual",
+    "courseType": "Romano",
+    "duration": 5
+  },
+  "preferredDate": "2026-06-15",
+  "endDate": "2026-06-20",
+  "notes": "Preferenza mattino",
+  "submittedAt": "2026-04-01T10:00:00Z",
+  "status": "COMPLETED",
+  "createdAt": "2026-04-01T09:58:00Z",
+  "updatedAt": "2026-04-01T10:00:00Z"
 }
 ```
 
 Vincoli rilevanti:
 
-- `status` ammesso: `SUBMITTED` oppure `COMPLETED`
-- `PENDING` viene ignorato dalla logica applicativa
+- `status` ammesso: `PENDING`, `SUBMITTED` oppure `COMPLETED`
+- `PENDING` viene accettato dal parser e ignorato dalla logica applicativa
 - `participants[]` puo' essere vuoto, ma se presente ogni elemento deve rispettare lo schema dell'endpoint
 - `preferredDate` arriva dal remoto e viene salvata localmente come `start_date`
-- `endDate` non arriva dal remoto nel flusso attuale: viene gestita manualmente nella webapp come `end_date`
+- `endDate` arriva dal remoto e viene salvata localmente come `end_date`
+- `variantId` identifica stabilmente la variante Shopify e viene usato per raggruppare la visualizzazione corsi quando presente
 
 ## Regole applicative
 
@@ -113,7 +128,8 @@ Vincoli rilevanti:
 - una chiamata webhook crea comunque un record in `enrollment_sync_log` con `triggered_by = 'webhook'`
 - se l'iscrizione esiste gia', viene aggiornata
 - quando `participants[]` e' valorizzato, il servizio puo' associare o creare subscriber separati
-- i campi root `firstName`, `lastName`, `phone`, `fiscalCode` sono mantenuti per compatibilita', ma la logica recente privilegia `participants[]`
+- i campi root `phone`, `fiscalCode` e `vatNumber` sono dati comuni dell'iscrizione
+- i campi `participants[].phone` e `participants[].fiscalCode`, se presenti nello storico, sono usati solo come fallback
 
 ## Gestione secret
 

@@ -66,7 +66,10 @@ export const enrollments = mysqlTable(
 		orderId: varchar('order_id', { length: 255 }).notNull(),
 		orderName: varchar('order_name', { length: 50 }),
 		lineItemId: varchar('line_item_id', { length: 255 }).notNull(),
+		shopifyLineItemId: varchar('shopify_line_item_id', { length: 255 }),
+		internalLineItemId: varchar('internal_line_item_id', { length: 255 }),
 		productId: varchar('product_id', { length: 255 }),
+		variantId: varchar('variant_id', { length: 255 }),
 		productTitle: varchar('product_title', { length: 255 }),
 		variantTitle: varchar('variant_title', { length: 255 }),
 		quantity: int().notNull().default(1),
@@ -76,9 +79,14 @@ export const enrollments = mysqlTable(
 		lastName: varchar('last_name', { length: 100 }),
 		phone: varchar({ length: 20 }),
 		fiscalCode: varchar('fiscal_code', { length: 20 }),
+		vatNumber: varchar('vat_number', { length: 32 }),
 		startDate: date('start_date'),
 		endDate: date('end_date'),
 		courseDurationDays: int('course_duration_days'),
+		courseClass: varchar('course_class', { length: 50 }),
+		enrollmentTypeId: int('enrollment_type_id'),
+		enrollmentTypeName: varchar('enrollment_type_name', { length: 255 }),
+		enrollmentTypeCourseType: varchar('enrollment_type_course_type', { length: 100 }),
 		notes: text(),
 		submittedAt: timestamp('submitted_at'),
 		status: mysqlEnum('status', ['PENDING', 'SUBMITTED', 'COMPLETED']).notNull().default('PENDING'),
@@ -91,7 +99,8 @@ export const enrollments = mysqlTable(
 		index('idx_enrollment_email').on(t.customerEmail),
 		index('idx_enrollment_status').on(t.status),
 		index('idx_enrollment_subscriber').on(t.subscriberId),
-		index('idx_enrollment_order').on(t.orderId)
+		index('idx_enrollment_order').on(t.orderId),
+		index('idx_enrollment_variant').on(t.variantId)
 	]
 );
 

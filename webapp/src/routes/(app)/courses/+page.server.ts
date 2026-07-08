@@ -18,6 +18,8 @@ export const load: PageServerLoad = async ({ url }) => {
 				like(enrollments.firstName, `%${q}%`),
 				like(enrollments.lastName, `%${q}%`),
 				like(enrollments.productTitle, `%${q}%`),
+				like(enrollments.variantTitle, `%${q}%`),
+				like(enrollments.variantId, `%${q}%`),
 				like(enrollments.orderName, `%${q}%`)
 			)
 		);
@@ -40,6 +42,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				externalId: enrollments.externalId,
 				subscriberId: enrollments.subscriberId,
 				orderName: enrollments.orderName,
+				variantId: enrollments.variantId,
 				productTitle: enrollments.productTitle,
 				variantTitle: enrollments.variantTitle,
 				quantity: enrollments.quantity,

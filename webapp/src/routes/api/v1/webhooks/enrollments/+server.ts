@@ -27,7 +27,10 @@ const enrollmentSchema = z.object({
 	orderId: z.string(),
 	orderName: z.string().nullable().optional(),
 	lineItemId: z.string(),
+	shopifyLineItemId: z.string().nullable().optional(),
+	internalLineItemId: z.string().nullable().optional(),
 	productId: z.string().nullable().optional(),
+	variantId: z.string().nullable().optional(),
 	productTitle: z.string().nullable().optional(),
 	variantTitle: z.string().nullable().optional(),
 	quantity: z.number().int().positive(),
@@ -45,7 +48,7 @@ const enrollmentSchema = z.object({
 	endDate: z.string().nullable().optional(),
 	notes: z.string().nullable().optional(),
 	submittedAt: z.string().nullable().optional(),
-	status: z.enum(['SUBMITTED', 'COMPLETED']),
+	status: z.enum(['PENDING', 'SUBMITTED', 'COMPLETED']),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });

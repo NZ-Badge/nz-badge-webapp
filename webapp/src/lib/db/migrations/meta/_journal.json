@@ -127,6 +127,13 @@
 			"when": 1779929400000,
 			"tag": "0016_weekly_attendance_summary",
 			"breakpoints": true
+		},
+		{
+			"idx": 18,
+			"version": "7",
+			"when": 1783468800000,
+			"tag": "0017_enrollment_variant_and_contact_fields",
+			"breakpoints": true
 		}
 	]
 }

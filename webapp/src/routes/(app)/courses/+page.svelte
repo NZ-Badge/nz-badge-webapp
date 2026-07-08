@@ -80,6 +80,7 @@
 	type Enrollment = (typeof data.enrollments)[number];
 
 	type CourseGroup = {
+		variantId: string | null;
 		productTitle: string;
 		variantTitle: string | null;
 		enrollments: Enrollment[];
@@ -105,13 +106,19 @@
 			}
 
 			const dateGroup = map.get(dateKey)!;
-			const courseKey = `${e.productTitle ?? ''}||${e.variantTitle ?? ''}`;
+			const courseKey = e.variantId
+				? `variant:${e.variantId}`
+				: `legacy:${e.productTitle ?? ''}||${e.variantTitle ?? ''}`;
 			let courseGroup = dateGroup.courses.find(
-				(c) => `${c.productTitle}||${c.variantTitle ?? ''}` === courseKey
+				(c) =>
+					(c.variantId
+						? `variant:${c.variantId}`
+						: `legacy:${c.productTitle}||${c.variantTitle ?? ''}`) === courseKey
 			);
 
 			if (!courseGroup) {
 				courseGroup = {
+					variantId: e.variantId ?? null,
 					productTitle: e.productTitle ?? '—',
 					variantTitle: e.variantTitle ?? null,
 					enrollments: []

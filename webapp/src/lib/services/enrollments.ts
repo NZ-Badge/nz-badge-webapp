@@ -11,7 +11,7 @@ export interface ApiParticipant {
 	lastName: string;
 	email: string | null;
 	phone: string | null;
-	fiscalCode: string | null;
+	fiscalCode?: string | null;
 }
 
 export interface ApiEnrollmentType {
@@ -27,7 +27,10 @@ export interface ApiEnrollment {
 	orderId: string;
 	orderName: string | null;
 	lineItemId: string;
+	shopifyLineItemId?: string | null;
+	internalLineItemId?: string | null;
 	productId: string | null;
+	variantId?: string | null;
 	productTitle: string | null;
 	variantTitle: string | null;
 	quantity: number;
@@ -339,6 +342,22 @@ function getCourseEndDate(item: ApiEnrollment): Date | null {
 	return item.endDate ? new Date(item.endDate) : null;
 }
 
+function getParticipantPhone(item: ApiEnrollment, participant: ApiParticipant): string | null {
+	return item.phone ?? participant.phone ?? null;
+}
+
+function getParticipantFiscalCode(item: ApiEnrollment, participant: ApiParticipant): string | null {
+	return item.fiscalCode ?? participant.fiscalCode ?? null;
+}
+
+function getShopifyLineItemId(item: ApiEnrollment): string | null {
+	return item.shopifyLineItemId ?? item.lineItemId;
+}
+
+function getInternalLineItemId(item: ApiEnrollment): string | null {
+	return item.internalLineItemId ?? item.lineItemId;
+}
+
 async function createSubscriberFromParticipant(
 	item: ApiEnrollment,
 	participant: ApiParticipant
@@ -349,8 +368,8 @@ async function createSubscriberFromParticipant(
 			firstName: participant.firstName,
 			lastName: participant.lastName,
 			email: participant.email ?? item.customerEmail,
-			phone: participant.phone ?? null,
-			taxId: participant.fiscalCode ?? null,
+			phone: getParticipantPhone(item, participant),
+			taxId: getParticipantFiscalCode(item, participant),
 			courseName: getCourseName(item),
 			courseStartDate: getCourseStartDate(item),
 			courseEndDate: getCourseEndDate(item),
@@ -372,8 +391,8 @@ async function updateSubscriberFromParticipant(
 			firstName: participant.firstName,
 			lastName: participant.lastName,
 			email: participant.email ?? item.customerEmail,
-			phone: participant.phone ?? null,
-			taxId: participant.fiscalCode ?? null,
+			phone: getParticipantPhone(item, participant),
+			taxId: getParticipantFiscalCode(item, participant),
 			courseName: getCourseName(item),
 			courseStartDate: getCourseStartDate(item),
 			courseEndDate: getCourseEndDate(item)
@@ -464,7 +483,10 @@ async function processSingleParticipant(
 				orderId: item.orderId,
 				orderName: item.orderName ?? null,
 				lineItemId: item.lineItemId,
+				shopifyLineItemId: getShopifyLineItemId(item),
+				internalLineItemId: getInternalLineItemId(item),
 				productId: item.productId ?? null,
+				variantId: item.variantId ?? null,
 				productTitle: item.productTitle ?? null,
 				variantTitle: item.variantTitle ?? null,
 				quantity: 1,
@@ -472,11 +494,16 @@ async function processSingleParticipant(
 				customerDisplayName: item.customerDisplayName ?? null,
 				firstName: participant.firstName,
 				lastName: participant.lastName,
-				phone: participant.phone ?? null,
-				fiscalCode: participant.fiscalCode ?? null,
+				phone: getParticipantPhone(item, participant),
+				fiscalCode: getParticipantFiscalCode(item, participant),
+				vatNumber: item.vatNumber ?? null,
 				startDate: getCourseStartDate(item),
 				endDate: getCourseEndDate(item),
 				courseDurationDays: item.enrollmentType?.duration ?? null,
+				courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
+				enrollmentTypeId: item.enrollmentType?.id ?? null,
+				enrollmentTypeName: item.enrollmentType?.name ?? null,
+				enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
 				notes: item.notes ?? null,
 				submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
 				status: item.status,
@@ -493,7 +520,10 @@ async function processSingleParticipant(
 		orderId: item.orderId,
 		orderName: item.orderName ?? null,
 		lineItemId: item.lineItemId,
+		shopifyLineItemId: getShopifyLineItemId(item),
+		internalLineItemId: getInternalLineItemId(item),
 		productId: item.productId ?? null,
+		variantId: item.variantId ?? null,
 		productTitle: item.productTitle ?? null,
 		variantTitle: item.variantTitle ?? null,
 		quantity: 1,
@@ -501,11 +531,16 @@ async function processSingleParticipant(
 		customerDisplayName: item.customerDisplayName ?? null,
 		firstName: participant.firstName,
 		lastName: participant.lastName,
-		phone: participant.phone ?? null,
-		fiscalCode: participant.fiscalCode ?? null,
+		phone: getParticipantPhone(item, participant),
+		fiscalCode: getParticipantFiscalCode(item, participant),
+		vatNumber: item.vatNumber ?? null,
 		startDate: getCourseStartDate(item),
 		endDate: getCourseEndDate(item),
 		courseDurationDays: item.enrollmentType?.duration ?? null,
+		courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
+		enrollmentTypeId: item.enrollmentType?.id ?? null,
+		enrollmentTypeName: item.enrollmentType?.name ?? null,
+		enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
 		notes: item.notes ?? null,
 		submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
 		status: item.status,
@@ -549,7 +584,10 @@ async function processFlatEnrollment(
 				orderId: item.orderId,
 				orderName: item.orderName ?? null,
 				lineItemId: item.lineItemId,
+				shopifyLineItemId: getShopifyLineItemId(item),
+				internalLineItemId: getInternalLineItemId(item),
 				productId: item.productId ?? null,
+				variantId: item.variantId ?? null,
 				productTitle: item.productTitle ?? null,
 				variantTitle: item.variantTitle ?? null,
 				quantity: item.quantity,
@@ -559,9 +597,14 @@ async function processFlatEnrollment(
 				lastName: item.lastName ?? null,
 				phone: item.phone ?? null,
 				fiscalCode: item.fiscalCode ?? null,
+				vatNumber: item.vatNumber ?? null,
 				startDate: getCourseStartDate(item),
 				endDate: getCourseEndDate(item),
 				courseDurationDays: item.enrollmentType?.duration ?? null,
+				courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
+				enrollmentTypeId: item.enrollmentType?.id ?? null,
+				enrollmentTypeName: item.enrollmentType?.name ?? null,
+				enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
 				notes: item.notes ?? null,
 				submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
 				status: item.status,
@@ -594,7 +637,10 @@ async function processFlatEnrollment(
 		orderId: item.orderId,
 		orderName: item.orderName ?? null,
 		lineItemId: item.lineItemId,
+		shopifyLineItemId: getShopifyLineItemId(item),
+		internalLineItemId: getInternalLineItemId(item),
 		productId: item.productId ?? null,
+		variantId: item.variantId ?? null,
 		productTitle: item.productTitle ?? null,
 		variantTitle: item.variantTitle ?? null,
 		quantity: item.quantity,
@@ -604,9 +650,14 @@ async function processFlatEnrollment(
 		lastName: item.lastName ?? null,
 		phone: item.phone ?? null,
 		fiscalCode: item.fiscalCode ?? null,
+		vatNumber: item.vatNumber ?? null,
 		startDate: getCourseStartDate(item),
 		endDate: getCourseEndDate(item),
 		courseDurationDays: item.enrollmentType?.duration ?? null,
+		courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
+		enrollmentTypeId: item.enrollmentType?.id ?? null,
+		enrollmentTypeName: item.enrollmentType?.name ?? null,
+		enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
 		notes: item.notes ?? null,
 		submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
 		status: item.status,
