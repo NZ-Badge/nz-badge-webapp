@@ -21,12 +21,13 @@ interface AttendanceSettings {
 	minSwipeIntervalMinutes: number;
 }
 
-interface AttendanceAction {
+export interface AttendanceAction {
 	uid: string;
 	action: 'confirm' | 'unknown' | 'ignored';
 	user_name?: string;
 	type: 'entry' | 'exit';
 	ignored_reason?: string;
+	rejection_reason?: AttendanceRejectionReason;
 }
 
 interface BatchResult {
@@ -35,10 +36,27 @@ interface BatchResult {
 	reason: string;
 }
 
-type AttendanceRejectionReason =
+export type AttendanceRejectionReason =
 	| 'unknown_card'
 	| 'timestamp_out_of_range'
 	| 'course_date_out_of_range';
+
+/**
+ * Costruisce l'azione restituita al device per una strisciata rifiutata.
+ * Mantiene `action: unknown` per retrocompatibilita' e aggiunge il motivo specifico.
+ */
+export function createRejectedAttendanceAction(
+	uid: string,
+	type: 'entry' | 'exit',
+	rejectionReason: AttendanceRejectionReason
+): AttendanceAction {
+	return {
+		uid,
+		action: 'unknown',
+		type,
+		rejection_reason: rejectionReason
+	};
+}
 
 export interface SingleAttendanceResult {
 	accepted: number;
@@ -352,7 +370,7 @@ export async function processSingleAttendance(
 			}
 		} else {
 			rejected++;
-			actions.push({ uid: event.uid, action: 'unknown', type: nextEventType });
+			actions.push(createRejectedAttendanceAction(event.uid, nextEventType, rejectionReason));
 		}
 	}
 
@@ -572,7 +590,7 @@ export async function processBatchAttendance(
 					status: 400,
 					reason: rejectionReason ?? 'unknown_card'
 				});
-				actions.push({ uid: event.uid, action: 'unknown', type: nextEventType });
+				actions.push(createRejectedAttendanceAction(event.uid, nextEventType, rejectionReason));
 			}
 		}
 	});

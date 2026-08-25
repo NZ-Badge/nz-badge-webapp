@@ -1,4 +1,5 @@
 import type { ZodError } from 'zod';
+import type { AttendanceAction } from '$lib/services/attendance';
 
 const JSON_CONTENT_TYPE = 'application/json';
 
@@ -33,12 +34,7 @@ export function multiStatus(response: {
 	rejected: number;
 	server_time: string;
 	results: Array<{ index: number; status: number; reason?: string }>;
-	actions: Array<{
-		uid: string;
-		action: 'confirm' | 'unknown' | 'ignored';
-		user_name?: string;
-		ignored_reason?: string;
-	}>;
+	actions: AttendanceAction[];
 }): Response {
 	return jsonResponse(JSON.stringify({ success: true, ...response }), 207);
 }
