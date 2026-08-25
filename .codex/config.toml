@@ -1,0 +1,8 @@
+[mcp_servers.homeassistant]
+enabled = false
+
+[mcp_server.gconsole]
+enabled = false
+
+[mcp_server.shopify]
+enabled = false
