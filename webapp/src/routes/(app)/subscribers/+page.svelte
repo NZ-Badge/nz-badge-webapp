@@ -18,7 +18,6 @@
 	} from '$lib/components/ui/dialog';
 	import SubscriberFormDialog from '$lib/components/SubscriberFormDialog.svelte';
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
 	import {
 		Pencil,
 		Trash2,
@@ -28,8 +27,6 @@
 		ArrowDown,
 		ArrowUpDown
 	} from '@lucide/svelte';
-	import { browser } from '$app/environment';
-	import { connection } from '$lib/stores/webserial.svelte';
 
 	let { data, form } = $props();
 
@@ -41,75 +38,6 @@
 	let editDialogOpen = $state(false);
 	let deleteSubscriber = $state<(typeof data.subscribers)[0] | null>(null);
 	let deleteDialogOpen = $state(false);
-
-	// Stato NFC pairing
-	let pairingSubscriber = $state<(typeof data.subscribers)[0] | null>(null);
-	let pairingDialogOpen = $state(false);
-	let pairingStatus = $state<'idle' | 'waiting' | 'success' | 'error'>('idle');
-	let pairingUid = $state<string | null>(null);
-	let pairingErrorMessage = $state<string | null>(null);
-
-	function openPairing(sub: (typeof data.subscribers)[0]) {
-		pairingSubscriber = sub;
-		pairingStatus = 'idle';
-		pairingUid = null;
-		pairingErrorMessage = null;
-		pairingDialogOpen = true;
-		startPairingSession();
-	}
-
-	async function startPairingSession() {
-		if (!pairingSubscriber) return;
-
-		if (!browser || connection.state !== 'connected') {
-			pairingStatus = 'error';
-			pairingErrorMessage =
-				'Connetti il writer USB (tramite il pulsante in toolbar) prima di abbinare.';
-			return;
-		}
-
-		pairingStatus = 'waiting';
-
-		try {
-			const { WebSerialCardWriter } = await import('$lib/utils/webserial');
-			const writer = new WebSerialCardWriter();
-			await writer.connect(connection.port ?? undefined);
-
-			const resp = await writer.readCard();
-
-			if (resp.status !== 'success' || !resp.uid) {
-				pairingStatus = 'error';
-				pairingErrorMessage = resp.message || 'Nessun dispositivo rilevato.';
-				return;
-			}
-
-			// Invia l'UID al server per creare la card virtuale
-			const apiRes = await fetch(`/api/v1/subscribers/${pairingSubscriber!.id}/pair-nfc`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ uid: resp.uid }),
-				credentials: 'include'
-			});
-
-			if (!apiRes.ok) {
-				const json = await apiRes.json().catch(() => ({}));
-				pairingStatus = 'error';
-				pairingErrorMessage = json.message || `Errore server (${apiRes.status})`;
-				return;
-			}
-
-			pairingUid = resp.uid;
-			pairingStatus = 'success';
-			await invalidateAll();
-		} catch (err) {
-			pairingStatus = 'error';
-			pairingErrorMessage = err instanceof Error ? err.message : 'Errore sconosciuto';
-		}
-	}
-
-	function closePairingDialog() {
-		pairingDialogOpen = false;
-	}
 
 	function openEdit(sub: (typeof data.subscribers)[0]) {
 		editSubscriber = sub;
@@ -296,16 +224,6 @@
 								<span title="NFC smartphone">
 									<Smartphone size={14} class="text-green-500" />
 								</span>
-							{:else}
-								<Button
-									size="sm"
-									variant="outline"
-									class="h-7 px-2 text-xs"
-									onclick={() => openPairing(sub)}
-								>
-									<Smartphone size={14} />
-									Abbina NFC
-								</Button>
 							{/if}
 						</div>
 					</TableCell>
@@ -410,54 +328,6 @@
 					<input type="hidden" name="id" value={deleteSubscriber?.id} />
 					<Button type="submit" variant="destructive">Elimina</Button>
 				</form>
-			{/if}
-		</DialogFooter>
-	</DialogContent>
-</Dialog>
-
-<!-- Dialog abbina NFC -->
-<Dialog
-	open={pairingDialogOpen}
-	onOpenChange={(open) => {
-		if (!open) closePairingDialog();
-	}}
->
-	<DialogContent>
-		<DialogHeader>
-			<DialogTitle>Abbina NFC smartphone</DialogTitle>
-		</DialogHeader>
-
-		{#if pairingStatus === 'waiting'}
-			<div class="flex flex-col items-center gap-4 py-4">
-				<Smartphone size={48} class="text-muted-foreground animate-pulse" />
-				<p class="text-center text-sm">Avvicina il telefono al writer USB...</p>
-				<p class="text-muted-foreground text-center text-xs">
-					{pairingSubscriber?.firstName}
-					{pairingSubscriber?.lastName}
-				</p>
-			</div>
-		{:else if pairingStatus === 'success'}
-			<div class="flex flex-col items-center gap-3 py-4">
-				<div class="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-					<Smartphone size={24} class="text-green-600" />
-				</div>
-				<p class="font-medium text-green-700">Smartphone abbinato!</p>
-				{#if pairingUid}
-					<p class="text-muted-foreground font-mono text-xs">UID: {pairingUid}</p>
-				{/if}
-			</div>
-		{:else if pairingStatus === 'error'}
-			<div class="flex flex-col items-center gap-3 py-4">
-				<p class="text-sm text-red-600">{pairingErrorMessage ?? 'Errore. Riprova.'}</p>
-				<Button variant="outline" size="sm" onclick={startPairingSession}>Riprova</Button>
-			</div>
-		{/if}
-
-		<DialogFooter>
-			{#if pairingStatus === 'waiting'}
-				<Button variant="outline" onclick={closePairingDialog}>Annulla</Button>
-			{:else}
-				<Button onclick={closePairingDialog}>Chiudi</Button>
 			{/if}
 		</DialogFooter>
 	</DialogContent>
