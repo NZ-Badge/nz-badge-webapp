@@ -5,7 +5,7 @@ import * as schema from './schema';
 
 // Singleton to avoid multiple pools during SSR hot-reload in development
 declare global {
-	var __db: ReturnType<typeof drizzle> | undefined;
+	var __db: ReturnType<typeof createDb> | undefined;
 }
 
 function createDb() {
