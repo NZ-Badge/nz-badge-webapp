@@ -1,11 +1,17 @@
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 import { AuthError } from '$lib/services/auth';
 import { version } from '../../../package.json';
 
-export const load: LayoutServerLoad = async ({ locals }) => {
+export const load: LayoutServerLoad = async ({ locals, url }) => {
 	try {
-		const user = await locals.verifyAdmin();
+		const user = await locals.verifyUser();
+		if (user.role === 'collaborator') {
+			const allowedPrefixes = ['/dashboard', '/staff-attendance', '/my-attendance', '/copyrights'];
+			if (!allowedPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
+				error(403, 'Accesso non consentito');
+			}
+		}
 
 		// Log per debug
 		console.log('[LAYOUT] User loaded:', {

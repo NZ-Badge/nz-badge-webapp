@@ -112,9 +112,10 @@ interface SessionPayload {
  * Verify admin session from cookies
  * Returns user object if valid
  */
-export async function verifyAdminSession(cookies: {
-	get(name: string): string | undefined;
-}): Promise<User> {
+async function verifySessionForRoles(
+	cookies: { get(name: string): string | undefined },
+	validRoles: readonly string[]
+): Promise<User> {
 	const sessionCookie = cookies.get('session');
 
 	if (!sessionCookie) {
@@ -154,14 +155,32 @@ export async function verifyAdminSession(cookies: {
 		throw new AuthError('User not found', 'FORBIDDEN');
 	}
 
-	// Verify user still has admin/staff role
-	const validRoles = ['admin', 'staff'] as const;
-	if (!user.role || !validRoles.includes(user.role as (typeof validRoles)[number])) {
+	// Verify user is active and still has one of the application roles.
+	if (user.status !== 'active') {
+		console.warn('[AUTH] Disabled user attempted access:', userId);
+		throw new AuthError('User account is disabled', 'FORBIDDEN');
+	}
+
+	if (!user.role || !validRoles.includes(user.role)) {
 		console.warn('[AUTH] User lacks required role:', userId, user.role);
 		throw new AuthError('Insufficient permissions', 'FORBIDDEN');
 	}
 
 	return user;
+}
+
+/** Verify an Administrator/Operator session for the pre-existing management surface. */
+export function verifyAdminSession(cookies: {
+	get(name: string): string | undefined;
+}): Promise<User> {
+	return verifySessionForRoles(cookies, ['admin', 'staff']);
+}
+
+/** Verify any active system user, including Collaborators. */
+export function verifyUserSession(cookies: {
+	get(name: string): string | undefined;
+}): Promise<User> {
+	return verifySessionForRoles(cookies, ['admin', 'staff', 'collaborator']);
 }
 
 /**
@@ -254,6 +273,20 @@ export function requireAdmin(user: User): void {
 	}
 }
 
+/** Require a role allowed to manage staff cards and attendance. */
+export function requireStaffManager(user: User): void {
+	if (user.role !== 'admin' && user.role !== 'staff') {
+		throw new AuthError('Staff manager access required', 'FORBIDDEN');
+	}
+}
+
+/** Require access to the target user's attendance. */
+export function requireSelfOrStaffManager(user: User, targetUserId: number): void {
+	if (user.id !== targetUserId && user.role !== 'admin' && user.role !== 'staff') {
+		throw new AuthError('Access to another user is forbidden', 'FORBIDDEN');
+	}
+}
+
 /**
  * Middleware helper: Require specific role
  */
@@ -268,4 +301,8 @@ export function requireRole(user: User, ...allowedRoles: string[]): void {
  */
 export function isAdmin(user: User): boolean {
 	return user.role === 'admin';
+}
+
+export function isStaffManager(user: User): boolean {
+	return user.role === 'admin' || user.role === 'staff';
 }

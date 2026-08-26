@@ -2,11 +2,24 @@ import { eq, and, desc, lt, sql, gte, lte } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { db } from '$lib/db';
 import * as schema from '$lib/db/schema';
-import { attendance, cardRfid, enrollments, subscribers, settings } from '$lib/db/schema';
+import {
+	attendance,
+	cardRfid,
+	enrollments,
+	staffAttendance,
+	subscribers,
+	settings,
+	users
+} from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
 import { formatToRomeISO, TIMEZONE, toDatabaseDateTime } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
 import { formatInTimeZone } from 'date-fns-tz';
+import {
+	determineNextStaffEventType,
+	determineNextStaffEventTypeFromPrevious,
+	isWithinStaffMinInterval
+} from '$lib/services/staff-attendance';
 
 // Tipo per il database o transazione
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -40,6 +53,14 @@ export type AttendanceRejectionReason =
 	| 'unknown_card'
 	| 'timestamp_out_of_range'
 	| 'course_date_out_of_range';
+
+export function getStaffCardRejectionReason(
+	cardActive: boolean,
+	withinTolerance: boolean
+): AttendanceRejectionReason | null {
+	if (!cardActive) return 'unknown_card';
+	return withinTolerance ? null : 'timestamp_out_of_range';
+}
 
 /**
  * Costruisce l'azione restituita al device per una strisciata rifiutata.
@@ -268,9 +289,10 @@ export async function processSingleAttendance(
 
 		// Look up card
 		let [cardRow] = await db
-			.select({ card: cardRfid, subscriber: subscribers })
+			.select({ card: cardRfid, subscriber: subscribers, user: users })
 			.from(cardRfid)
 			.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+			.leftJoin(users, eq(cardRfid.userId, users.id))
 			.where(eq(cardRfid.uid, event.uid))
 			.limit(1);
 
@@ -287,9 +309,10 @@ export async function processSingleAttendance(
 						writtenByDevice: deviceId
 					});
 					[cardRow] = await db
-						.select({ card: cardRfid, subscriber: subscribers })
+						.select({ card: cardRfid, subscriber: subscribers, user: users })
 						.from(cardRfid)
 						.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+						.leftJoin(users, eq(cardRfid.userId, users.id))
 						.where(eq(cardRfid.uid, event.uid))
 						.limit(1);
 				} catch (err) {
@@ -298,37 +321,57 @@ export async function processSingleAttendance(
 			}
 		}
 
-		const cardActive = cardRow?.card?.status === 'active';
-		const rejectionReason = await getAttendanceRejectionReason({
-			cardActive,
-			subscriberId: cardRow?.card?.subscriberId,
-			withinTolerance,
-			timestamp: timestampToUse
-		});
+		const isStaffCard = Boolean(
+			cardRow?.card?.userId && !cardRow.card.subscriberId && cardRow.user
+		);
+		const cardActive =
+			cardRow?.card?.status === 'active' && (!isStaffCard || cardRow?.user?.status === 'active');
+		const rejectionReason = isStaffCard
+			? getStaffCardRejectionReason(cardActive, withinTolerance)
+			: await getAttendanceRejectionReason({
+					cardActive,
+					subscriberId: cardRow?.card?.subscriberId,
+					withinTolerance,
+					timestamp: timestampToUse
+				});
 		const validated = rejectionReason === null;
 
 		// Verifica intervallo minimo tra strisciate
 		const withinInterval = validated
-			? await isWithinMinInterval(
-					event.uid,
-					timestampToUse,
-					attendanceSettings.minSwipeIntervalMinutes
-				)
+			? isStaffCard
+				? await isWithinStaffMinInterval(
+						cardRow!.user!.id,
+						timestampToUse,
+						attendanceSettings.minSwipeIntervalMinutes
+					)
+				: await isWithinMinInterval(
+						event.uid,
+						timestampToUse,
+						attendanceSettings.minSwipeIntervalMinutes
+					)
 			: false;
 
 		if (withinInterval) {
 			// Strisciata troppo vicina alla precedente — non registrare, segnala al device
-			const nextEventType = await determineNextEventType(
-				event.uid,
-				timestampToUse,
-				attendanceSettings.resetEntryTypeDaily
-			);
+			const nextEventType = isStaffCard
+				? await determineNextStaffEventType(
+						cardRow!.user!.id,
+						timestampToUse,
+						attendanceSettings.resetEntryTypeDaily
+					)
+				: await determineNextEventType(
+						event.uid,
+						timestampToUse,
+						attendanceSettings.resetEntryTypeDaily
+					);
 			actions.push({
 				uid: event.uid,
 				action: 'ignored',
-				user_name: cardRow?.subscriber
-					? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
-					: undefined,
+				user_name: isStaffCard
+					? cardRow?.user?.name
+					: cardRow?.subscriber
+						? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
+						: undefined,
 				type: nextEventType,
 				ignored_reason: `min_interval_${attendanceSettings.minSwipeIntervalMinutes}min`
 			});
@@ -336,29 +379,61 @@ export async function processSingleAttendance(
 		}
 
 		// Determina il tipo di evento (entry/exit) basandosi sull'ultimo evento salvato
-		const nextEventType = await determineNextEventType(
-			event.uid,
-			timestampToUse,
-			attendanceSettings.resetEntryTypeDaily
-		);
+		const nextEventType = isStaffCard
+			? await determineNextStaffEventType(
+					cardRow!.user!.id,
+					timestampToUse,
+					attendanceSettings.resetEntryTypeDaily
+				)
+			: await determineNextEventType(
+					event.uid,
+					timestampToUse,
+					attendanceSettings.resetEntryTypeDaily
+				);
 
 		if (validated) {
 			accepted++;
-			await db.insert(attendance).values({
-				cardUid: event.uid,
-				uidRaw: event.uid_raw ?? null,
-				subscriberId: cardRow?.card?.subscriberId ?? null,
-				deviceId,
-				eventType: nextEventType,
-				readTimestamp: toDatabaseDateTime(timestampToUse),
-				deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
-				offlineQueued: false,
-				rawPayload: event as unknown as Record<string, unknown>,
-				validated: true,
-				queuePending: queueStatus?.pending ?? null,
-				storageFreePercent: queueStatus?.storage_free_percent ?? null
-			});
-			if (cardActive && cardRow.subscriber) {
+			if (isStaffCard) {
+				await db.insert(staffAttendance).values({
+					userId: cardRow!.user!.id,
+					cardUid: event.uid,
+					uidRaw: event.uid_raw ?? null,
+					deviceId,
+					eventType: nextEventType,
+					readTimestamp: toDatabaseDateTime(timestampToUse),
+					deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
+					offlineQueued: false,
+					source: 'card',
+					isBackdated: false,
+					rawPayload: event as unknown as Record<string, unknown>,
+					validated: true,
+					queuePending: queueStatus?.pending ?? null,
+					storageFreePercent: queueStatus?.storage_free_percent ?? null
+				});
+			} else {
+				await db.insert(attendance).values({
+					cardUid: event.uid,
+					uidRaw: event.uid_raw ?? null,
+					subscriberId: cardRow?.card?.subscriberId ?? null,
+					deviceId,
+					eventType: nextEventType,
+					readTimestamp: toDatabaseDateTime(timestampToUse),
+					deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
+					offlineQueued: false,
+					rawPayload: event as unknown as Record<string, unknown>,
+					validated: true,
+					queuePending: queueStatus?.pending ?? null,
+					storageFreePercent: queueStatus?.storage_free_percent ?? null
+				});
+			}
+			if (cardActive && isStaffCard && cardRow.user) {
+				actions.push({
+					uid: event.uid,
+					action: 'confirm',
+					user_name: cardRow.user.name,
+					type: nextEventType
+				});
+			} else if (cardActive && cardRow.subscriber) {
 				actions.push({
 					uid: event.uid,
 					action: 'confirm',
@@ -413,167 +488,158 @@ export async function processBatchAttendance(
 			const withinTolerance = Math.abs(eventTime - now) <= TOLERANCE_MS;
 
 			const [cardRow] = await tx
-				.select({ card: cardRfid, subscriber: subscribers })
+				.select({ card: cardRfid, subscriber: subscribers, user: users })
 				.from(cardRfid)
 				.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+				.leftJoin(users, eq(cardRfid.userId, users.id))
 				.where(eq(cardRfid.uid, event.uid))
 				.limit(1);
 
-			const cardActive = cardRow?.card?.status === 'active';
-			const rejectionReason = await getAttendanceRejectionReason({
-				cardActive,
-				subscriberId: cardRow?.card?.subscriberId,
-				withinTolerance,
-				timestamp: timestampToUse,
-				tx
-			});
-			const validated = rejectionReason === null;
-
-			// Verifica intervallo minimo (controlla sia nel batch che nel DB)
-			const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60 * 1000;
-			let withinInterval = false;
-
-			if (validated && minIntervalMs > 0) {
-				// Controlla se c'è una strisciata recente nello stesso batch
-				const lastBatchTime = batchSwipeTimes.get(event.uid);
-				if (lastBatchTime && eventTime - lastBatchTime < minIntervalMs) {
-					withinInterval = true;
-				}
-
-				// Se non trovato nel batch, controlla nel DB
-				if (!withinInterval) {
-					withinInterval = await isWithinMinInterval(
-						event.uid,
-						timestampToUse,
-						attendanceSettings.minSwipeIntervalMinutes,
+			const isStaffCard = Boolean(
+				cardRow?.card?.userId && !cardRow.card.subscriberId && cardRow.user
+			);
+			const cardActive =
+				cardRow?.card?.status === 'active' && (!isStaffCard || cardRow?.user?.status === 'active');
+			const rejectionReason: AttendanceRejectionReason | null = isStaffCard
+				? getStaffCardRejectionReason(cardActive, withinTolerance)
+				: await getAttendanceRejectionReason({
+						cardActive,
+						subscriberId: cardRow?.card?.subscriberId,
+						withinTolerance,
+						timestamp: timestampToUse,
 						tx
-					);
+					});
+			const validated = rejectionReason === null;
+			const identityKey = isStaffCard ? `user:${cardRow!.user!.id}` : `card:${event.uid}`;
+
+			const determineBatchNextType = async (): Promise<'entry' | 'exit'> => {
+				const identityEvents = virtualEvents.get(identityKey) ?? [];
+				const previous = identityEvents.at(-1) ?? null;
+				if (isStaffCard) {
+					return previous
+						? determineNextStaffEventTypeFromPrevious(
+								previous,
+								timestampToUse,
+								attendanceSettings.resetEntryTypeDaily
+							)
+						: determineNextStaffEventType(
+								cardRow!.user!.id,
+								timestampToUse,
+								attendanceSettings.resetEntryTypeDaily,
+								tx
+							);
 				}
 
-				// Aggiorna il timestamp dell'ultima strisciata nel batch
-				batchSwipeTimes.set(event.uid, eventTime);
-			}
-
-			if (withinInterval) {
-				// Strisciata troppo vicina - determina il tipo per coerenza
-				const currentDate = new Date(timestampToUse);
-				const currentDay = new Date(
-					currentDate.getFullYear(),
-					currentDate.getMonth(),
-					currentDate.getDate()
-				);
-
-				const cardVirtualEvents = virtualEvents.get(event.uid) ?? [];
-				const lastVirtualEvent =
-					cardVirtualEvents.length > 0 ? cardVirtualEvents[cardVirtualEvents.length - 1] : null;
-
-				let nextEventType: 'entry' | 'exit';
-				if (lastVirtualEvent) {
-					if (lastVirtualEvent.eventType === 'exit') {
-						nextEventType = 'entry';
-					} else {
-						const lastEventDate = new Date(lastVirtualEvent.readTimestamp);
-						const lastEventDay = new Date(
-							lastEventDate.getFullYear(),
-							lastEventDate.getMonth(),
-							lastEventDate.getDate()
-						);
-						nextEventType = lastEventDay.getTime() === currentDay.getTime() ? 'exit' : 'entry';
-					}
-				} else {
-					nextEventType = await determineNextEventType(
+				if (!previous) {
+					return determineNextEventType(
 						event.uid,
 						timestampToUse,
 						attendanceSettings.resetEntryTypeDaily,
 						tx
 					);
 				}
+				if (previous.eventType === 'exit') return 'entry';
+				if (!attendanceSettings.resetEntryTypeDaily) return 'exit';
+				const previousDay = new Date(previous.readTimestamp).toDateString();
+				const currentDay = new Date(timestampToUse).toDateString();
+				return previousDay === currentDay ? 'exit' : 'entry';
+			};
 
-				// Strisciata troppo vicina — non registrare, segnala al device
+			const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60_000;
+			let withinInterval = false;
+			if (validated && minIntervalMs > 0) {
+				const lastBatchTime = batchSwipeTimes.get(identityKey);
+				if (
+					lastBatchTime !== undefined &&
+					eventTime >= lastBatchTime &&
+					eventTime - lastBatchTime < minIntervalMs
+				) {
+					withinInterval = true;
+				}
+				if (!withinInterval) {
+					withinInterval = isStaffCard
+						? await isWithinStaffMinInterval(
+								cardRow!.user!.id,
+								timestampToUse,
+								attendanceSettings.minSwipeIntervalMinutes,
+								tx
+							)
+						: await isWithinMinInterval(
+								event.uid,
+								timestampToUse,
+								attendanceSettings.minSwipeIntervalMinutes,
+								tx
+							);
+				}
+				batchSwipeTimes.set(identityKey, eventTime);
+			}
+
+			const nextEventType = await determineBatchNextType();
+			if (withinInterval) {
 				actions.push({
 					uid: event.uid,
 					action: 'ignored',
-					user_name: cardRow?.subscriber
-						? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
-						: undefined,
+					user_name: isStaffCard
+						? cardRow?.user?.name
+						: cardRow?.subscriber
+							? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
+							: undefined,
 					type: nextEventType,
 					ignored_reason: `min_interval_${attendanceSettings.minSwipeIntervalMinutes}min`
 				});
 				continue;
 			}
 
-			// Determina il tipo di evento (entry/exit)
-			// Per il batch, consideriamo anche gli eventi precedenti nello stesso batch
-			let nextEventType: 'entry' | 'exit';
-
-			const currentDate = new Date(timestampToUse);
-			const currentDay = new Date(
-				currentDate.getFullYear(),
-				currentDate.getMonth(),
-				currentDate.getDate()
-			);
-
-			// Cerca nell'ultimo evento virtuale creato nello stesso batch per questa card
-			const cardVirtualEvents = virtualEvents.get(event.uid) ?? [];
-			const lastVirtualEvent =
-				cardVirtualEvents.length > 0 ? cardVirtualEvents[cardVirtualEvents.length - 1] : null;
-
-			if (lastVirtualEvent) {
-				// C'è un evento precedente nello stesso batch
-				if (lastVirtualEvent.eventType === 'exit') {
-					nextEventType = 'entry';
-				} else {
-					// Controlla se è dello stesso giorno
-					const lastEventDate = new Date(lastVirtualEvent.readTimestamp);
-					const lastEventDay = new Date(
-						lastEventDate.getFullYear(),
-						lastEventDate.getMonth(),
-						lastEventDate.getDate()
-					);
-
-					// Se resetEntryTypeDaily è false, alterna sempre
-					if (!attendanceSettings.resetEntryTypeDaily) {
-						nextEventType = 'exit';
-					} else {
-						nextEventType = lastEventDay.getTime() === currentDay.getTime() ? 'exit' : 'entry';
-					}
-				}
-			} else {
-				// Non ci sono eventi precedenti nello stesso batch, controlla nel DB
-				nextEventType = await determineNextEventType(
-					event.uid,
-					timestampToUse,
-					attendanceSettings.resetEntryTypeDaily,
-					tx
-				);
-			}
-
-			// Salva l'evento virtuale per eventuali eventi successivi nello stesso batch
-			if (!virtualEvents.has(event.uid)) {
-				virtualEvents.set(event.uid, []);
-			}
-			virtualEvents.get(event.uid)!.push({
+			if (!virtualEvents.has(identityKey)) virtualEvents.set(identityKey, []);
+			virtualEvents.get(identityKey)!.push({
 				eventType: nextEventType,
 				readTimestamp: timestampToUse
 			});
 
 			if (validated) {
 				accepted++;
-				await tx.insert(attendance).values({
-					cardUid: event.uid,
-					uidRaw: event.uid_raw ?? null,
-					subscriberId: cardRow?.card?.subscriberId ?? null,
-					deviceId,
-					eventType: nextEventType,
-					readTimestamp: toDatabaseDateTime(timestampToUse),
-					deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
-					offlineQueued: true,
-					rawPayload: event as unknown as Record<string, unknown>,
-					validated: true,
-					queuePending: queueStatus.pending,
-					storageFreePercent: queueStatus.storage_free_percent
-				});
-				if (cardActive && cardRow.subscriber) {
+				if (isStaffCard) {
+					await tx.insert(staffAttendance).values({
+						userId: cardRow!.user!.id,
+						cardUid: event.uid,
+						uidRaw: event.uid_raw ?? null,
+						deviceId,
+						eventType: nextEventType,
+						readTimestamp: toDatabaseDateTime(timestampToUse),
+						deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
+						offlineQueued: true,
+						source: 'card',
+						isBackdated: false,
+						rawPayload: event as unknown as Record<string, unknown>,
+						validated: true,
+						queuePending: queueStatus.pending,
+						storageFreePercent: queueStatus.storage_free_percent
+					});
+				} else {
+					await tx.insert(attendance).values({
+						cardUid: event.uid,
+						uidRaw: event.uid_raw ?? null,
+						subscriberId: cardRow?.card?.subscriberId ?? null,
+						deviceId,
+						eventType: nextEventType,
+						readTimestamp: toDatabaseDateTime(timestampToUse),
+						deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
+						offlineQueued: true,
+						rawPayload: event as unknown as Record<string, unknown>,
+						validated: true,
+						queuePending: queueStatus.pending,
+						storageFreePercent: queueStatus.storage_free_percent
+					});
+				}
+
+				if (cardActive && isStaffCard && cardRow.user) {
+					actions.push({
+						uid: event.uid,
+						action: 'confirm',
+						user_name: cardRow.user.name,
+						type: nextEventType
+					});
+				} else if (cardActive && cardRow.subscriber) {
 					actions.push({
 						uid: event.uid,
 						action: 'confirm',
@@ -585,11 +651,7 @@ export async function processBatchAttendance(
 				}
 			} else {
 				rejected++;
-				results.push({
-					index: i,
-					status: 400,
-					reason: rejectionReason ?? 'unknown_card'
-				});
+				results.push({ index: i, status: 400, reason: rejectionReason ?? 'unknown_card' });
 				actions.push(createRejectedAttendanceAction(event.uid, nextEventType, rejectionReason));
 			}
 		}

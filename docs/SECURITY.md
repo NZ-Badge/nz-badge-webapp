@@ -4,13 +4,16 @@ Questo documento riassume le misure di sicurezza effettivamente rintracciabili n
 
 ## Autenticazione
 
-### Sessione admin
+### Sessione utenti
 
 - login tramite email/password contro tabella `users`
 - sessione salvata in cookie `session`
 - firma JWT con `JWT_SECRET`
 - durata sessione: 8 ore
 - cookie `httpOnly`, `sameSite=strict`, `secure` fuori da `dev`
+- ruoli ammessi nell'app: `admin`, `staff`, `collaborator`
+- ogni richiesta ricarica l'utente dal database e rifiuta account con stato diverso da `active`
+- la disattivazione e' un soft delete; invalida anche sessioni gia' emesse al controllo successivo
 
 Codice rilevante:
 
@@ -34,8 +37,12 @@ Codice rilevante:
 
 ## Autorizzazione
 
-- le pagine protette usano `locals.verifyAdmin()`
+- il layout applicativo usa `locals.verifyUser()` per tutti i ruoli attivi
+- le superfici preesistenti per corsisti/card usano `locals.verifyAdmin()` e restano limitate ad
+  Amministratori e Operatori
 - alcune aree richiedono esplicitamente ruolo `admin` tramite `requireAdmin()`
+- i dati staff applicano anche controlli “proprio utente oppure Amministratore/Operatore” lato
+  server; nascondere i comandi nella UI non e' considerato un controllo sufficiente
 - i device non possono accedere agli endpoint admin e viceversa
 
 ## Header e CSP
@@ -70,6 +77,8 @@ La tabella `audit_log` viene usata per tracciare varie operazioni sensibili, tra
 
 - creazione/modifica/cancellazione subscriber
 - flussi card write/erase
+- inserimenti e modifiche delle strisciate staff
+- soft delete degli account
 - operazioni amministrative specifiche
 
 La copertura non e' uniforme su ogni endpoint del progetto, quindi va considerata parziale e orientata ai flussi piu' critici.

@@ -32,6 +32,13 @@
 			courseName: string | null;
 			status: string;
 		} | null;
+		user?: {
+			id: number;
+			name: string;
+			email: string;
+			role: string;
+			status: string;
+		} | null;
 		error?: string;
 	};
 
@@ -232,8 +239,16 @@
 												</span>
 											</div>
 										</div>
+									{:else if cardResult.user}
+										<div class="mt-3 border-t pt-3">
+											<div class="font-medium">{cardResult.user.name}</div>
+											<div class="text-gray-500">{cardResult.user.email}</div>
+											<div class="mt-1 text-xs text-gray-400">
+												Utente staff · {cardResult.user.role}
+											</div>
+										</div>
 									{:else}
-										<div class="mt-2 text-gray-400 italic">Nessun subscriber associato</div>
+										<div class="mt-2 text-gray-400 italic">Nessun titolare associato</div>
 									{/if}
 								</div>
 							{:else}

@@ -17,7 +17,9 @@
 		Usb,
 		LogOut,
 		Plug,
-		UserCog
+		UserCog,
+		Clock3,
+		LogIn
 	} from '@lucide/svelte';
 	import {
 		connection,
@@ -36,30 +38,47 @@
 	let sidebarOpen = $state(false);
 	let isMobile = $state(false);
 	let adminSubmenuOpen = $state(false);
+	let attendanceSubmenuOpen = $state(false);
 
 	// Navigation links with icons
-	const navLinks = [
+	const isCollaborator = $derived(data.user.role === 'collaborator');
+	const isStaffManager = $derived(data.user.role === 'admin' || data.user.role === 'staff');
+	const isUserAdmin = $derived(data.user.role === 'admin');
+
+	const navLinks = $derived([
 		{ href: '/dashboard', label: 'Panoramica', icon: LayoutDashboard },
-		{ href: '/subscribers', label: 'Iscritti', icon: Users },
-		{ href: '/cards', label: 'Tessere', icon: CreditCard },
-		{ href: '/attendance', label: 'Presenze', icon: ClipboardList }
-	] as const;
+		...(!isCollaborator
+			? [
+					{ href: '/subscribers', label: 'Iscritti', icon: Users },
+					{ href: '/cards', label: 'Tessere', icon: CreditCard }
+				]
+			: [])
+	]);
+
+	const attendanceLinks = $derived([
+		...(isStaffManager ? [{ href: '/attendance', label: 'Corsisti', icon: ClipboardList }] : []),
+		{ href: '/staff-attendance', label: 'Collaboratori', icon: LogIn }
+	]);
 
 	// Admin submenu links (only visible to admin users)
-	const adminLinks = [
-		{ href: '/card-diagnostics', label: 'Diagnostica card', icon: ScanLine },
-		{ href: '/devices', label: 'Dispositivi', icon: Cpu },
-		{ href: '/firmware', label: 'Firmware', icon: Microchip },
-		{ href: '/settings', label: 'Impostazioni', icon: Settings },
-		{ href: '/admin/users', label: 'Utenti', icon: UserCog }
-	] as const;
-
-	// Check if user is admin
-	const isUserAdmin = $derived(data.user.role === 'admin');
+	const adminLinks = $derived([
+		...(isUserAdmin
+			? [
+					{ href: '/card-diagnostics', label: 'Diagnostica card', icon: ScanLine },
+					{ href: '/devices', label: 'Dispositivi', icon: Cpu },
+					{ href: '/firmware', label: 'Firmware', icon: Microchip },
+					{ href: '/settings', label: 'Impostazioni', icon: Settings }
+				]
+			: []),
+		{ href: '/admin/users', label: 'Staff', icon: UserCog }
+	]);
 
 	// Check if any admin link is active
 	const isAdminActive = $derived(
 		adminLinks.some((link) => $page.url.pathname.startsWith(link.href))
+	);
+	const isAttendanceActive = $derived(
+		attendanceLinks.some((link) => $page.url.pathname.startsWith(link.href))
 	);
 
 	// Derived state
@@ -92,6 +111,10 @@
 	// Toggle admin submenu
 	function toggleAdminSubmenu() {
 		adminSubmenuOpen = !adminSubmenuOpen;
+	}
+
+	function toggleAttendanceSubmenu() {
+		attendanceSubmenuOpen = !attendanceSubmenuOpen;
 	}
 
 	// Toggle sidebar handler
@@ -170,8 +193,60 @@
 					</li>
 				{/each}
 
-				<!-- Admin Submenu (admin only) -->
-				{#if isUserAdmin}
+				<li role="none" class="pt-2">
+					<button
+						type="button"
+						role="menuitem"
+						aria-expanded={attendanceSubmenuOpen}
+						class="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
+						{isAttendanceActive
+							? 'bg-blue-600 text-white'
+							: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
+						onclick={toggleAttendanceSubmenu}
+					>
+						<LogIn size={18} />
+						<span class="flex-1 text-left">Ingressi</span>
+						<ChevronDown
+							size={16}
+							class="transition-transform {attendanceSubmenuOpen ? 'rotate-180' : ''}"
+						/>
+					</button>
+					{#if attendanceSubmenuOpen || isAttendanceActive}
+						<ul class="mt-1 space-y-1 pl-4" role="menu">
+							{#each attendanceLinks as link}
+								{@const isActive = isActiveLink(link.href)}
+								<li>
+									<a
+										href={link.href}
+										class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
+											? 'bg-blue-600/50 text-white'
+											: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
+										onclick={closeSidebar}><link.icon size={16} /><span>{link.label}</span></a
+									>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</li>
+
+				<li role="none">
+					<a
+						href="/my-attendance"
+						role="menuitem"
+						aria-current={isActiveLink('/my-attendance') ? 'page' : undefined}
+						class="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all {isActiveLink(
+							'/my-attendance'
+						)
+							? 'bg-blue-600 text-white'
+							: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
+						onclick={closeSidebar}
+					>
+						<Clock3 size={18} /><span>I miei ingressi</span>
+					</a>
+				</li>
+
+				<!-- Admin submenu: full for admins, Staff only for operators. -->
+				{#if isStaffManager}
 					<li role="none" class="pt-2">
 						<button
 							type="button"
@@ -268,7 +343,7 @@
 				<h1 class="text-lg font-semibold text-slate-900 md:hidden">Presenze RFID</h1>
 
 				<!-- WebSerial Connection Section (integrato come sezione della toolbar) -->
-				{#if browser && isWebSerialSupported()}
+				{#if !isCollaborator && browser && isWebSerialSupported()}
 					<div
 						class="-ml-4 flex h-full items-center border-slate-200 bg-slate-50/50 px-4 {connection.state ===
 						'connected'

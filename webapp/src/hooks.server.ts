@@ -1,7 +1,7 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { redirect } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import { verifyDeviceToken, verifyAdminSession } from '$lib/services/auth';
+import { verifyDeviceToken, verifyAdminSession, verifyUserSession } from '$lib/services/auth';
 import { generateCspNonce, generateSecurityHeaders } from '$lib/utils/security';
 import { dev } from '$app/environment';
 
@@ -46,6 +46,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Individual routes perform their own auth checks.
 	event.locals.verifyDevice = () => verifyDeviceToken(event.request);
 	event.locals.verifyAdmin = () => verifyAdminSession(event.cookies);
+	event.locals.verifyUser = () => verifyUserSession(event.cookies);
 
 	// Process the request
 	const response = await resolve(event, {

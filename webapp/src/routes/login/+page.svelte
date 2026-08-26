@@ -11,7 +11,7 @@
 
 <div class="flex min-h-screen items-center justify-center bg-gray-50">
 	<div class="w-full max-w-sm space-y-6 rounded-lg bg-white p-8 shadow">
-		<h1 class="text-center text-2xl font-bold">Accesso admin</h1>
+		<h1 class="text-center text-2xl font-bold">Accesso staff</h1>
 
 		{#if form?.error}
 			<p class="text-center text-sm text-red-600">{form.error}</p>

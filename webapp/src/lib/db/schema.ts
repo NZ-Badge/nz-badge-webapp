@@ -16,15 +16,21 @@ import {
 } from 'drizzle-orm/mysql-core';
 
 // ── users ────────────────────────────────────────────────────────────────────
-export const users = mysqlTable('users', {
-	id: int().primaryKey().autoincrement(),
-	name: varchar({ length: 100 }).notNull(),
-	email: varchar({ length: 255 }).unique().notNull(),
-	passwordHash: varchar('password_hash', { length: 255 }).notNull(),
-	role: mysqlEnum('role', ['admin', 'staff']).default('staff'),
-	createdAt: timestamp('created_at').defaultNow(),
-	updatedAt: timestamp('updated_at').defaultNow().onUpdateNow()
-});
+export const users = mysqlTable(
+	'users',
+	{
+		id: int().primaryKey().autoincrement(),
+		name: varchar({ length: 100 }).notNull(),
+		email: varchar({ length: 255 }).unique().notNull(),
+		passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+		role: mysqlEnum('role', ['admin', 'staff', 'collaborator']).notNull().default('staff'),
+		status: mysqlEnum('status', ['active', 'deleted']).notNull().default('active'),
+		deletedAt: timestamp('deleted_at'),
+		createdAt: timestamp('created_at').defaultNow(),
+		updatedAt: timestamp('updated_at').defaultNow().onUpdateNow()
+	},
+	(t) => [index('idx_users_status').on(t.status)]
+);
 
 // ── subscribers ─────────────────────────────────────────────────────────────────
 export const subscribers = mysqlTable(
@@ -126,6 +132,7 @@ export const cardRfid = mysqlTable(
 	{
 		id: int().primaryKey().autoincrement(),
 		subscriberId: int('subscriber_id').references(() => subscribers.id, { onDelete: 'set null' }),
+		userId: int('user_id').references(() => users.id, { onDelete: 'set null' }),
 		uid: varchar({ length: 14 }).unique().notNull(),
 		type: mysqlEnum('type', ['rfid', 'nfc']).default('rfid').notNull(),
 		uidRaw: binary('uid_raw', { length: 7 }),
@@ -145,7 +152,8 @@ export const cardRfid = mysqlTable(
 	(t) => [
 		index('idx_uid').on(t.uid),
 		index('idx_status').on(t.status),
-		index('idx_subscriber').on(t.subscriberId)
+		index('idx_subscriber').on(t.subscriberId),
+		index('idx_card_user').on(t.userId)
 	]
 );
 
@@ -174,6 +182,42 @@ export const attendance = mysqlTable(
 		index('idx_timestamp').on(t.readTimestamp),
 		index('idx_device').on(t.deviceId),
 		index('idx_subscriber').on(t.subscriberId)
+	]
+);
+
+// ── staff_attendance ─────────────────────────────────────────────────────────
+// Kept separate from subscriber attendance so staff events can never leak into
+// course validation, student exports, or weekly subscriber summaries.
+export const staffAttendance = mysqlTable(
+	'staff_attendance',
+	{
+		id: bigint({ mode: 'number' }).primaryKey().autoincrement(),
+		userId: int('user_id')
+			.notNull()
+			.references(() => users.id),
+		cardUid: varchar('card_uid', { length: 14 }),
+		uidRaw: varchar('uid_raw', { length: 14 }),
+		deviceId: varchar('device_id', { length: 50 }),
+		eventType: mysqlEnum('event_type', ['entry', 'exit']).notNull(),
+		readTimestamp: datetime('read_timestamp', { fsp: 3 }).notNull(),
+		deviceTimeRaw: datetime('device_time_raw', { fsp: 3 }),
+		timestampSync: timestamp('timestamp_sync').defaultNow(),
+		offlineQueued: boolean('offline_queued').notNull().default(false),
+		source: mysqlEnum('source', ['card', 'manual', 'simulation']).notNull(),
+		createdByUserId: int('created_by_user_id').references(() => users.id),
+		isBackdated: boolean('is_backdated').notNull().default(false),
+		rawPayload: json('raw_payload'),
+		validated: boolean().notNull().default(true),
+		queuePending: int('queue_pending'),
+		storageFreePercent: int('storage_free_percent'),
+		note: varchar({ length: 255 })
+	},
+	(t) => [
+		index('idx_staff_attendance_user_time').on(t.userId, t.readTimestamp),
+		index('idx_staff_attendance_timestamp').on(t.readTimestamp),
+		index('idx_staff_attendance_card_uid').on(t.cardUid),
+		index('idx_staff_attendance_device').on(t.deviceId),
+		index('idx_staff_attendance_source').on(t.source)
 	]
 );
 
@@ -285,7 +329,8 @@ export const firmwareReleases = mysqlTable(
 // ── Inferred TypeScript types ─────────────────────────────────────────────────
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type UserRole = 'admin' | 'staff';
+export type UserRole = 'admin' | 'staff' | 'collaborator';
+export type UserStatus = 'active' | 'deleted';
 export type Subscriber = typeof subscribers.$inferSelect;
 export type NewSubscriber = typeof subscribers.$inferInsert;
 export type Enrollment = typeof enrollments.$inferSelect;
@@ -295,6 +340,8 @@ export type CardRfid = typeof cardRfid.$inferSelect;
 export type NewCardRfid = typeof cardRfid.$inferInsert;
 export type Attendance = typeof attendance.$inferSelect;
 export type NewAttendance = typeof attendance.$inferInsert;
+export type StaffAttendance = typeof staffAttendance.$inferSelect;
+export type NewStaffAttendance = typeof staffAttendance.$inferInsert;
 export type DeviceReg = typeof deviceRegistry.$inferSelect;
 export type NewDeviceReg = typeof deviceRegistry.$inferInsert;
 export type Setting = typeof settings.$inferSelect;

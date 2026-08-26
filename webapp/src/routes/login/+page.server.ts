@@ -5,14 +5,18 @@ import bcrypt from 'bcryptjs';
 import { db } from '$lib/db';
 import { users } from '$lib/db/schema';
 import { eq } from 'drizzle-orm';
-import { createAdminSession } from '$lib/services/auth';
+import { createAdminSession, verifyUserSession } from '$lib/services/auth';
 
 export const load: PageServerLoad = async ({ cookies }) => {
-	// Se esiste già una sessione valida, redirect diretto alla dashboard
-	const session = cookies.get('session');
-	if (session) {
-		redirect(303, '/dashboard');
+	let hasValidSession = false;
+	try {
+		await verifyUserSession(cookies);
+		hasValidSession = true;
+	} catch {
+		// Remove stale/expired/disabled-user cookies so the login page cannot loop.
+		cookies.delete('session', { path: '/' });
 	}
+	if (hasValidSession) redirect(303, '/dashboard');
 	return {};
 };
 
@@ -29,7 +33,7 @@ export const actions: Actions = {
 		const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
 		// Messaggio generico — non rivela se l'email esiste
-		if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+		if (!user || user.status !== 'active' || !(await bcrypt.compare(password, user.passwordHash))) {
 			return fail(400, { error: 'Credenziali non valide' });
 		}
 

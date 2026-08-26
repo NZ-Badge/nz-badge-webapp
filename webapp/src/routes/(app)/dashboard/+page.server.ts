@@ -1,7 +1,14 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
-import { subscribers, attendance, cardRfid, deviceRegistry, enrollments } from '$lib/db/schema';
-import { count, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import {
+	subscribers,
+	attendance,
+	cardRfid,
+	deviceRegistry,
+	enrollments,
+	staffAttendance
+} from '$lib/db/schema';
+import { and, count, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
 	enrichSubscribersForList,
 	enrollmentMatchesMonth,
@@ -9,9 +16,45 @@ import {
 } from '$lib/services/subscriber-list';
 import { formatInTimeZone } from 'date-fns-tz';
 import { TIMEZONE, nowInRome } from '$lib/utils/date';
+import {
+	determineNextStaffEventType,
+	loadStaffAttendanceSettings
+} from '$lib/services/staff-attendance';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
+	const user = await locals.verifyUser();
 	const now = nowInRome();
+
+	if (user.role === 'collaborator') {
+		const [recentStaffAttendance, attendanceSettings] = await Promise.all([
+			db
+				.select({
+					id: staffAttendance.id,
+					eventType: staffAttendance.eventType,
+					readTimestamp: staffAttendance.readTimestamp,
+					source: staffAttendance.source,
+					deviceId: staffAttendance.deviceId,
+					isBackdated: staffAttendance.isBackdated
+				})
+				.from(staffAttendance)
+				.where(eq(staffAttendance.userId, user.id))
+				.orderBy(desc(staffAttendance.readTimestamp), desc(staffAttendance.id))
+				.limit(10),
+			loadStaffAttendanceSettings()
+		]);
+		const nextEventType = await determineNextStaffEventType(
+			user.id,
+			new Date(),
+			attendanceSettings.resetEntryTypeDaily
+		);
+
+		return {
+			mode: 'collaborator' as const,
+			targetUser: { id: user.id, name: user.name, email: user.email },
+			recentStaffAttendance,
+			nextEventType
+		};
+	}
 
 	// Query aggregate in parallelo per performance
 	const [
@@ -29,7 +72,10 @@ export const load: PageServerLoad = async () => {
 			.select({ todayAttendance: count() })
 			.from(attendance)
 			.where(sql`DATE(${attendance.readTimestamp}) = DATE(NOW())`),
-		db.select({ activeCards: count() }).from(cardRfid).where(eq(cardRfid.status, 'active')),
+		db
+			.select({ activeCards: count() })
+			.from(cardRfid)
+			.where(and(eq(cardRfid.status, 'active'), isNotNull(cardRfid.subscriberId))),
 		db
 			.select({ onlineDevices: count() })
 			.from(deviceRegistry)
@@ -91,6 +137,7 @@ export const load: PageServerLoad = async () => {
 	});
 
 	return {
+		mode: 'management' as const,
 		activeSubscribers,
 		todayAttendance,
 		activeCards,

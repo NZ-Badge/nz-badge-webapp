@@ -15,6 +15,8 @@ declare global {
 			verifyDevice: () => Promise<DeviceReg>;
 			/** Verify admin session from cookies */
 			verifyAdmin: () => Promise<User>;
+			/** Verify any active system-user session, including collaborators */
+			verifyUser: () => Promise<User>;
 			/** CSP nonce for this request */
 			cspNonce: string;
 		}

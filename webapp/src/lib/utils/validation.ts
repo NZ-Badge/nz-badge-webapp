@@ -73,9 +73,14 @@ export const shopifyWebhookOrderSchema = z
 	.passthrough();
 
 // 5. cardWriteSchema
-export const cardWriteSchema = z.object({
-	subscriber_id: z.number().int().positive()
-});
+export const cardWriteSchema = z
+	.object({
+		subscriber_id: z.number().int().positive().optional(),
+		user_id: z.number().int().positive().optional()
+	})
+	.refine((data) => Number(Boolean(data.subscriber_id)) + Number(Boolean(data.user_id)) === 1, {
+		message: 'Specify exactly one of subscriber_id or user_id'
+	});
 
 // 6. cardValidateSchema
 export const cardValidateSchema = z.object({

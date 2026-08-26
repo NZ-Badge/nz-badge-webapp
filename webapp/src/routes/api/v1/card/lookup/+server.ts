@@ -1,7 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { cardRfid, subscribers } from '$lib/db/schema';
+import { cardRfid, subscribers, users } from '$lib/db/schema';
 import { ok, badRequest, unauthorized, serverError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
 
@@ -19,9 +19,10 @@ export async function GET(event: RequestEvent): Promise<Response> {
 
 	try {
 		const rows = await db
-			.select({ card: cardRfid, subscriber: subscribers })
+			.select({ card: cardRfid, subscriber: subscribers, user: users })
 			.from(cardRfid)
 			.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+			.leftJoin(users, eq(cardRfid.userId, users.id))
 			.where(eq(cardRfid.uid, uid))
 			.limit(1);
 
@@ -29,7 +30,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			return ok({ found: false });
 		}
 
-		const { card, subscriber } = rows[0];
+		const { card, subscriber, user } = rows[0];
 
 		return ok({
 			found: true,
@@ -50,6 +51,9 @@ export async function GET(event: RequestEvent): Promise<Response> {
 						courseName: subscriber.courseName,
 						status: subscriber.status
 					}
+				: null,
+			user: user
+				? { id: user.id, name: user.name, email: user.email, role: user.role, status: user.status }
 				: null
 		});
 	} catch (err) {

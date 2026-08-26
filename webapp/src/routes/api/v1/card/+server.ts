@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNotNull } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { cardRfid, subscribers } from '$lib/db/schema';
 import { cardQuerySchema } from '$lib/utils/validation';
@@ -19,7 +19,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const { status, subscriber_id, page, limit } = parsed.data;
 	const offset = (page - 1) * limit;
 
-	const conditions = [];
+	const conditions = [isNotNull(cardRfid.subscriberId)];
 	if (status) conditions.push(eq(cardRfid.status, status));
 	if (subscriber_id) conditions.push(eq(cardRfid.subscriberId, subscriber_id));
 	const where = conditions.length > 0 ? and(...conditions) : undefined;

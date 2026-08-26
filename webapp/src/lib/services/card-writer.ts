@@ -3,9 +3,9 @@
  * Handles card writing, erasing, and restoration with audit logging
  */
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { subscribers, cardRfid } from '$lib/db/schema';
+import { subscribers, cardRfid, users } from '$lib/db/schema';
 import type { User } from '$lib/db/schema';
 import { getMifareKeyConfig, isMifareEnabled, getOrCreateGlobalKeys } from './mifare-keys';
 import { logAudit } from './audit';
@@ -16,7 +16,7 @@ import { sanitizeId } from '$lib/utils/security';
 // ───────────────────────────────────────────────────────────────────────────────
 
 interface WriteSessionData {
-	subscriberId: number;
+	owner: { type: 'subscriber' | 'user'; id: number };
 	keyA: string | null;
 	keyB: string | null;
 	useMifare: boolean;
@@ -199,6 +199,51 @@ export async function authorizeCardWrite(subscriberId: number): Promise<{
 		throw new CardWriterError('Subscriber already has an active card', 'INVALID_STATE');
 	}
 
+	return createCardWriteSession({ type: 'subscriber', id: validId });
+}
+
+/** Authorize a write for an active system user. */
+export async function authorizeUserCardWrite(userId: number): Promise<{
+	session_token: string;
+	key_a: string | null;
+	key_b: string | null;
+	sector: number;
+	expires_in: number;
+	use_single_key: boolean;
+	use_mifare: boolean;
+}> {
+	const validId = sanitizeId(userId);
+	if (!validId) throw new CardWriterError('Invalid user ID', 'VALIDATION_ERROR');
+
+	const [user] = await db.select().from(users).where(eq(users.id, validId)).limit(1);
+	if (!user) throw new CardWriterError(`User ${validId} not found`, 'NOT_FOUND');
+	if (user.status !== 'active') {
+		throw new CardWriterError(`User ${validId} is not active`, 'INVALID_STATE');
+	}
+
+	const [existingCard] = await db
+		.select({ id: cardRfid.id })
+		.from(cardRfid)
+		.where(
+			and(eq(cardRfid.userId, validId), eq(cardRfid.type, 'rfid'), eq(cardRfid.status, 'active'))
+		)
+		.limit(1);
+	if (existingCard) {
+		throw new CardWriterError('User already has an active RFID card', 'INVALID_STATE');
+	}
+
+	return createCardWriteSession({ type: 'user', id: validId });
+}
+
+async function createCardWriteSession(owner: { type: 'subscriber' | 'user'; id: number }): Promise<{
+	session_token: string;
+	key_a: string | null;
+	key_b: string | null;
+	sector: number;
+	expires_in: number;
+	use_single_key: boolean;
+	use_mifare: boolean;
+}> {
 	// Retrieve MIFARE configuration (useMifare + useSingleKey + optional global keys)
 	const mifareConfig = await getMifareKeyConfig();
 	const { useMifare, useSingleKey } = mifareConfig;
@@ -225,7 +270,7 @@ export async function authorizeCardWrite(subscriberId: number): Promise<{
 	const sessionToken = generateSessionToken();
 
 	writeSessions.set(sessionToken, {
-		subscriberId: validId,
+		owner,
 		keyA,
 		keyB,
 		useMifare,
@@ -267,6 +312,41 @@ export async function confirmCardWrite(
 	if (!session) {
 		throw new CardWriterError('Invalid or expired session token', 'SESSION_EXPIRED');
 	}
+	const ownerValues =
+		session.owner.type === 'subscriber'
+			? {
+					subscriberId: session.owner.id,
+					userId: null,
+					expirationDate: session.validUntil
+				}
+			: { subscriberId: null, userId: session.owner.id, expirationDate: null };
+
+	if (session.owner.type === 'user') {
+		const [targetUser] = await db
+			.select({ status: users.status })
+			.from(users)
+			.where(eq(users.id, session.owner.id))
+			.limit(1);
+		if (!targetUser || targetUser.status !== 'active') {
+			writeSessions.delete(sessionToken);
+			throw new CardWriterError('User is no longer active', 'INVALID_STATE');
+		}
+		const [activeCard] = await db
+			.select({ id: cardRfid.id })
+			.from(cardRfid)
+			.where(
+				and(
+					eq(cardRfid.userId, session.owner.id),
+					eq(cardRfid.type, 'rfid'),
+					eq(cardRfid.status, 'active')
+				)
+			)
+			.limit(1);
+		if (activeCard) {
+			writeSessions.delete(sessionToken);
+			throw new CardWriterError('User already has an active RFID card', 'INVALID_STATE');
+		}
+	}
 
 	// Check if card UID already exists
 	const [existingCard] = await db
@@ -287,14 +367,13 @@ export async function confirmCardWrite(
 			await db
 				.update(cardRfid)
 				.set({
-					subscriberId: session.subscriberId,
+					...ownerValues,
 					uid: normalizedUid,
 					type: 'rfid',
 					keyA: session.keyA,
 					keyB: session.keyB,
 					sector: 4,
 					writeDate: new Date(),
-					expirationDate: session.validUntil,
 					status: 'active',
 					deletedAt: null,
 					writtenByUserId: adminUser.id
@@ -315,8 +394,10 @@ export async function confirmCardWrite(
 				},
 				dataAfter: {
 					uid: normalizedUid,
-					subscriberId: session.subscriberId,
-					expirationDate: session.validUntil.toISOString(),
+					ownerType: session.owner.type,
+					ownerId: session.owner.id,
+					expirationDate:
+						session.owner.type === 'subscriber' ? session.validUntil.toISOString() : null,
 					status: 'active',
 					deletedAt: null
 				},
@@ -339,14 +420,13 @@ export async function confirmCardWrite(
 
 	// Insert card record
 	const [created] = await db.insert(cardRfid).values({
-		subscriberId: session.subscriberId,
+		...ownerValues,
 		uid: normalizedUid,
 		type: 'rfid',
 		keyA: session.keyA,
 		keyB: session.keyB,
 		sector: 4,
 		writeDate: new Date(),
-		expirationDate: session.validUntil,
 		status: 'active',
 		writtenByUserId: adminUser.id
 	});
@@ -367,8 +447,9 @@ export async function confirmCardWrite(
 		entityId: cardId,
 		dataAfter: {
 			uid: normalizedUid,
-			subscriberId: session.subscriberId,
-			expirationDate: session.validUntil.toISOString()
+			ownerType: session.owner.type,
+			ownerId: session.owner.id,
+			expirationDate: session.owner.type === 'subscriber' ? session.validUntil.toISOString() : null
 		},
 		metadata: {
 			sector: 4,

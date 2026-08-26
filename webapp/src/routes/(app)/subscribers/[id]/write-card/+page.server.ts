@@ -28,6 +28,10 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	return {
+		ownerType: 'subscriber' as 'subscriber' | 'user',
+		ownerLabel: 'Iscritto',
+		backHref: '/subscribers',
+		backLabel: 'Iscritti',
 		subscriber: {
 			id: subscriber.id,
 			firstName: subscriber.firstName,

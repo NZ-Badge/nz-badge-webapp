@@ -19,7 +19,7 @@ Gli endpoint reader restituiscono `401` se gli header mancano, il device non esi
 
 ### Flussi hardware assistiti dalla UI
 
-Gli endpoint di scrittura, cancellazione, lookup e pairing card richiedono il cookie di sessione dell'applicazione, non il bearer token del device. Nel codice attuale `verifyAdmin()` accetta utenti con ruolo `admin` o `staff`; i singoli endpoint card elencati sotto non applicano un ulteriore `requireAdmin()`.
+Gli endpoint di scrittura, cancellazione, lookup e pairing card richiedono il cookie di sessione dell'applicazione, non il bearer token del device. `verifyAdmin()` accetta i ruoli `admin` e `staff`; i Collaboratori non possono usare questi endpoint.
 
 ## Formato degli errori HTTP
 
@@ -107,13 +107,28 @@ Il tipo effettivo restituito in `actions[].type` e salvato nel database e' deter
 
 ### Validazione applicativa di una strisciata
 
-Le condizioni di rifiuto sono valutate in quest'ordine:
+Le condizioni di rifiuto sono valutate in quest'ordine. Il controllo corso e' esclusivo del
+percorso corsista:
 
-| `rejection_reason`         | Condizione                                                            |
-| -------------------------- | --------------------------------------------------------------------- |
-| `unknown_card`             | UID non registrato oppure card con stato diverso da `active`          |
-| `timestamp_out_of_range`   | timestamp effettivo distante piu' di 30 giorni dall'ora del server    |
-| `course_date_out_of_range` | nessuna iscrizione dell'intestatario include la data della strisciata |
+| `rejection_reason`         | Ambito        | Condizione                                                                                     |
+| -------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
+| `unknown_card`             | tutti         | UID non registrato oppure card con stato diverso da `active`; per lo staff, account non attivo |
+| `timestamp_out_of_range`   | tutti         | timestamp effettivo distante piu' di 30 giorni dall'ora del server                             |
+| `course_date_out_of_range` | solo corsisti | nessuna iscrizione dell'intestatario include la data della strisciata                          |
+
+Il lookup distingue il proprietario della card:
+
+- una card corsista salva l'evento in `attendance` e applica anche
+  `course_date_out_of_range`;
+- una card associata a un utente di sistema attivo salva l'evento in `staff_attendance` e non
+  esegue alcun controllo sulle date dei corsi;
+- una card staff appartenente a un account soft-deleted viene trattata come `unknown_card`.
+
+Per lo staff restano attivi i controlli comuni sulla card, sull'account, sul timestamp e
+sull'intervallo minimo; viene omessa esclusivamente la validazione sul corso. L'intervallo minimo
+e l'alternanza sono calcolati per `user_id`, includendo anche eventi manuali e simulati. Questo
+consente, per esempio, ingresso con card e uscita dal pulsante della dashboard. Il formato della
+risposta al reader non cambia.
 
 Per il controllo corso:
 
@@ -134,7 +149,7 @@ Prima di classificare come sconosciuto un UID nell'endpoint non-batch, il serviz
 | rifiutato          | `rejected + 1`                | non inserito                   | `unknown` con `rejection_reason` |
 | troppo ravvicinato | nessun contatore incrementato | non inserito                   | `ignored` con `ignored_reason`   |
 
-Una strisciata altrimenti valida viene ignorata se per lo stesso UID esiste una presenza entro `min_swipe_interval_minutes`. Il valore predefinito del servizio e' 15 minuti. L'azione restituita contiene, per esempio, `ignored_reason: "min_interval_15min"`.
+Una strisciata altrimenti valida viene ignorata se esiste una presenza entro `min_swipe_interval_minutes`: per UID nel dominio corsisti e per utente nel dominio staff. Il valore predefinito del servizio e' 15 minuti. L'azione restituita contiene, per esempio, `ignored_reason: "min_interval_15min"`.
 
 ### Formato delle azioni
 
@@ -328,14 +343,21 @@ Questi endpoint richiedono il cookie di sessione applicativo e sono usati dalla 
 
 | Endpoint                                 | Input principale                               | Uso                                                  |
 | ---------------------------------------- | ---------------------------------------------- | ---------------------------------------------------- |
-| `POST /api/v1/card/write`                | `subscriber_id`                                | apre una sessione temporanea di scrittura card       |
+| `POST /api/v1/card/write`                | esattamente uno fra `subscriber_id`, `user_id` | apre una sessione temporanea di scrittura card       |
 | `POST /api/v1/card/validate`             | `session_token`, `uid`, `allow_reuse_deleted?` | conferma la scrittura riuscita con l'UID letto       |
 | `POST /api/v1/card/erase`                | `card_id`                                      | apre una sessione di cancellazione fisica            |
 | `POST /api/v1/card/[id]/erase/confirm`   | `session_token`                                | conferma la cancellazione fisica                     |
-| `GET /api/v1/card/lookup?uid=...`        | query `uid`                                    | ricerca card e subscriber per UID                    |
+| `GET /api/v1/card/lookup?uid=...`        | query `uid`                                    | ricerca card e titolare corsista/staff per UID       |
 | `POST /api/v1/subscribers/[id]/pair-nfc` | `uid`                                          | registra direttamente un UID come card di tipo `nfc` |
 
 Il writer non e' integrato come client API standalone: il browser autenticato orchestra UI, WebSerial e backend HTTP.
+
+Per una card staff `card_rfid.user_id` e' valorizzato e `subscriber_id` e' nullo; per una card
+corsista vale il contrario. La conferma di scrittura azzera sempre l'altro owner, impedendo che lo
+stesso record appartenga ai due domini. Le card staff sono soltanto RFID: il pairing NFC resta
+riservato ai corsisti. L'utente associato deve essere attivo sia all'apertura sia alla conferma
+della sessione di scrittura e puo' avere una sola card RFID attiva. A differenza delle card
+corsista, una card staff viene salvata senza data di scadenza.
 
 ## Gestione device registry
 

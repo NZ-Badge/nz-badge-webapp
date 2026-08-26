@@ -1,15 +1,14 @@
 import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { AuthError, requireAdmin } from '$lib/services/auth';
+import { AuthError, requireStaffManager } from '$lib/services/auth';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	try {
 		const user = await locals.verifyAdmin();
 
-		// Only admin can access user management
-		requireAdmin(user);
+		requireStaffManager(user);
 
-		return {};
+		return { canManageAccounts: user.role === 'admin' };
 	} catch (err) {
 		if (err instanceof AuthError) {
 			if (err.code === 'FORBIDDEN') {

@@ -9,12 +9,13 @@ import {
 	conflict
 } from '$lib/utils/api';
 import { confirmCardWrite, CardWriterError } from '$lib/services/card-writer';
-import { AuthError } from '$lib/services/auth';
+import { AuthError, requireStaffManager } from '$lib/services/auth';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
 	try {
 		adminUser = await event.locals.verifyAdmin();
+		requireStaffManager(adminUser);
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}

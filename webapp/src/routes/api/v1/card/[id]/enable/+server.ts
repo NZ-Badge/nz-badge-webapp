@@ -1,7 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { cardRfid, auditLog } from '$lib/db/schema';
+import { cardRfid, auditLog, users } from '$lib/db/schema';
 import { ok, unauthorized, notFound, badRequest, serverError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
 
@@ -21,6 +21,27 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		if (!existing) return notFound('Card not found');
 		if (existing.status !== 'disabled')
 			return badRequest(`Card non è disabilitata (stato: ${existing.status})`);
+		if (existing.userId) {
+			const [owner] = await db
+				.select({ status: users.status })
+				.from(users)
+				.where(eq(users.id, existing.userId))
+				.limit(1);
+			if (!owner || owner.status !== 'active') return badRequest('L’utente associato non è attivo');
+			const [otherActiveCard] = await db
+				.select({ id: cardRfid.id })
+				.from(cardRfid)
+				.where(
+					and(
+						eq(cardRfid.userId, existing.userId),
+						eq(cardRfid.type, 'rfid'),
+						eq(cardRfid.status, 'active'),
+						ne(cardRfid.id, existing.id)
+					)
+				)
+				.limit(1);
+			if (otherActiveCard) return badRequest('L’utente ha già una card RFID attiva');
+		}
 
 		await db.update(cardRfid).set({ status: 'active' }).where(eq(cardRfid.id, id));
 

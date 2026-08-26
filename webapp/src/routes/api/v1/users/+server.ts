@@ -5,9 +5,10 @@
 
 import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/db';
-import { users, type NewUser, type User } from '$lib/db/schema';
-import { eq, count as countFn } from 'drizzle-orm';
-import { hashPassword, requireAdmin, AuthError } from '$lib/services/auth';
+import { cardRfid, users, type NewUser, type User } from '$lib/db/schema';
+import { and, eq, count as countFn } from 'drizzle-orm';
+import { hashPassword, requireAdmin, requireStaffManager, AuthError } from '$lib/services/auth';
+import { logAudit } from '$lib/services/audit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 
@@ -15,7 +16,9 @@ import type { RequestHandler } from './$types';
 const userCreateSchema = z.object({
 	name: z.string().min(1, 'Il nome è obbligatorio').max(100, 'Nome troppo lungo'),
 	email: z.string().email('Email non valida').max(255, 'Email troppo lunga'),
-	role: z.enum(['admin', 'staff'], { message: 'Il ruolo deve essere admin o staff' }),
+	role: z.enum(['admin', 'staff', 'collaborator'], {
+		message: 'Il ruolo deve essere admin, staff o collaborator'
+	}),
 	password: z
 		.string()
 		.min(8, 'La password deve contenere almeno 8 caratteri')
@@ -26,7 +29,11 @@ const userUpdateSchema = z.object({
 	id: z.number(),
 	name: z.string().min(1, 'Il nome è obbligatorio').max(100, 'Nome troppo lungo').optional(),
 	email: z.string().email('Email non valida').max(255, 'Email troppo lunga').optional(),
-	role: z.enum(['admin', 'staff'], { message: 'Il ruolo deve essere admin o staff' }).optional(),
+	role: z
+		.enum(['admin', 'staff', 'collaborator'], {
+			message: 'Il ruolo deve essere admin, staff o collaborator'
+		})
+		.optional(),
 	password: z
 		.string()
 		.min(8, 'La password deve contenere almeno 8 caratteri')
@@ -46,12 +53,12 @@ function sanitizeUser(user: User) {
 }
 
 /**
- * GET /api/v1/users - List all users (admin only)
+ * GET /api/v1/users - List all users (admin/operator)
  */
 export const GET: RequestHandler = async ({ locals }) => {
 	try {
 		const user = await locals.verifyAdmin();
-		requireAdmin(user);
+		requireStaffManager(user);
 
 		const allUsers = await db.select().from(users);
 		return json({ users: allUsers.map(sanitizeUser) });
@@ -97,6 +104,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			name,
 			email,
 			role,
+			status: 'active',
 			passwordHash
 		});
 
@@ -138,6 +146,9 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		if (!targetUser) {
 			return json({ error: 'Utente non trovato' }, { status: 404 });
 		}
+		if (targetUser.status !== 'active') {
+			return json({ error: 'Non puoi modificare un utente disattivato' }, { status: 409 });
+		}
 
 		// Prevent changing own role (to avoid locking yourself out)
 		if (id === currentUser.id && role && role !== currentUser.role) {
@@ -153,11 +164,11 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 		}
 
 		// Check if this is the last admin and trying to change role
-		if (role === 'staff' && targetUser.role === 'admin') {
+		if (role && role !== 'admin' && targetUser.role === 'admin') {
 			const adminCount = await db
 				.select({ count: countFn() })
 				.from(users)
-				.where(eq(users.role, 'admin'));
+				.where(and(eq(users.role, 'admin'), eq(users.status, 'active')));
 
 			const count = Number(adminCount[0]?.count || 0);
 			if (count <= 1) {
@@ -224,7 +235,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 			const adminCount = await db
 				.select({ count: countFn() })
 				.from(users)
-				.where(eq(users.role, 'admin'));
+				.where(and(eq(users.role, 'admin'), eq(users.status, 'active')));
 
 			const count = Number(adminCount[0]?.count || 0);
 			if (count <= 1) {
@@ -232,10 +243,31 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 			}
 		}
 
-		// Delete user
-		await db.delete(users).where(eq(users.id, id));
+		if (targetUser.status !== 'active') {
+			return json({ error: 'L’utente è già disattivato' }, { status: 409 });
+		}
 
-		return json({ success: true, message: 'Utente eliminato' });
+		await db.transaction(async (tx) => {
+			await tx
+				.update(users)
+				.set({ status: 'deleted', deletedAt: new Date() })
+				.where(eq(users.id, id));
+			await tx
+				.update(cardRfid)
+				.set({ status: 'disabled' })
+				.where(and(eq(cardRfid.userId, id), eq(cardRfid.status, 'active')));
+		});
+
+		await logAudit({
+			userId: currentUser.id,
+			action: 'DELETE',
+			entityType: 'user',
+			entityId: id,
+			dataBefore: { status: targetUser.status, role: targetUser.role },
+			dataAfter: { status: 'deleted', deletedAt: new Date().toISOString() }
+		});
+
+		return json({ success: true, message: 'Utente disattivato' });
 	} catch (err) {
 		if (err instanceof AuthError) {
 			error(err.code === 'UNAUTHORIZED' ? 401 : 403, err.message);

@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
 import { cardRfid, subscribers } from '$lib/db/schema';
-import { eq, count, ne } from 'drizzle-orm';
+import { and, eq, count, isNotNull, ne } from 'drizzle-orm';
 
 const PAGE_SIZE = 25;
 
@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	const tab = url.searchParams.get('tab') ?? 'active';
 
 	if (tab === 'history') {
-		const whereClause = eq(cardRfid.status, 'deleted');
+		const whereClause = and(isNotNull(cardRfid.subscriberId), eq(cardRfid.status, 'deleted'));
 
 		const [cards, [{ total }]] = await Promise.all([
 			db
@@ -38,10 +38,11 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	// Vista principale: escludi sempre le card deleted
 	const validStatuses = ['active', 'disabled', 'replaced', 'lost'] as const;
-	const whereClause =
+	const statusClause =
 		status && validStatuses.includes(status as (typeof validStatuses)[number])
 			? eq(cardRfid.status, status as (typeof validStatuses)[number])
 			: ne(cardRfid.status, 'deleted');
+	const whereClause = and(isNotNull(cardRfid.subscriberId), statusClause);
 
 	const [cards, [{ total }]] = await Promise.all([
 		db

@@ -31,6 +31,7 @@ export type AuditEntityType =
 	| 'subscriber'
 	| 'card'
 	| 'attendance'
+	| 'staff_attendance'
 	| 'user'
 	| 'device'
 	| 'setting'

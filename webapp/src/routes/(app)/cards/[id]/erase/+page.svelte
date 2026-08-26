@@ -158,7 +158,7 @@
 
 <div class="mx-auto max-w-lg space-y-6">
 	<div class="flex items-center gap-3">
-		<a href="/cards" class="text-sm text-gray-500 hover:text-gray-900">← Tessere</a>
+		<a href={data.backHref} class="text-sm text-gray-500 hover:text-gray-900">← {data.backLabel}</a>
 		<h1 class="text-xl font-bold">Cancella Carta</h1>
 	</div>
 
@@ -173,6 +173,8 @@
 					Abbinata a: <strong>{data.card.subscriberFirstName} {data.card.subscriberLastName}</strong
 					>
 				</p>
+			{:else if data.card.userName}
+				<p class="text-sm text-gray-500">Abbinata a: <strong>{data.card.userName}</strong></p>
 			{/if}
 		</div>
 
@@ -238,7 +240,7 @@
 					</Button>
 				{/if}
 
-				<a href="/cards">
+				<a href={data.backHref}>
 					<Button variant="outline" class="w-full">Annulla</Button>
 				</a>
 			</div>
@@ -253,7 +255,7 @@
 					<strong>Connessione richiesta:</strong> Connetti il dispositivo writer usando il pulsante nella
 					toolbar in alto per procedere con la cancellazione fisica.
 				</div>
-				<a href="/cards">
+				<a href={data.backHref}>
 					<Button variant="outline">Annulla</Button>
 				</a>
 			{/if}
@@ -285,7 +287,7 @@
 					database.
 				{/if}
 			</div>
-			<Button onclick={() => goto('/cards')}>Torna alle Carte</Button>
+			<Button onclick={() => goto(data.backHref)}>Torna indietro</Button>
 		{/if}
 	</div>
 </div>

@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
-import { cardRfid, subscribers } from '$lib/db/schema';
+import { cardRfid, subscribers, users } from '$lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { isMifareEnabled } from '$lib/services/mifare-keys';
 
@@ -16,10 +16,13 @@ export const load: PageServerLoad = async ({ params }) => {
 			status: cardRfid.status,
 			sector: cardRfid.sector,
 			subscriberFirstName: subscribers.firstName,
-			subscriberLastName: subscribers.lastName
+			subscriberLastName: subscribers.lastName,
+			userId: cardRfid.userId,
+			userName: users.name
 		})
 		.from(cardRfid)
 		.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+		.leftJoin(users, eq(cardRfid.userId, users.id))
 		.where(eq(cardRfid.id, cardId))
 		.limit(1);
 
@@ -29,5 +32,10 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const useMifare = await isMifareEnabled();
 
-	return { card: row, use_mifare: useMifare };
+	return {
+		card: row,
+		use_mifare: useMifare,
+		backHref: row.userId ? `/admin/users/${row.userId}` : '/cards',
+		backLabel: row.userId ? 'Dettaglio Staff' : 'Tessere'
+	};
 };

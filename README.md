@@ -2,7 +2,7 @@
 
 Applicazione SvelteKit che svolge tre ruoli distinti nello stack `nz_badge`:
 
-- pannello amministrativo per operatori e amministratori
+- pannello applicativo per collaboratori, operatori e amministratori
 - backend API per `reader-station`
 - supporto operativo alla scrittura e gestione card via browser/WebSerial
 
@@ -20,7 +20,9 @@ Il repository gestisce iscritti, corsi, card RFID/NFC, presenze, dispositivi reg
 - amministrazione dispositivi con token bearer hashati in `device_registry`
 - upload e attivazione firmware OTA per `reader-station`
 - sincronizzazione iscrizioni da API esterna e ricezione webhook push
-- gestione utenti admin/staff
+- gestione staff con ruoli Amministratore, Operatore e Collaboratore
+- card RFID e ingressi/uscite dedicati agli utenti di sistema, separati dalle presenze corsisti
+- riepilogo ore settimanale, mensile e per intervallo personalizzato
 - impostazioni runtime salvate a database:
   - regole presenze
   - modalita' MIFARE
@@ -37,12 +39,18 @@ Route principali in `src/routes/(app)`:
 - `/subscribers`
 - `/cards`
 - `/attendance`
+- `/staff-attendance`
+- `/my-attendance`
 - `/devices`
 - `/firmware`
 - `/settings`
 - `/admin/users`
 
 Accesso tramite login con cookie di sessione JWT.
+
+I Collaboratori vedono soltanto Panoramica, Ingressi collaboratori e I miei ingressi. Gli
+Operatori possono consultare lo Staff, gestire card e strisciate, ma la creazione, modifica e
+disattivazione degli account resta riservata agli Amministratori.
 
 ### 2. Device backend
 
@@ -91,22 +99,22 @@ cp .env.example .env
 
 ### Variabili ambiente
 
-| Variabile             | Obbligatoria | Uso                                                       |
-| --------------------- | ------------ | --------------------------------------------------------- |
-| `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script          |
-| `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin                   |
-| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy   |
+| Variabile             | Obbligatoria | Uso                                                                        |
+| --------------------- | ------------ | -------------------------------------------------------------------------- |
+| `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script                           |
+| `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin                                    |
+| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy                    |
 | `LEGACY_APP_HOSTS`    | no           | Lista host legacy separati da virgola da reindirizzare all'origin canonica |
-| `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`             |
-| `SMTP_HOST`           | no           | Host SMTP per il job riepilogo settimanale presenze       |
-| `SMTP_PORT`           | no           | Porta SMTP, default `587`                                 |
-| `SMTP_SECURE`         | no           | Usa TLS diretto SMTP, tipicamente `true` con porta `465`  |
-| `SMTP_USER`           | no           | Utente SMTP                                               |
-| `SMTP_PASS`           | no           | Password SMTP                                             |
-| `MAIL_FROM`           | no           | Mittente delle email automatiche                          |
-| `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                            |
-| `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                            |
-| `SEED_ADMIN_NAME`     | no           | Nome admin seed, default `Administrator`                  |
+| `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`                              |
+| `SMTP_HOST`           | no           | Host SMTP per il job riepilogo settimanale presenze                        |
+| `SMTP_PORT`           | no           | Porta SMTP, default `587`                                                  |
+| `SMTP_SECURE`         | no           | Usa TLS diretto SMTP, tipicamente `true` con porta `465`                   |
+| `SMTP_USER`           | no           | Utente SMTP                                                                |
+| `SMTP_PASS`           | no           | Password SMTP                                                              |
+| `MAIL_FROM`           | no           | Mittente delle email automatiche                                           |
+| `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                                             |
+| `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                                             |
+| `SEED_ADMIN_NAME`     | no           | Nome admin seed, default `Administrator`                                   |
 
 Note:
 
@@ -164,22 +172,22 @@ npm run dev
 
 ## Comandi
 
-| Comando                  | Descrizione                                                 |
-| ------------------------ | ----------------------------------------------------------- |
-| `npm run dev`            | Avvia il server di sviluppo                                 |
-| `npm run build`          | Build di produzione                                         |
-| `npm run preview`        | Preview locale della build                                  |
-| `npm run check`          | Type check SvelteKit/Svelte                                 |
-| `npm run lint`           | Prettier check + ESLint                                     |
-| `npm run format`         | Formatta il codice                                          |
-| `npm run test`           | Esegue i test Vitest                                        |
-| `npm run test:watch`     | Vitest in watch                                             |
-| `npm run test:e2e`       | Esegue Playwright                                           |
-| `npm run db:push`        | Sync schema Drizzle verso il DB                             |
-| `npm run db:generate`    | Genera nuove migration Drizzle                              |
-| `npm run db:migrate`     | Comando Drizzle Kit migrate                                 |
-| `npm run db:migrate:run` | Esegue le migration SQL presenti in `src/lib/db/migrations` |
-| `npm run db:seed`        | Crea il primo utente admin                                  |
+| Comando                                  | Descrizione                                                    |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| `npm run dev`                            | Avvia il server di sviluppo                                    |
+| `npm run build`                          | Build di produzione                                            |
+| `npm run preview`                        | Preview locale della build                                     |
+| `npm run check`                          | Type check SvelteKit/Svelte                                    |
+| `npm run lint`                           | Prettier check + ESLint                                        |
+| `npm run format`                         | Formatta il codice                                             |
+| `npm run test`                           | Esegue i test Vitest                                           |
+| `npm run test:watch`                     | Vitest in watch                                                |
+| `npm run test:e2e`                       | Esegue Playwright                                              |
+| `npm run db:push`                        | Sync schema Drizzle verso il DB                                |
+| `npm run db:generate`                    | Genera nuove migration Drizzle                                 |
+| `npm run db:migrate`                     | Comando Drizzle Kit migrate                                    |
+| `npm run db:migrate:run`                 | Esegue le migration SQL presenti in `src/lib/db/migrations`    |
+| `npm run db:seed`                        | Crea il primo utente admin                                     |
 | `npm run jobs:weekly-attendance-summary` | Invia il riepilogo settimanale presenze, se abilitato e dovuto |
 
 ### Job riepilogo settimanale presenze
@@ -208,6 +216,7 @@ src/
       migrations/            # migration SQL versionate
     services/
       attendance.ts          # logica presenze e batch offline
+      staff-attendance.ts    # presenze utenti, alternanza e riepiloghi ore
       auth.ts                # sessioni admin + token device
       card-writer.ts         # workflow scrittura/erase card
       enrollments.ts         # sync API esterna + webhook
@@ -236,6 +245,7 @@ Tabelle principali definite in `src/lib/db/schema.ts`:
 - `enrollment_sync_log`
 - `card_rfid`
 - `attendance`
+- `staff_attendance`
 - `device_registry`
 - `audit_log`
 - `settings`
@@ -260,9 +270,16 @@ La logica server:
 
 - valida bearer token + `X-Device-ID`
 - collega UID e iscritto
+- distingue card corsista e card staff
 - decide automaticamente `entry` o `exit`
 - ignora swipe troppo ravvicinati in base a `min_swipe_interval_minutes`
 - puo' creare pairing NFC al volo se esiste una sessione attiva
+
+Le presenze staff sono salvate in `staff_attendance`. Usano card attiva, tolleranza timestamp,
+intervallo minimo e alternanza giornaliera, ma non applicano mai le date di un corso. La
+cronologia viene calcolata per utente, quindi card RFID, pulsante della dashboard e inserimenti
+manuali possono essere combinati. Le presenze corsisti restano nella tabella `attendance` e
+continuano a richiedere un'iscrizione valida per la data della strisciata.
 
 ### Writer
 
@@ -270,7 +287,7 @@ Il writer non parla direttamente con un'API device dedicata: la scrittura avvien
 
 Flusso sintetico:
 
-1. operatore apre `/subscribers/[id]/write-card`
+1. operatore apre `/subscribers/[id]/write-card` oppure `/admin/users/[id]/write-card`
 2. UI richiede `POST /api/v1/card/write`
 3. il browser parla via seriale con il writer
 4. a scrittura conclusa la UI conferma con `POST /api/v1/card/validate`

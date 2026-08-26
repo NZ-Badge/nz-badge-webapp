@@ -25,6 +25,8 @@
 		name: string;
 		email: string;
 		role: UserRole;
+		status: 'active' | 'deleted';
+		deletedAt: string | null;
 		createdAt: string;
 		updatedAt: string;
 	}
@@ -36,6 +38,8 @@
 		password: string;
 		confirmPassword: string;
 	}
+
+	let { data } = $props();
 
 	// State
 	let users = $state<User[]>([]);
@@ -247,14 +251,14 @@
 			const data = await response.json();
 
 			if (!response.ok) {
-				throw new Error(data.error || 'Impossibile eliminare l’utente');
+				throw new Error(data.error || 'Impossibile disattivare l’utente');
 			}
 
-			users = users.filter((u) => u.id !== selectedUser!.id);
+			await loadUsers();
 			isDeleteDialogOpen = false;
-			showSuccess('Utente eliminato con successo');
+			showSuccess('Utente disattivato con successo');
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Impossibile eliminare l’utente';
+			error = err instanceof Error ? err.message : 'Impossibile disattivare l’utente';
 		} finally {
 			submitting = false;
 		}
@@ -280,15 +284,17 @@
 	<!-- Header -->
 	<div class="flex items-center justify-between">
 		<div>
-			<h1 class="text-2xl font-bold tracking-tight text-slate-900">Gestione utenti</h1>
+			<h1 class="text-2xl font-bold tracking-tight text-slate-900">Staff</h1>
 			<p class="text-sm text-slate-500 mt-1">
 				Gestisci gli utenti del sistema e i relativi livelli di accesso
 			</p>
 		</div>
-		<Button onclick={openCreateDialog} class="gap-2">
-			<Plus size={16} />
-			Aggiungi utente
-		</Button>
+		{#if data.canManageAccounts}
+			<Button onclick={openCreateDialog} class="gap-2">
+				<Plus size={16} />
+				Aggiungi utente
+			</Button>
+		{/if}
 	</div>
 
 	<!-- Alerts -->
@@ -327,6 +333,7 @@
 					<Table.Head class="w-[200px]">Nome</Table.Head>
 					<Table.Head>Email</Table.Head>
 					<Table.Head class="w-[100px]">Ruolo</Table.Head>
+					<Table.Head class="w-[100px]">Stato</Table.Head>
 					<Table.Head class="w-[120px]">Creato</Table.Head>
 					<Table.Head class="w-[100px] text-right">Azioni</Table.Head>
 				</Table.Row>
@@ -334,7 +341,7 @@
 			<Table.Body>
 				{#if loading}
 					<Table.Row>
-						<Table.Cell colspan={5} class="h-32 text-center">
+						<Table.Cell colspan={6} class="h-32 text-center">
 							<div class="flex items-center justify-center gap-2 text-slate-500">
 								<Loader2 class="h-5 w-5 animate-spin" />
 								<span>Caricamento utenti...</span>
@@ -343,7 +350,7 @@
 					</Table.Row>
 				{:else if filteredUsers.length === 0}
 					<Table.Row>
-						<Table.Cell colspan={5} class="h-32 text-center text-slate-500">
+						<Table.Cell colspan={6} class="h-32 text-center text-slate-500">
 							{searchQuery ? 'Nessun utente trovato per questa ricerca' : 'Nessun utente trovato'}
 						</Table.Cell>
 					</Table.Row>
@@ -357,7 +364,9 @@
 									{:else}
 										<User class="h-4 w-4 text-slate-400" />
 									{/if}
-									{user.name || '(senza nome)'}
+									<a href="/admin/users/{user.id}" class="hover:underline"
+										>{user.name || '(senza nome)'}</a
+									>
 								</div>
 							</Table.Cell>
 							<Table.Cell class="text-slate-600">{user.email}</Table.Cell>
@@ -366,35 +375,51 @@
 									class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
 									{user.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}"
 								>
-									{user.role === 'admin' ? 'Amministratore' : 'Operatore'}
+									{user.role === 'admin'
+										? 'Amministratore'
+										: user.role === 'staff'
+											? 'Operatore'
+											: 'Collaboratore'}
+								</span>
+							</Table.Cell>
+							<Table.Cell>
+								<span
+									class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium {user.status ===
+									'active'
+										? 'bg-green-100 text-green-800'
+										: 'bg-slate-100 text-slate-600'}"
+								>
+									{user.status === 'active' ? 'Attivo' : 'Disattivato'}
 								</span>
 							</Table.Cell>
 							<Table.Cell class="text-slate-500 text-sm">
 								{formatDate(user.createdAt)}
 							</Table.Cell>
 							<Table.Cell class="text-right">
-								<div
-									class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-								>
-									<Button
-										variant="ghost"
-										size="icon"
-										class="h-8 w-8"
-										onclick={() => openEditDialog(user)}
-										title="Modifica utente"
+								{#if data.canManageAccounts && user.status === 'active'}
+									<div
+										class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
 									>
-										<Pencil class="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										class="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-										onclick={() => openDeleteDialog(user)}
-										title="Elimina utente"
-									>
-										<Trash2 class="h-4 w-4" />
-									</Button>
-								</div>
+										<Button
+											variant="ghost"
+											size="icon"
+											class="h-8 w-8"
+											onclick={() => openEditDialog(user)}
+											title="Modifica utente"
+										>
+											<Pencil class="h-4 w-4" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="icon"
+											class="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+											onclick={() => openDeleteDialog(user)}
+											title="Disattiva utente"
+										>
+											<Trash2 class="h-4 w-4" />
+										</Button>
+									</div>
+								{/if}
 							</Table.Cell>
 						</Table.Row>
 					{/each}
@@ -450,6 +475,7 @@
 					class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 				>
 					<option value="staff">Operatore - accesso a dashboard, tessere e presenze</option>
+					<option value="collaborator">Collaboratore - accesso ai propri ingressi</option>
 					<option value="admin">Amministratore - accesso completo al sistema</option>
 				</select>
 			</div>
@@ -539,6 +565,7 @@
 					class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 				>
 					<option value="staff">Operatore - accesso a dashboard, tessere e presenze</option>
+					<option value="collaborator">Collaboratore - accesso ai propri ingressi</option>
 					<option value="admin">Amministratore - accesso completo al sistema</option>
 				</select>
 			</div>
@@ -596,11 +623,11 @@
 		<Dialog.Header>
 			<Dialog.Title class="flex items-center gap-2 text-red-600">
 				<AlertCircle class="h-5 w-5" />
-				Elimina utente
+				Disattiva utente
 			</Dialog.Title>
 			<Dialog.Description>
-				Sei sicuro di voler eliminare <strong>{selectedUser?.name || selectedUser?.email}</strong>?
-				Questa azione non può essere annullata.
+				Sei sicuro di voler disattivare <strong>{selectedUser?.name || selectedUser?.email}</strong
+				>? L’account verrà disattivato e lo storico resterà conservato.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -610,7 +637,7 @@
 				{#if submitting}
 					<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 				{/if}
-				Elimina utente
+				Disattiva utente
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

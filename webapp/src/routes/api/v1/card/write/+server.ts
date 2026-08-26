@@ -1,12 +1,13 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { cardWriteSchema } from '$lib/utils/validation';
 import { ok, badRequest, unauthorized, serverError, formatZodError } from '$lib/utils/api';
-import { authorizeCardWrite } from '$lib/services/card-writer';
-import { AuthError } from '$lib/services/auth';
+import { authorizeCardWrite, authorizeUserCardWrite } from '$lib/services/card-writer';
+import { AuthError, requireStaffManager } from '$lib/services/auth';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		const user = await event.locals.verifyAdmin();
+		requireStaffManager(user);
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}
@@ -22,7 +23,9 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	if (!parsed.success) return badRequest(formatZodError(parsed.error));
 
 	try {
-		const result = await authorizeCardWrite(parsed.data.subscriber_id);
+		const result = parsed.data.user_id
+			? await authorizeUserCardWrite(parsed.data.user_id)
+			: await authorizeCardWrite(parsed.data.subscriber_id!);
 		return ok(result);
 	} catch (err) {
 		console.error('[card/write] error:', err);

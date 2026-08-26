@@ -46,6 +46,7 @@
 			courseName: string | null;
 			status: string;
 		} | null;
+		user?: { id: number; name: string; email: string; role: string; status: string } | null;
 	};
 	let nonBlankUid = $state<string | null>(null);
 	let cardInfo = $state<CardInfo | null>(null);
@@ -77,7 +78,11 @@
 		const authRes = await fetch('/api/v1/card/write', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ subscriber_id: data.subscriber.id }),
+			body: JSON.stringify(
+				data.ownerType === 'user'
+					? { user_id: data.subscriber.id }
+					: { subscriber_id: data.subscriber.id }
+			),
 			credentials: 'include'
 		});
 		if (!authRes.ok) throw new Error('Impossibile ottenere l’autorizzazione di scrittura');
@@ -356,13 +361,13 @@
 
 <div class="mx-auto max-w-lg space-y-6">
 	<div class="flex items-center gap-3">
-		<a href="/subscribers" class="text-sm text-gray-500 hover:text-gray-900">← Iscritti</a>
+		<a href={data.backHref} class="text-sm text-gray-500 hover:text-gray-900">← {data.backLabel}</a>
 		<h1 class="text-xl font-bold">Scrivi tessera</h1>
 	</div>
 
 	<div class="space-y-4 rounded-lg border bg-white p-6">
 		<p class="text-gray-600">
-			Iscritto: <strong>{data.subscriber.firstName} {data.subscriber.lastName}</strong>
+			{data.ownerLabel}: <strong>{data.subscriber.firstName} {data.subscriber.lastName}</strong>
 		</p>
 
 		{#if !serialSupported}
@@ -456,8 +461,14 @@
 										<span class="ml-1">{cardInfo.subscriber.courseName}</span>
 									</p>
 								{/if}
+							{:else if cardInfo.user}
+								<div class="mt-3 rounded bg-gray-50 p-3 text-sm">
+									<span class="text-gray-500">Utente staff:</span>
+									<strong class="ml-1">{cardInfo.user.name}</strong>
+									<span class="text-gray-400"> — {cardInfo.user.email}</span>
+								</div>
 							{:else}
-								<p class="text-gray-500 italic">Nessun iscritto associato nel DB.</p>
+								<p class="text-gray-500 italic">Nessun titolare associato nel DB.</p>
 							{/if}
 						</div>
 					{/if}
@@ -508,7 +519,7 @@
 						standard. Non è possibile cancellarla né sovrascriverla senza conoscere la chiave
 						originale — questa è una limitazione del protocollo MIFARE Classic, non del software.
 					</p>
-					<p class="text-red-700">Usa una carta blank diversa per questo iscritto.</p>
+					<p class="text-red-700">Usa una carta blank diversa per questo titolare.</p>
 				</div>
 				<Button variant="outline" onclick={handleCancelErase}>Torna indietro</Button>
 			{:else if step === 'result'}
@@ -516,8 +527,8 @@
 					✓ Tessera scritta con successo.<br />
 					UID: <code class="font-mono">{resultUid}</code>
 				</div>
-				<a href="/subscribers">
-					<Button variant="outline">Torna agli iscritti</Button>
+				<a href={data.backHref}>
+					<Button variant="outline">Torna a {data.backLabel}</Button>
 				</a>
 			{/if}
 		{/if}

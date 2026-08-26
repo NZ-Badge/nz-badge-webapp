@@ -134,6 +134,13 @@
 			"when": 1783468800000,
 			"tag": "0017_enrollment_variant_and_contact_fields",
 			"breakpoints": true
+		},
+		{
+			"idx": 19,
+			"version": "7",
+			"when": 1787702400000,
+			"tag": "0018_staff_attendance",
+			"breakpoints": true
 		}
 	]
 }
