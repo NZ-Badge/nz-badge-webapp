@@ -117,7 +117,7 @@
 	<div class="mt-8 rounded-lg border bg-white">
 		<div class="flex items-center justify-between border-b px-5 py-3">
 			<h2 class="font-semibold">Le mie ultime 10 strisciate</h2>
-			<a href="/staff-attendance" class="text-sm text-blue-700 hover:underline">Vedi tutte →</a>
+			<a href="/my-attendance" class="text-sm text-blue-700 hover:underline">Vedi tutte →</a>
 		</div>
 		{#if data.recentStaffAttendance.length === 0}<p class="px-5 py-6 text-sm text-muted-foreground">
 				Nessuna strisciata registrata.

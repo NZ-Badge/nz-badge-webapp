@@ -287,9 +287,10 @@ Dal pannello amministrativo, data e ora di una presenza corsista possono essere 
 Amministratore/Operatore e sono registrate nell'audit log.
 
 Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia
-l'esportazione CSV per intervallo di date o persona. Gli endpoint di download sono rispettivamente
-`GET /api/v1/attendance/export` e `GET /api/v1/staff-attendance/export`; un collaboratore puo'
-esportare soltanto le proprie presenze.
+l'esportazione CSV per intervallo di date o persona. La pagina `/staff-attendance` e il relativo
+export sono riservati ad Amministratori e Operatori; i Collaboratori consultano le proprie
+presenze da `/my-attendance`. Gli endpoint di download sono rispettivamente
+`GET /api/v1/attendance/export` e `GET /api/v1/staff-attendance/export`.
 
 ### Writer
 

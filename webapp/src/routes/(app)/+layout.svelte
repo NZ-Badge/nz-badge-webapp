@@ -55,10 +55,14 @@
 			: [])
 	]);
 
-	const attendanceLinks = $derived([
-		...(isStaffManager ? [{ href: '/attendance', label: 'Corsisti', icon: ClipboardList }] : []),
-		{ href: '/staff-attendance', label: 'Collaboratori', icon: LogIn }
-	]);
+	const attendanceLinks = $derived(
+		isStaffManager
+			? [
+					{ href: '/attendance', label: 'Corsisti', icon: ClipboardList },
+					{ href: '/staff-attendance', label: 'Collaboratori', icon: LogIn }
+				]
+			: []
+	);
 
 	// Admin submenu links (only visible to admin users)
 	const adminLinks = $derived([
@@ -193,41 +197,43 @@
 					</li>
 				{/each}
 
-				<li role="none" class="pt-2">
-					<button
-						type="button"
-						role="menuitem"
-						aria-expanded={attendanceSubmenuOpen}
-						class="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
+				{#if isStaffManager}
+					<li role="none" class="pt-2">
+						<button
+							type="button"
+							role="menuitem"
+							aria-expanded={attendanceSubmenuOpen}
+							class="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
 						{isAttendanceActive
-							? 'bg-blue-600 text-white'
-							: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
-						onclick={toggleAttendanceSubmenu}
-					>
-						<LogIn size={18} />
-						<span class="flex-1 text-left">Ingressi</span>
-						<ChevronDown
-							size={16}
-							class="transition-transform {attendanceSubmenuOpen ? 'rotate-180' : ''}"
-						/>
-					</button>
-					{#if attendanceSubmenuOpen || isAttendanceActive}
-						<ul class="mt-1 space-y-1 pl-4" role="menu">
-							{#each attendanceLinks as link}
-								{@const isActive = isActiveLink(link.href)}
-								<li>
-									<a
-										href={link.href}
-										class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
-											? 'bg-blue-600/50 text-white'
-											: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
-										onclick={closeSidebar}><link.icon size={16} /><span>{link.label}</span></a
-									>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</li>
+								? 'bg-blue-600 text-white'
+								: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
+							onclick={toggleAttendanceSubmenu}
+						>
+							<LogIn size={18} />
+							<span class="flex-1 text-left">Ingressi</span>
+							<ChevronDown
+								size={16}
+								class="transition-transform {attendanceSubmenuOpen ? 'rotate-180' : ''}"
+							/>
+						</button>
+						{#if attendanceSubmenuOpen || isAttendanceActive}
+							<ul class="mt-1 space-y-1 pl-4" role="menu">
+								{#each attendanceLinks as link}
+									{@const isActive = isActiveLink(link.href)}
+									<li>
+										<a
+											href={link.href}
+											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
+												? 'bg-blue-600/50 text-white'
+												: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
+											onclick={closeSidebar}><link.icon size={16} /><span>{link.label}</span></a
+										>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</li>
+				{/if}
 
 				<li role="none">
 					<a

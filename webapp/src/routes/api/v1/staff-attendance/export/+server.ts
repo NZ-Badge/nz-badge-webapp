@@ -58,19 +58,13 @@ function sourceLabel(source: 'card' | 'manual' | 'simulation'): string {
 export const GET: RequestHandler = async ({ locals, url }) => {
 	try {
 		const actor = await locals.verifyUser();
+		if (!isStaffManager(actor)) {
+			return json({ error: 'Operazione non consentita' }, { status: 403 });
+		}
 		const parsed = parseExportFilters(url);
 		if (!parsed.ok) return json({ error: parsed.message }, { status: 400 });
 
-		if (
-			parsed.filters.email &&
-			!isStaffManager(actor) &&
-			parsed.filters.email.toLocaleLowerCase() !== actor.email.toLocaleLowerCase()
-		) {
-			return json({ error: 'Operazione non consentita' }, { status: 403 });
-		}
-
 		const conditions: SQL[] = [];
-		if (!isStaffManager(actor)) conditions.push(eq(staffAttendance.userId, actor.id));
 		if (parsed.filters.email) conditions.push(eq(users.email, parsed.filters.email));
 		if (parsed.filters.from) {
 			conditions.push(
