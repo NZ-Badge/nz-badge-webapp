@@ -77,6 +77,7 @@ La tabella `audit_log` viene usata per tracciare varie operazioni sensibili, tra
 
 - creazione/modifica/cancellazione subscriber
 - flussi card write/erase
+- modifica dell'orario delle presenze corsisti
 - inserimenti e modifiche delle strisciate staff
 - soft delete degli account
 - operazioni amministrative specifiche

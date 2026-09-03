@@ -153,12 +153,16 @@
 	</div>
 
 	<!-- Info -->
-	<div class="rounded-lg border bg-white p-5 space-y-3">
-		<h2 class="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Anagrafica</h2>
-		<dl class="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+	<div class="rounded-lg border bg-white">
+		<div class="border-b px-5 py-3">
+			<h2 class="font-semibold">Anagrafica</h2>
+		</div>
+		<dl class="grid grid-cols-1 gap-2 px-5 py-4 text-sm sm:grid-cols-2">
 			<div class="flex gap-2">
 				<dt class="w-32 text-muted-foreground shrink-0">Email</dt>
-				<dd class="font-medium">{sub.email}</dd>
+				<dd class="font-medium">
+					<a href={`mailto:${sub.email}`} class="hover:underline">{sub.email}</a>
+				</dd>
 			</div>
 			<div class="flex gap-2">
 				<dt class="w-32 text-muted-foreground shrink-0">Telefono</dt>
@@ -179,6 +183,56 @@
 				</div>
 			{/if}
 		</dl>
+	</div>
+
+	<!-- Cards -->
+	<div class="rounded-lg border bg-white">
+		<div class="flex items-center justify-between px-5 py-3 border-b">
+			<h2 class="font-semibold">Tessere</h2>
+			{#if !data.cards.some((c) => c.status === 'active' && c.type === 'rfid')}
+				<a href="/subscribers/{sub.id}/write-card">
+					<Button size="sm" variant="outline"
+						><CreditCard size={14} class="mr-1" /> Scrivi card RFID</Button
+					>
+				</a>
+			{/if}
+		</div>
+		{#if data.cards.length === 0}
+			<p class="px-5 py-4 text-sm text-muted-foreground">Nessuna tessera associata.</p>
+		{:else}
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead>UID</TableHead>
+						<TableHead>Tipo</TableHead>
+						<TableHead>Stato</TableHead>
+						<TableHead>Scritta il</TableHead>
+						<TableHead>Scadenza</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{#each data.cards as card}
+						<TableRow>
+							<TableCell class="font-mono text-sm font-medium">{card.uid}</TableCell>
+							<TableCell>
+								{#if card.type === 'nfc'}
+									<span class="flex items-center gap-1"><Smartphone size={12} /> NFC</span>
+								{:else}
+									<span class="flex items-center gap-1"><CreditCard size={12} /> RFID</span>
+								{/if}
+							</TableCell>
+							<TableCell>
+								<Badge variant={cardStatusVariant(card.status ?? '')}
+									>{cardStatusLabel(card.status ?? '')}</Badge
+								>
+							</TableCell>
+							<TableCell>{formatDate(card.writeDate)}</TableCell>
+							<TableCell>{formatDate(card.expirationDate)}</TableCell>
+						</TableRow>
+					{/each}
+				</TableBody>
+			</Table>
+		{/if}
 	</div>
 
 	<!-- Iscrizioni -->
@@ -285,60 +339,6 @@
 		{/if}
 	</div>
 
-	<!-- Cards -->
-	<div class="rounded-lg border bg-white">
-		<div class="flex items-center justify-between px-5 py-3 border-b">
-			<h2 class="font-semibold">Tessere</h2>
-			{#if !data.cards.some((c) => c.status === 'active' && c.type === 'rfid')}
-				<a href="/subscribers/{sub.id}/write-card">
-					<Button size="sm" variant="outline"
-						><CreditCard size={14} class="mr-1" /> Scrivi card RFID</Button
-					>
-				</a>
-			{/if}
-		</div>
-		{#if data.cards.length === 0}
-			<p class="px-5 py-4 text-sm text-muted-foreground">Nessuna tessera associata.</p>
-		{:else}
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>UID</TableHead>
-						<TableHead>Tipo</TableHead>
-						<TableHead>Stato</TableHead>
-						<TableHead>Scritta il</TableHead>
-						<TableHead>Scadenza</TableHead>
-						<TableHead>Dispositivo</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{#each data.cards as card}
-						<TableRow>
-							<TableCell class="font-mono text-xs">{card.uid}</TableCell>
-							<TableCell>
-								{#if card.type === 'nfc'}
-									<span class="flex items-center gap-1"><Smartphone size={12} /> NFC</span>
-								{:else}
-									<span class="flex items-center gap-1"><CreditCard size={12} /> RFID</span>
-								{/if}
-							</TableCell>
-							<TableCell>
-								<Badge variant={cardStatusVariant(card.status ?? '')}
-									>{cardStatusLabel(card.status ?? '')}</Badge
-								>
-							</TableCell>
-							<TableCell>{formatDate(card.writeDate)}</TableCell>
-							<TableCell>{formatDate(card.expirationDate)}</TableCell>
-							<TableCell class="text-xs text-muted-foreground"
-								>{card.writtenByDevice ?? '—'}</TableCell
-							>
-						</TableRow>
-					{/each}
-				</TableBody>
-			</Table>
-		{/if}
-	</div>
-
 	<!-- Presenze recenti -->
 	<div class="rounded-lg border bg-white">
 		<div class="flex items-center justify-between px-5 py-3 border-b">
@@ -359,22 +359,20 @@
 						<TableHead>Data / ora</TableHead>
 						<TableHead>Tipo</TableHead>
 						<TableHead>Dispositivo</TableHead>
-						<TableHead class="w-20 text-center">Offline</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
 					{#each data.recentAttendance as row}
 						<TableRow>
-							<TableCell class="font-mono text-xs">{formatDateTime(row.readTimestamp)}</TableCell>
+							<TableCell class="font-mono text-sm font-medium"
+								>{formatDateTime(row.readTimestamp)}</TableCell
+							>
 							<TableCell>
 								<Badge variant={row.eventType === 'entry' ? 'default' : 'secondary'}>
 									{eventTypeLabel(row.eventType)}
 								</Badge>
 							</TableCell>
 							<TableCell class="text-xs text-muted-foreground">{row.deviceId}</TableCell>
-							<TableCell class="text-center text-xs">
-								{row.offlineQueued ? '✓' : ''}
-							</TableCell>
 						</TableRow>
 					{/each}
 				</TableBody>

@@ -1,14 +1,21 @@
 import type { RequestEvent } from '@sveltejs/kit';
+import { z } from 'zod';
 import { attendanceSingleSchema } from '$lib/utils/validation';
 import {
 	ok,
 	badRequest,
 	unauthorized,
+	notFound,
 	tooManyRequests,
 	serverError,
 	formatZodError
 } from '$lib/utils/api';
 import { processSingleAttendance } from '$lib/services/attendance';
+import {
+	parseSubscriberAttendanceDateTime,
+	SubscriberAttendanceAdminError,
+	updateSubscriberAttendanceTimestamp
+} from '$lib/services/subscriber-attendance-admin';
 import { AuthError } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { attendance, subscribers } from '$lib/db/schema';
@@ -16,6 +23,11 @@ import { and, gte, inArray, like, lte, sql } from 'drizzle-orm';
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
 const deviceRequestLog = new Map<string, number[]>();
+
+const updateTimestampSchema = z.object({
+	id: z.number().int().positive(),
+	readTimestamp: z.string()
+});
 
 function checkRateLimit(deviceId: string, maxRequests = 10, windowMs = 1000): boolean {
 	const now = Date.now();
@@ -67,6 +79,42 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		});
 	} catch (err) {
 		console.error('[attendance] processSingleAttendance error:', err);
+		return serverError();
+	}
+}
+
+export async function PATCH(event: RequestEvent): Promise<Response> {
+	let actor;
+	try {
+		actor = await event.locals.verifyAdmin();
+	} catch (err) {
+		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+	}
+
+	let body: unknown;
+	try {
+		body = await event.request.json();
+	} catch {
+		return badRequest('JSON non valido');
+	}
+
+	const parsed = updateTimestampSchema.safeParse(body);
+	if (!parsed.success) {
+		return badRequest('Dati non validi', parsed.error.flatten().fieldErrors);
+	}
+
+	try {
+		const updated = await updateSubscriberAttendanceTimestamp({
+			actor,
+			attendanceId: parsed.data.id,
+			readTimestamp: parseSubscriberAttendanceDateTime(parsed.data.readTimestamp)
+		});
+		return ok({ event: updated });
+	} catch (err) {
+		if (err instanceof SubscriberAttendanceAdminError) {
+			return err.code === 'NOT_FOUND' ? notFound(err.message) : badRequest(err.message);
+		}
+		console.error('[attendance] PATCH error:', err);
 		return serverError();
 	}
 }

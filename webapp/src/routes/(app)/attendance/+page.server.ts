@@ -43,6 +43,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		db
 			.select({
 				id: attendance.id,
+				subscriberId: attendance.subscriberId,
 				cardUid: attendance.cardUid,
 				deviceId: attendance.deviceId,
 				eventType: attendance.eventType,

@@ -10,6 +10,7 @@ import { AuthError, requireAdmin } from '$lib/services/auth';
 interface SettingsMap {
 	reset_entry_type_daily: boolean;
 	min_swipe_interval_minutes: number;
+	enforce_course_date_range: boolean;
 	weekly_attendance_summary_enabled: boolean;
 	use_mifare: boolean;
 	use_single_mifare_key: boolean;

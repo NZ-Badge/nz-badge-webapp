@@ -164,7 +164,7 @@
 					<CreditCard size={18} class="text-white" />
 				</div>
 				<div class="flex flex-col">
-					<span class="text-sm font-semibold text-white">Presenze RFID</span>
+					<span class="text-sm font-semibold text-white">NZBadge</span>
 					<span class="text-xs text-slate-400">v{data.version}</span>
 				</div>
 			</div>

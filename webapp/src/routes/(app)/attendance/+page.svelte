@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
+	import { Pencil } from '@lucide/svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -23,10 +24,62 @@
 	} from '$lib/components/ui/table';
 
 	let { data } = $props();
+	let editOpen = $state(false);
+	let editingId = $state<number | null>(null);
+	let editTimestamp = $state('');
+	let editError = $state('');
+	let editBusy = $state(false);
 
 	function formatDateTime(d: Date | string | null) {
 		if (!d) return '—';
-		return new Date(d).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'medium' });
+		return new Date(d).toLocaleString('it-IT', {
+			timeZone: 'Europe/Rome',
+			dateStyle: 'short',
+			timeStyle: 'medium'
+		});
+	}
+
+	function toRomeInput(value: Date | string): string {
+		const parts = new Intl.DateTimeFormat('en-CA', {
+			timeZone: 'Europe/Rome',
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: 'h23'
+		}).formatToParts(new Date(value));
+		const p = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+		return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+	}
+
+	function openEdit(row: { id: number; readTimestamp: Date | string }) {
+		editingId = row.id;
+		editTimestamp = toRomeInput(row.readTimestamp);
+		editError = '';
+		editOpen = true;
+	}
+
+	async function saveEdit() {
+		if (editingId === null || !editTimestamp) return;
+		editBusy = true;
+		editError = '';
+
+		try {
+			const response = await fetch('/api/v1/attendance', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: editingId, readTimestamp: editTimestamp })
+			});
+			const body = await response.json().catch(() => ({}));
+			if (!response.ok) throw new Error(body.error ?? 'Modifica non riuscita');
+			editOpen = false;
+			await invalidateAll();
+		} catch (err) {
+			editError = err instanceof Error ? err.message : 'Modifica non riuscita';
+		} finally {
+			editBusy = false;
+		}
 	}
 
 	function buildUrl(
@@ -64,17 +117,17 @@
 		);
 	}
 
-	// Genera array di pagine da mostrare: prime, ultime, vicine alla corrente, con ellissi
 	function getPageNumbers(current: number, total: number): (number | null)[] {
 		if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-		const pages = new Set<number>();
-		pages.add(1);
-		pages.add(total);
-		for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pages.add(i);
+		const pages = new Set<number>([1, total]);
+		for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) {
+			pages.add(i);
+		}
+
 		const sorted = [...pages].sort((a, b) => a - b);
 		const result: (number | null)[] = [];
 		for (let i = 0; i < sorted.length; i++) {
-			if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push(null); // ellissi
+			if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push(null);
 			result.push(sorted[i]);
 		}
 		return result;
@@ -211,16 +264,16 @@
 	}
 </script>
 
-<div class="space-y-4">
-	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold">Presenze</h1>
+<div class="space-y-5">
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<h1 class="text-2xl font-bold">Ingressi corsisti</h1>
 		<div class="flex items-center gap-2">
 			{#if selectionCount > 0}
 				<Button variant="destructive" size="sm" disabled={isDeleting} onclick={deleteSelected}>
 					{isDeleting ? 'Eliminazione...' : `Elimina ${selectionCount}`}
 				</Button>
 			{/if}
-			<Button variant="outline" size="sm" onclick={openExportDialog}>Esporta CSV</Button>
+			<Button variant="outline" onclick={openExportDialog}>Esporta CSV</Button>
 		</div>
 	</div>
 
@@ -303,7 +356,7 @@
 			<Input
 				id="subscriber"
 				name="subscriber"
-				placeholder="Nome o email..."
+				placeholder="Nome o email…"
 				value={data.subscriber}
 				class="w-48"
 			/>
@@ -313,16 +366,15 @@
 			<Input
 				id="device"
 				name="device"
-				placeholder="ID dispositivo..."
+				placeholder="ID dispositivo…"
 				value={data.device}
-				class="w-36"
+				class="w-40"
 			/>
 		</div>
 		<Button type="submit" variant="outline" disabled={isLoading}>Filtra</Button>
 		<Button
 			type="button"
 			variant="ghost"
-			size="sm"
 			onclick={() => {
 				selectedIds = new Set();
 				selectAllFiltered = false;
@@ -358,10 +410,12 @@
 	{/if}
 
 	<!-- Tabella con overlay loading -->
-	<div class="relative">
+	<div class="relative rounded-lg border bg-white">
 		{#if isLoading}
-			<div class="absolute inset-0 z-10 flex items-center justify-center rounded bg-white/60">
-				<span class="text-sm text-gray-500">Caricamento...</span>
+			<div
+				class="absolute inset-0 z-10 grid place-items-center bg-white/60 text-sm text-muted-foreground"
+			>
+				Caricamento…
 			</div>
 		{/if}
 		<Table>
@@ -382,9 +436,17 @@
 					<TableHead>Evento</TableHead>
 					<TableHead>Dispositivo</TableHead>
 					<TableHead>Offline</TableHead>
+					<TableHead class="text-right">Azioni</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
+				{#if data.rows.length === 0}
+					<TableRow>
+						<TableCell colspan={7} class="h-28 text-center text-muted-foreground">
+							Nessuna presenza trovata.
+						</TableCell>
+					</TableRow>
+				{/if}
 				{#each data.rows as row}
 					<TableRow class={selectedIds.has(row.id) || selectAllFiltered ? 'bg-blue-50' : ''}>
 						<TableCell>
@@ -398,17 +460,35 @@
 								aria-label="Seleziona record"
 							/>
 						</TableCell>
-						<TableCell class="whitespace-nowrap">{formatDateTime(row.readTimestamp)}</TableCell>
 						<TableCell>
-							{row.subscriberName ? `${row.subscriberName} ${row.subscriberSurname}` : '—'}
+							<span class="font-mono text-xs">{formatDateTime(row.readTimestamp)}</span>
+						</TableCell>
+						<TableCell>
+							{#if row.subscriberId && row.subscriberName}
+								<a href={`/subscribers/${row.subscriberId}`} class="font-medium hover:underline">
+									{`${row.subscriberName} ${row.subscriberSurname}`}
+								</a>
+							{:else}
+								—
+							{/if}
 						</TableCell>
 						<TableCell>
 							<Badge variant={row.eventType === 'entry' ? 'default' : 'secondary'}>
 								{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}
 							</Badge>
 						</TableCell>
-						<TableCell class="font-mono text-sm">{row.deviceId}</TableCell>
-						<TableCell>{row.offlineQueued ? '📴' : ''}</TableCell>
+						<TableCell class="text-xs text-muted-foreground">{row.deviceId}</TableCell>
+						<TableCell>{row.offlineQueued ? '✓' : ''}</TableCell>
+						<TableCell class="text-right">
+							<Button
+								size="icon"
+								variant="ghost"
+								title="Modifica orario"
+								onclick={() => openEdit(row)}
+							>
+								<Pencil size={15} />
+							</Button>
+						</TableCell>
 					</TableRow>
 				{/each}
 			</TableBody>
@@ -417,44 +497,64 @@
 
 	<!-- Paginazione -->
 	{#if data.totalPages > 1}
-		<div class="flex items-center justify-between text-sm text-gray-600">
-			<span>{data.total} record &mdash; pagina {data.page} di {data.totalPages}</span>
-			<div class="flex items-center gap-1">
+		<div class="flex items-center justify-between text-sm">
+			<span>Pagina {data.page} di {data.totalPages}</span>
+			<div class="flex items-center gap-2">
 				<Button
 					variant="outline"
 					size="sm"
 					disabled={data.page <= 1 || isLoading}
 					onclick={() => goto(buildUrl(data.page - 1))}
 				>
-					&lsaquo; Prec.
+					Precedente
 				</Button>
-
-				{#each getPageNumbers(data.page, data.totalPages) as p}
-					{#if p === null}
-						<span class="px-1 text-gray-400">&hellip;</span>
+				{#each getPageNumbers(data.page, data.totalPages) as pageNumber}
+					{#if pageNumber === null}
+						<span class="text-muted-foreground">…</span>
 					{:else}
 						<Button
-							variant={p === data.page ? 'default' : 'outline'}
+							variant={pageNumber === data.page ? 'default' : 'outline'}
 							size="sm"
-							disabled={p === data.page || isLoading}
-							onclick={() => goto(buildUrl(p))}
+							disabled={pageNumber === data.page || isLoading}
+							onclick={() => goto(buildUrl(pageNumber))}
 						>
-							{p}
+							{pageNumber}
 						</Button>
 					{/if}
 				{/each}
-
 				<Button
 					variant="outline"
 					size="sm"
 					disabled={data.page >= data.totalPages || isLoading}
 					onclick={() => goto(buildUrl(data.page + 1))}
 				>
-					Succ. &rsaquo;
+					Successiva
 				</Button>
 			</div>
 		</div>
-	{:else}
-		<p class="text-sm text-gray-500">{data.total} record</p>
 	{/if}
 </div>
+
+<Dialog bind:open={editOpen}>
+	<DialogContent class="sm:max-w-sm">
+		<DialogHeader>
+			<DialogTitle>Modifica orario</DialogTitle>
+			<DialogDescription>
+				È possibile modificare soltanto data e ora della presenza.
+			</DialogDescription>
+		</DialogHeader>
+		<div class="space-y-2 py-2">
+			<Label for="edit-time">Data e ora</Label>
+			<Input id="edit-time" type="datetime-local" bind:value={editTimestamp} />
+			{#if editError}
+				<p class="text-sm text-red-600">{editError}</p>
+			{/if}
+		</div>
+		<DialogFooter>
+			<Button variant="outline" onclick={() => (editOpen = false)}>Annulla</Button>
+			<Button onclick={saveEdit} disabled={editBusy}>
+				{editBusy ? 'Salvataggio…' : 'Salva'}
+			</Button>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>

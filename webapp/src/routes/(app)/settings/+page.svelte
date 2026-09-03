@@ -37,6 +37,7 @@
 	// Stato locale dei settings
 	let resetEntryTypeDaily = $state(getInitialValues().reset_entry_type_daily ?? true);
 	let minSwipeIntervalMinutes = $state(getInitialValues().min_swipe_interval_minutes ?? 15);
+	let enforceCourseDateRange = $state(getInitialValues().enforce_course_date_range ?? true);
 	let weeklyAttendanceSummaryEnabled = $state(
 		getInitialValues().weekly_attendance_summary_enabled ?? false
 	);
@@ -157,6 +158,7 @@
 				body: JSON.stringify({
 					reset_entry_type_daily: resetEntryTypeDaily,
 					min_swipe_interval_minutes: minSwipeIntervalMinutes,
+					enforce_course_date_range: enforceCourseDateRange,
 					weekly_attendance_summary_enabled: weeklyAttendanceSummaryEnabled,
 					// Invia use_single_mifare_key solo se MIFARE è abilitato
 					...(useMifare ? { use_single_mifare_key: useSingleMifareKey } : {}),
@@ -314,7 +316,23 @@
 				<Switch id="reset-entry-type" bind:checked={resetEntryTypeDaily} />
 			</div>
 
-			<!-- Setting 2: Intervallo minimo -->
+			<!-- Setting 2: Validazione date corso -->
+			<div class="flex items-start justify-between gap-4 rounded-lg border p-4">
+				<div class="flex-1 space-y-1">
+					<div class="flex items-center gap-2">
+						<Label for="enforce-course-date-range" class="text-base font-medium">
+							Valida le date del corso
+						</Label>
+					</div>
+					<p class="text-sm text-gray-500">
+						Se abilitato, le strisciate dei corsisti sono accettate solo quando la data rientra
+						nell'intervallo di almeno una loro iscrizione. La regola non si applica allo staff.
+					</p>
+				</div>
+				<Switch id="enforce-course-date-range" bind:checked={enforceCourseDateRange} />
+			</div>
+
+			<!-- Setting 3: Intervallo minimo -->
 			<div class="space-y-3 rounded-lg border p-4">
 				<div class="space-y-1">
 					<Label for="min-interval" class="text-base font-medium">

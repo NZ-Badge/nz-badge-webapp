@@ -108,7 +108,8 @@ Il tipo effettivo restituito in `actions[].type` e salvato nel database e' deter
 ### Validazione applicativa di una strisciata
 
 Le condizioni di rifiuto sono valutate in quest'ordine. Il controllo corso e' esclusivo del
-percorso corsista:
+percorso corsista ed e' applicato solo quando il setting `enforce_course_date_range` e' abilitato
+(valore predefinito: `true`):
 
 | `rejection_reason`         | Ambito        | Condizione                                                                                     |
 | -------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
@@ -132,6 +133,7 @@ risposta al reader non cambia.
 
 Per il controllo corso:
 
+- puo' essere abilitato o disabilitato dal riquadro **Regole Presenze** in `/settings`;
 - la data civile viene calcolata nel fuso `Europe/Rome`;
 - `startDate` ed `endDate` sono inclusivi: `startDate <= data <= endDate`;
 - basta una qualsiasi iscrizione dello stesso subscriber con entrambe le date compatibili;

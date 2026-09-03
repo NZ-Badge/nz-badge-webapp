@@ -32,6 +32,7 @@ const TOLERANCE_MS = 30 * 24 * 60 * 60 * 1000;
 interface AttendanceSettings {
 	resetEntryTypeDaily: boolean;
 	minSwipeIntervalMinutes: number;
+	enforceCourseDateRange: boolean;
 }
 
 export interface AttendanceAction {
@@ -104,18 +105,22 @@ async function loadAttendanceSettings(tx?: DbOrTx): Promise<AttendanceSettings> 
 
 	let resetEntryTypeDaily = true; // default
 	let minSwipeIntervalMinutes = 15; // default
+	let enforceCourseDateRange = true; // default
 
 	for (const setting of allSettings) {
 		if (setting.key === 'reset_entry_type_daily') {
 			resetEntryTypeDaily = setting.value === 'true';
 		} else if (setting.key === 'min_swipe_interval_minutes') {
 			minSwipeIntervalMinutes = parseInt(setting.value, 10) || 15;
+		} else if (setting.key === 'enforce_course_date_range') {
+			enforceCourseDateRange = setting.value === 'true';
 		}
 	}
 
 	return {
 		resetEntryTypeDaily,
-		minSwipeIntervalMinutes
+		minSwipeIntervalMinutes,
+		enforceCourseDateRange
 	};
 }
 
@@ -181,21 +186,24 @@ async function isWithinSubscriberCourseRange(
 	return !!matchingEnrollment;
 }
 
-async function getAttendanceRejectionReason(params: {
-	cardActive: boolean;
-	subscriberId: number | null | undefined;
-	withinTolerance: boolean;
-	timestamp: string;
-	tx?: DbOrTx;
-}): Promise<AttendanceRejectionReason | null> {
+export async function getAttendanceRejectionReason(
+	params: {
+		cardActive: boolean;
+		subscriberId: number | null | undefined;
+		withinTolerance: boolean;
+		timestamp: string;
+		enforceCourseDateRange: boolean;
+		tx?: DbOrTx;
+	},
+	courseRangeLookup?: () => Promise<boolean>
+): Promise<AttendanceRejectionReason | null> {
 	if (!params.cardActive) return 'unknown_card';
 	if (!params.withinTolerance) return 'timestamp_out_of_range';
+	if (!params.enforceCourseDateRange) return null;
 
-	const withinCourseRange = await isWithinSubscriberCourseRange(
-		params.subscriberId,
-		params.timestamp,
-		params.tx
-	);
+	const withinCourseRange = courseRangeLookup
+		? await courseRangeLookup()
+		: await isWithinSubscriberCourseRange(params.subscriberId, params.timestamp, params.tx);
 
 	return withinCourseRange ? null : 'course_date_out_of_range';
 }
@@ -332,7 +340,8 @@ export async function processSingleAttendance(
 					cardActive,
 					subscriberId: cardRow?.card?.subscriberId,
 					withinTolerance,
-					timestamp: timestampToUse
+					timestamp: timestampToUse,
+					enforceCourseDateRange: attendanceSettings.enforceCourseDateRange
 				});
 		const validated = rejectionReason === null;
 
@@ -507,6 +516,7 @@ export async function processBatchAttendance(
 						subscriberId: cardRow?.card?.subscriberId,
 						withinTolerance,
 						timestamp: timestampToUse,
+						enforceCourseDateRange: attendanceSettings.enforceCourseDateRange,
 						tx
 					});
 			const validated = rejectionReason === null;

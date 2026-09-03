@@ -281,6 +281,10 @@ cronologia viene calcolata per utente, quindi card RFID, pulsante della dashboar
 manuali possono essere combinati. Le presenze corsisti restano nella tabella `attendance` e
 continuano a richiedere un'iscrizione valida per la data della strisciata.
 
+Dal pannello amministrativo, data e ora di una presenza corsista possono essere corrette tramite
+`PATCH /api/v1/attendance`; l'operazione richiede una sessione Amministratore/Operatore ed e'
+registrata nell'audit log.
+
 ### Writer
 
 Il writer non parla direttamente con un'API device dedicata: la scrittura avviene dal browser admin tramite WebSerial.

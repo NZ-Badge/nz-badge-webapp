@@ -107,10 +107,7 @@
 
 <div class="space-y-5">
 	<div class="flex flex-wrap items-center justify-between gap-3">
-		<div>
-			<h1 class="text-2xl font-bold">Ingressi collaboratori</h1>
-			<p class="text-sm text-muted-foreground">{data.total} eventi registrati</p>
-		</div>
+		<h1 class="text-2xl font-bold">Ingressi collaboratori</h1>
 		<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
 	</div>
 
