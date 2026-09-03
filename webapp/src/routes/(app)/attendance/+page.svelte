@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
-	import { Pencil } from '@lucide/svelte';
+	import { Pencil, Plus } from '@lucide/svelte';
+	import AttendanceExportDialog from '$lib/components/AttendanceExportDialog.svelte';
+	import SubscriberManualEntryDialog from '$lib/components/SubscriberManualEntryDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import {
@@ -29,6 +31,8 @@
 	let editTimestamp = $state('');
 	let editError = $state('');
 	let editBusy = $state(false);
+	let manualOpen = $state(false);
+	let exportDialogOpen = $state(false);
 
 	function formatDateTime(d: Date | string | null) {
 		if (!d) return '—';
@@ -139,12 +143,6 @@
 	let selectedIds = $state(new Set<number>());
 	let selectAllFiltered = $state(false);
 	let isDeleting = $state(false);
-	let exportDialogOpen = $state(false);
-	let exportMode = $state<'dates' | 'email'>('dates');
-	let exportFrom = $state('');
-	let exportTo = $state('');
-	let exportEmail = $state('');
-	let exportError = $state('');
 
 	const allPageSelected = $derived(
 		data.rows.length > 0 && data.rows.every((r) => selectedIds.has(r.id))
@@ -225,121 +223,32 @@
 			isDeleting = false;
 		}
 	}
-
-	function openExportDialog() {
-		exportMode = 'dates';
-		exportFrom = data.from;
-		exportTo = data.to;
-		exportEmail = data.subscriber.includes('@') ? data.subscriber : '';
-		exportError = '';
-		exportDialogOpen = true;
-	}
-
-	function submitExport() {
-		exportError = '';
-		const params = new URLSearchParams();
-
-		if (exportMode === 'dates') {
-			if (!exportFrom || !exportTo) {
-				exportError = 'Inserisci sia la data inizio sia la data fine.';
-				return;
-			}
-			if (new Date(exportFrom).getTime() > new Date(exportTo).getTime()) {
-				exportError = 'La data inizio non può essere successiva alla data fine.';
-				return;
-			}
-			params.set('from', exportFrom);
-			params.set('to', exportTo);
-		} else {
-			const email = exportEmail.trim();
-			if (!email || !email.includes('@')) {
-				exportError = 'Inserisci una email valida.';
-				return;
-			}
-			params.set('email', email);
-		}
-
-		exportDialogOpen = false;
-		window.location.href = `/api/v1/attendance/export?${params.toString()}`;
-	}
 </script>
 
 <div class="space-y-5">
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<h1 class="text-2xl font-bold">Ingressi corsisti</h1>
-		<div class="flex items-center gap-2">
+		<div class="flex flex-wrap items-center gap-2">
 			{#if selectionCount > 0}
 				<Button variant="destructive" size="sm" disabled={isDeleting} onclick={deleteSelected}>
 					{isDeleting ? 'Eliminazione...' : `Elimina ${selectionCount}`}
 				</Button>
 			{/if}
-			<Button variant="outline" onclick={openExportDialog}>Esporta CSV</Button>
+			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
+			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
 		</div>
 	</div>
 
-	<Dialog bind:open={exportDialogOpen}>
-		<DialogContent>
-			<DialogHeader>
-				<DialogTitle>Esporta CSV</DialogTitle>
-				<DialogDescription>
-					Scegli un range di date oppure l’email di un iscritto.
-				</DialogDescription>
-			</DialogHeader>
-
-			<div class="space-y-4">
-				<div class="grid gap-2 sm:grid-cols-2">
-					<label
-						class="flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm"
-						class:border-primary={exportMode === 'dates'}
-					>
-						<input type="radio" name="exportMode" value="dates" bind:group={exportMode} />
-						<span>Range date</span>
-					</label>
-					<label
-						class="flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm"
-						class:border-primary={exportMode === 'email'}
-					>
-						<input type="radio" name="exportMode" value="email" bind:group={exportMode} />
-						<span>Email iscritto</span>
-					</label>
-				</div>
-
-				{#if exportMode === 'dates'}
-					<div class="grid gap-3 sm:grid-cols-2">
-						<div class="space-y-1">
-							<Label for="export-from">Dal</Label>
-							<Input id="export-from" type="date" bind:value={exportFrom} />
-						</div>
-						<div class="space-y-1">
-							<Label for="export-to">Al</Label>
-							<Input id="export-to" type="date" bind:value={exportTo} />
-						</div>
-					</div>
-				{:else}
-					<div class="space-y-1">
-						<Label for="export-email">Email</Label>
-						<Input
-							id="export-email"
-							type="email"
-							placeholder="nome@example.com"
-							bind:value={exportEmail}
-						/>
-					</div>
-				{/if}
-
-				{#if exportError}
-					<p class="text-sm text-red-600">{exportError}</p>
-				{/if}
-			</div>
-
-			<DialogFooter>
-				<Button type="button" variant="outline" onclick={() => (exportDialogOpen = false)}>
-					Annulla
-				</Button>
-				<Button type="button" onclick={submitExport}>Esporta</Button>
-			</DialogFooter>
-		</DialogContent>
-	</Dialog>
+	<AttendanceExportDialog
+		bind:open={exportDialogOpen}
+		endpoint="/api/v1/attendance/export"
+		subjectLabel="iscritto"
+		emailOptions={data.subscriberOptions}
+		defaultFrom={data.from}
+		defaultTo={data.to}
+		defaultEmail={data.subscriber.includes('@') ? data.subscriber : ''}
+		listId="subscriber-export-emails"
+	/>
 
 	<!-- Filtri -->
 	<form onsubmit={handleSubmit} class="flex flex-wrap items-end gap-3">
@@ -448,7 +357,13 @@
 					</TableRow>
 				{/if}
 				{#each data.rows as row}
-					<TableRow class={selectedIds.has(row.id) || selectAllFiltered ? 'bg-blue-50' : ''}>
+					<TableRow
+						class={selectedIds.has(row.id) || selectAllFiltered
+							? 'bg-blue-50 dark:bg-blue-950/30'
+							: row.eventType === 'entry'
+								? 'bg-emerald-50/70 dark:bg-emerald-950/20'
+								: 'bg-rose-50/70 dark:bg-rose-950/20'}
+					>
 						<TableCell>
 							<input
 								type="checkbox"
@@ -534,6 +449,12 @@
 		</div>
 	{/if}
 </div>
+
+<SubscriberManualEntryDialog
+	bind:open={manualOpen}
+	subscribers={data.subscriberOptions}
+	onsaved={invalidateAll}
+/>
 
 <Dialog bind:open={editOpen}>
 	<DialogContent class="sm:max-w-sm">

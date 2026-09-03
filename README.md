@@ -282,8 +282,14 @@ manuali possono essere combinati. Le presenze corsisti restano nella tabella `at
 continuano a richiedere un'iscrizione valida per la data della strisciata.
 
 Dal pannello amministrativo, data e ora di una presenza corsista possono essere corrette tramite
-`PATCH /api/v1/attendance`; l'operazione richiede una sessione Amministratore/Operatore ed e'
-registrata nell'audit log.
+`PATCH /api/v1/attendance`; un ingresso o un'uscita possono inoltre essere aggiunti tramite
+`POST /api/v1/attendance/manual`. Le operazioni richiedono una sessione
+Amministratore/Operatore e sono registrate nell'audit log.
+
+Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia
+l'esportazione CSV per intervallo di date o persona. Gli endpoint di download sono rispettivamente
+`GET /api/v1/attendance/export` e `GET /api/v1/staff-attendance/export`; un collaboratore puo'
+esportare soltanto le proprie presenze.
 
 ### Writer
 

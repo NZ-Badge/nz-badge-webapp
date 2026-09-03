@@ -2,6 +2,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
 	import { History, Pencil, Plus } from '@lucide/svelte';
+	import AttendanceExportDialog from '$lib/components/AttendanceExportDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -19,6 +20,7 @@
 
 	let { data } = $props();
 	let manualOpen = $state(false);
+	let exportDialogOpen = $state(false);
 	let editOpen = $state(false);
 	let editingId = $state<number | null>(null);
 	let editTimestamp = $state('');
@@ -108,8 +110,22 @@
 <div class="space-y-5">
 	<div class="flex flex-wrap items-center justify-between gap-3">
 		<h1 class="text-2xl font-bold">Ingressi collaboratori</h1>
-		<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
+		<div class="flex flex-wrap items-center gap-2">
+			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
+			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
+		</div>
 	</div>
+
+	<AttendanceExportDialog
+		bind:open={exportDialogOpen}
+		endpoint="/api/v1/staff-attendance/export"
+		subjectLabel="collaboratore"
+		emailOptions={data.exportUsers}
+		defaultFrom={data.from || data.exportDefaultRange.from}
+		defaultTo={data.to || data.exportDefaultRange.to}
+		defaultEmail={data.userQuery.includes('@') ? data.userQuery : ''}
+		listId="staff-export-emails"
+	/>
 
 	<form onsubmit={filter} class="flex flex-wrap items-end gap-3">
 		<div class="space-y-1">
@@ -182,7 +198,11 @@
 						></TableRow
 					>{/if}
 				{#each data.rows as row}
-					<TableRow>
+					<TableRow
+						class={row.eventType === 'entry'
+							? 'bg-emerald-50/70 dark:bg-emerald-950/20'
+							: 'bg-rose-50/70 dark:bg-rose-950/20'}
+					>
 						<TableCell
 							><span class="inline-flex items-center gap-1.5 font-mono text-xs"
 								>{formatDateTime(row.readTimestamp)}{#if row.isBackdated}<History
