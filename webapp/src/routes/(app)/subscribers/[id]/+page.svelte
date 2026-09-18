@@ -381,12 +381,15 @@
 					Ore registrate, periodo del corso e problemi che richiedono attenzione.
 				</p>
 			</div>
-			<a
-				href="/courses?q={encodeURIComponent(sub.email)}"
-				class="app-link flex items-center gap-1 text-xs"
-			>
-				Vedi nei corsi <ExternalLink size={12} />
-			</a>
+			{#if false}
+				<!-- Link nascosto: riattivare rimuovendo il blocco if -->
+				<a
+					href="/courses?q={encodeURIComponent(sub.email)}"
+					class="app-link flex items-center gap-1 text-xs"
+				>
+					Vedi nei corsi <ExternalLink size={12} />
+				</a>
+			{/if}
 		</div>
 		{#if data.enrollments.length === 0}
 			<p class="px-5 py-4 text-sm text-muted-foreground">Nessuna iscrizione trovata.</p>
@@ -405,14 +408,9 @@
 					<article class="overflow-hidden rounded-xl border bg-card shadow-xs">
 						<header class="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
 							<div class="min-w-0">
-								<div class="flex flex-wrap items-center gap-2">
-									<h3 class="text-base font-semibold leading-snug">
-										{enrollment.productTitle ?? 'Corso senza titolo'}
-									</h3>
-									<Badge variant={statusVariant(enrollment.status ?? '')}>
-										{statusLabel(enrollment.status ?? '')}
-									</Badge>
-								</div>
+								<h3 class="text-base font-semibold leading-snug">
+									{enrollment.productTitle ?? 'Corso senza titolo'}
+								</h3>
 								{#if enrollment.variantTitle}
 									<p class="mt-1 text-sm text-muted-foreground">{enrollment.variantTitle}</p>
 								{/if}
@@ -610,6 +608,14 @@
 								>
 									Salva data
 								</Button>
+								{#if !enrollment.endDate}
+									<p
+										class="flex items-center gap-1.5 pb-2 text-xs font-medium text-amber-700 dark:text-amber-400"
+									>
+										<TriangleAlert size={14} aria-hidden="true" />
+										Data fine corso non impostata
+									</p>
+								{/if}
 								{#if endDateError}
 									<p
 										id={`end-date-error-${enrollment.id}`}

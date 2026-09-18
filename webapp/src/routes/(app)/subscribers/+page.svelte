@@ -142,7 +142,7 @@
 	</PageHeader>
 
 	<!-- Filtri -->
-	<form method="GET" class="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4 shadow-sm">
+	<form method="GET" class="filter-panel">
 		<label class="grid w-full min-w-0 flex-1 gap-1.5 text-sm font-medium sm:min-w-64">
 			Cerca iscritti
 			<span class="relative">

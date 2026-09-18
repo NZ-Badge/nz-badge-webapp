@@ -109,14 +109,14 @@
 		</Card>
 	</div>
 
-	<form method="GET" class="flex flex-wrap items-end gap-3 rounded-lg border bg-white p-4">
-		<div class="space-y-1">
+	<form method="GET" class="filter-panel">
+		<div class="min-w-44 flex-1 space-y-1">
 			<Label for="hours-from">Dal</Label>
-			<Input id="hours-from" name="from" type="date" value={from} class="w-44" />
+			<Input id="hours-from" name="from" type="date" value={from} class="w-full" />
 		</div>
-		<div class="space-y-1">
+		<div class="min-w-44 flex-1 space-y-1">
 			<Label for="hours-to">Al</Label>
-			<Input id="hours-to" name="to" type="date" value={to} class="w-44" />
+			<Input id="hours-to" name="to" type="date" value={to} class="w-full" />
 		</div>
 		<Button type="submit" variant="outline">Calcola</Button>
 	</form>

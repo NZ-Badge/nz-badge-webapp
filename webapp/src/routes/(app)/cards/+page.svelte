@@ -3,7 +3,17 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { Power, RotateCcw, Trash2, Eraser } from '@lucide/svelte';
+	import { Input } from '$lib/components/ui/input';
+	import {
+		Power,
+		RotateCcw,
+		Trash2,
+		Eraser,
+		Search,
+		ArrowUp,
+		ArrowDown,
+		ArrowUpDown
+	} from '@lucide/svelte';
 	import {
 		Table,
 		TablePanel,
@@ -23,6 +33,8 @@
 	} from '$lib/components/ui/dialog';
 
 	let { data } = $props();
+
+	type SortField = typeof data.sort;
 
 	let cardToDisable = $state<(typeof data.cards)[0] | null>(null);
 	let disableDialogOpen = $state(false);
@@ -97,11 +109,29 @@
 		}).format(new Date(value));
 	}
 
-	function buildListUrl(page: number): string {
+	function buildListUrl({
+		page = 1,
+		sort = data.sort,
+		dir = data.dir
+	}: {
+		page?: number;
+		sort?: SortField;
+		dir?: typeof data.dir;
+	} = {}) {
 		const params = new URLSearchParams({ tab: data.tab });
 		if (page > 1) params.set('page', String(page));
 		if (data.status) params.set('status', data.status);
+		if (data.q) params.set('q', data.q);
+		if (sort !== 'writeDate' || dir !== 'desc') {
+			params.set('sort', sort);
+			params.set('dir', dir);
+		}
 		return `?${params}`;
+	}
+
+	function getNextSortDirection(column: SortField) {
+		if (data.sort !== column) return 'asc' as const;
+		return data.dir === 'asc' ? ('desc' as const) : ('asc' as const);
 	}
 
 	async function confirmDisable() {
@@ -247,7 +277,7 @@
 				page={data.page}
 				totalPages={data.totalPages}
 				total={data.total}
-				getPageHref={buildListUrl}
+				getPageHref={(page) => buildListUrl({ page })}
 				ariaLabel="Paginazione tessere cancellate"
 			/>
 		</TablePanel>
@@ -257,15 +287,41 @@
 			<p class="text-sm text-red-600">{enableError}</p>
 		{/if}
 
-		<form method="GET" class="flex gap-3">
+		<form method="GET" class="filter-panel">
 			<input type="hidden" name="tab" value="active" />
-			<select name="status" class="rounded border px-2 py-1 text-sm">
-				<option value="">Tutti gli stati</option>
-				{#each ['active', 'disabled', 'replaced', 'lost'] as opt}
-					<option value={opt} selected={data.status === opt}>{statusLabel(opt)}</option>
-				{/each}
-			</select>
-			<Button type="submit" variant="outline" size="sm">Filtra</Button>
+			<input type="hidden" name="sort" value={data.sort} />
+			<input type="hidden" name="dir" value={data.dir} />
+			<label class="grid min-w-0 flex-1 gap-1.5 text-sm font-medium sm:min-w-64">
+				Cerca iscritto
+				<span class="relative">
+					<Search
+						class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+						size={16}
+						aria-hidden="true"
+					/>
+					<Input name="q" placeholder="Nome o cognome..." value={data.q} class="w-full pl-9" />
+				</span>
+			</label>
+			<label class="grid gap-1.5 text-sm font-medium">
+				Stato
+				<select name="status" class="h-9 rounded-md border bg-background px-3 text-sm">
+					<option value="">Tutti gli stati</option>
+					{#each ['active', 'disabled', 'replaced', 'lost'] as opt}
+						<option value={opt} selected={data.status === opt}>{statusLabel(opt)}</option>
+					{/each}
+				</select>
+			</label>
+			<Button type="submit" variant="outline">Filtra</Button>
+			{#if data.q || data.status}
+				<Button
+					href="/cards?tab=active"
+					variant="ghost"
+					data-tutorial-title="Azzera filtri"
+					data-tutorial-description="Rimuove ricerca e filtro per stato, mostrando nuovamente tutte le tessere."
+				>
+					Azzera
+				</Button>
+			{/if}
 		</form>
 
 		<TablePanel>
@@ -273,9 +329,66 @@
 				<TableHeader>
 					<TableRow>
 						<TableHead>UID</TableHead>
-						<TableHead>Iscritto</TableHead>
-						<TableHead>Scritta il</TableHead>
-						<TableHead>Scadenza</TableHead>
+						<TableHead>
+							<a
+								href={buildListUrl({
+									sort: 'subscriber',
+									dir: getNextSortDirection('subscriber')
+								})}
+								class="inline-flex items-center gap-1 hover:underline"
+							>
+								Iscritto
+								{#if data.sort === 'subscriber'}
+									{#if data.dir === 'asc'}
+										<ArrowUp size={14} />
+									{:else}
+										<ArrowDown size={14} />
+									{/if}
+								{:else}
+									<ArrowUpDown size={14} />
+								{/if}
+							</a>
+						</TableHead>
+						<TableHead>
+							<a
+								href={buildListUrl({
+									sort: 'writeDate',
+									dir: getNextSortDirection('writeDate')
+								})}
+								class="inline-flex items-center gap-1 hover:underline"
+							>
+								Scritta il
+								{#if data.sort === 'writeDate'}
+									{#if data.dir === 'asc'}
+										<ArrowUp size={14} />
+									{:else}
+										<ArrowDown size={14} />
+									{/if}
+								{:else}
+									<ArrowUpDown size={14} />
+								{/if}
+							</a>
+						</TableHead>
+						<TableHead>
+							<a
+								href={buildListUrl({
+									sort: 'expirationDate',
+									dir: getNextSortDirection('expirationDate')
+								})}
+								class="inline-flex items-center gap-1 hover:underline"
+							>
+								Scadenza
+								{#if data.sort === 'expirationDate'}
+									{#if data.dir === 'asc'}
+										<ArrowUp size={14} />
+									{:else}
+										<ArrowDown size={14} />
+									{/if}
+								{:else}
+									<ArrowUpDown size={14} />
+								{/if}
+							</a>
+						</TableHead>
 						<TableHead>Stato</TableHead>
 						<TableHead class="w-px text-right">Azioni</TableHead>
 					</TableRow>
@@ -352,7 +465,7 @@
 				page={data.page}
 				totalPages={data.totalPages}
 				total={data.total}
-				getPageHref={buildListUrl}
+				getPageHref={(page) => buildListUrl({ page })}
 				ariaLabel="Paginazione tessere"
 			/>
 		</TablePanel>
