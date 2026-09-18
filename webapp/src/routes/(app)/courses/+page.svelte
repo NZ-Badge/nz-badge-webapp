@@ -15,6 +15,7 @@
 		TableRow
 	} from '$lib/components/ui/table';
 	import { RefreshCw, ExternalLink, ChevronRight } from '@lucide/svelte';
+	import { formatDateIT, formatDateTimeIT, toRomeDateInputValue } from '$lib/utils/date.js';
 
 	let { data } = $props();
 
@@ -55,29 +56,8 @@
 					? 'In attesa'
 					: status;
 
-	function formatDate(d: Date | string | null): string {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString('it-IT');
-	}
-
 	function toDateKey(d: Date | string): string {
-		if (d instanceof Date) {
-			const y = d.getFullYear();
-			const m = String(d.getMonth() + 1).padStart(2, '0');
-			const day = String(d.getDate()).padStart(2, '0');
-			return `${y}-${m}-${day}`;
-		}
-		return String(d).slice(0, 10);
-	}
-
-	function formatDateLong(d: Date | string): string {
-		const date = d instanceof Date ? d : new Date(String(d) + 'T00:00:00');
-		return date.toLocaleDateString('it-IT', {
-			weekday: 'long',
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric'
-		});
+		return toRomeDateInputValue(d);
 	}
 
 	type Enrollment = (typeof data.enrollments)[number];
@@ -102,7 +82,7 @@
 
 		for (const e of items) {
 			const dateKey = e.startDate ? toDateKey(e.startDate) : '__no_date__';
-			const dateLabel = e.startDate ? formatDateLong(e.startDate) : 'Senza data';
+			const dateLabel = e.startDate ? formatDateIT(e.startDate) : 'Senza data';
 
 			if (!map.has(dateKey)) {
 				map.set(dateKey, { dateKey, dateLabel, courses: [] });
@@ -150,7 +130,10 @@
 		{#snippet summary()}
 			{#if data.lastSync}
 				<p class="text-muted-foreground text-sm">
-					Ultimo aggiornamento: {formatDate(data.lastSync.completedAt ?? data.lastSync.startedAt)}
+					Ultimo aggiornamento: {formatDateTimeIT(
+						data.lastSync.completedAt ?? data.lastSync.startedAt,
+						{ seconds: true }
+					)}
 					{#if data.lastSync.status === 'success'}
 						— {data.lastSync.enrollmentsCreated} nuove iscrizioni, {data.lastSync
 							.subscribersCreated} iscritti creati
@@ -222,7 +205,7 @@
 							</p>
 						</div>
 						<Badge variant="outline" class="shrink-0 text-xs">
-							{dateGroup.dateKey === '__no_date__' ? 'Senza data' : dateGroup.dateKey}
+							{dateGroup.dateLabel}
 						</Badge>
 					</summary>
 

@@ -13,6 +13,7 @@
 		TableHeader,
 		TableRow
 	} from '$lib/components/ui/table';
+	import { formatDateIT } from '$lib/utils/date.js';
 
 	let { data } = $props();
 	let cardError = $state('');
@@ -21,7 +22,7 @@
 	const hasActiveCard = $derived(data.cards.some((card) => card.status === 'active'));
 
 	function formatDate(value: Date | string | null): string {
-		return value ? new Date(value).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' }) : '—';
+		return formatDateIT(value) || '—';
 	}
 
 	async function changeCardStatus(cardId: number, action: 'enable' | 'disable' | 'restore') {

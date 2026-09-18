@@ -26,6 +26,7 @@
 		TableRow
 	} from '$lib/components/ui/table';
 	import { Button } from '$lib/components/ui/button';
+	import { formatDateIT, formatDateTimeIT } from '$lib/utils/date.js';
 
 	let { data } = $props();
 
@@ -47,16 +48,6 @@
 	let simulateBusy = $state(false);
 	let simulateMessage = $state('');
 	let simulateError = $state(false);
-
-	function formatDateTime(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
-	}
-
-	function formatDate(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' });
-	}
 
 	function sourceLabel(source: string): string {
 		return source === 'card' ? 'Card RFID' : source === 'manual' ? 'Manuale' : 'Pulsante Home';
@@ -154,9 +145,9 @@
 					>{#each data.recentStaffAttendance as row}<TableRow
 							><TableCell
 								><span class="inline-flex items-center gap-1.5"
-									>{formatDateTime(row.readTimestamp)}{#if row.isBackdated}<History
-											size={14}
-											class="text-amber-600"><title>Inserimento retrodatato</title></History
+									>{formatDateTimeIT(row.readTimestamp, { seconds: true }) ||
+										'—'}{#if row.isBackdated}<History size={14} class="text-amber-600"
+											><title>Inserimento retrodatato</title></History
 										>{/if}</span
 								></TableCell
 							><TableCell>{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}</TableCell><TableCell
@@ -267,7 +258,7 @@
 								{/if}
 							</div>
 							<p class="text-sm">
-								{formatDate(course.startDate)} – {formatDate(course.endDate)}
+								{formatDateIT(course.startDate) || '—'} – {formatDateIT(course.endDate) || '—'}
 							</p>
 							<p class="text-muted-foreground text-sm">
 								{course.enrollmentCount}
@@ -321,7 +312,9 @@
 							</TableCell>
 							<TableCell>{sub.email}</TableCell>
 							<TableCell class="text-sm">{sub.latestCourseAttendance}</TableCell>
-							<TableCell class="text-sm">{formatDateTime(sub.lastEntryAt)}</TableCell>
+							<TableCell class="text-sm"
+								>{formatDateTimeIT(sub.lastEntryAt, { seconds: true }) || '—'}</TableCell
+							>
 							<TableCell class="w-32 text-center">
 								<div class="flex items-center justify-center gap-1">
 									{#if sub.hasActiveCard}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import EmailAutocomplete from '$lib/components/EmailAutocomplete.svelte';
-	import { Input } from '$lib/components/ui/input';
+	import { DatePicker } from '$lib/components/ui/date-picker';
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 
@@ -106,11 +106,11 @@
 				<div class="grid gap-3 sm:grid-cols-2">
 					<div class="space-y-1">
 						<Label for={`${listId}-from`}>Dal</Label>
-						<Input id={`${listId}-from`} type="date" bind:value={exportFrom} />
+						<DatePicker id={`${listId}-from`} bind:value={exportFrom} />
 					</div>
 					<div class="space-y-1">
 						<Label for={`${listId}-to`}>Al</Label>
-						<Input id={`${listId}-to`} type="date" bind:value={exportTo} />
+						<DatePicker id={`${listId}-to`} bind:value={exportTo} />
 					</div>
 				</div>
 			{:else}

@@ -5,6 +5,7 @@ node_modules
 /tests/e2e/*
 !/tests/e2e/table-styles.spec.ts
 !/tests/e2e/sidebar-spacing.spec.ts
+!/tests/e2e/date-picker.spec.ts
 /.svelte-kit
 /package
 .env

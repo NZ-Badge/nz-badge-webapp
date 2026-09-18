@@ -16,7 +16,9 @@
 		DialogTitle
 	} from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
+	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { Label } from '$lib/components/ui/label';
+	import { formatDateTimeIT, toRomeDateTimeInputValue } from '$lib/utils/date.js';
 	import {
 		Table,
 		TablePanel,
@@ -37,32 +39,9 @@
 	let manualOpen = $state(false);
 	let exportDialogOpen = $state(false);
 
-	function formatDateTime(d: Date | string | null) {
-		if (!d) return '—';
-		return new Date(d).toLocaleString('it-IT', {
-			timeZone: 'Europe/Rome',
-			dateStyle: 'short',
-			timeStyle: 'medium'
-		});
-	}
-
-	function toRomeInput(value: Date | string): string {
-		const parts = new Intl.DateTimeFormat('en-CA', {
-			timeZone: 'Europe/Rome',
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit',
-			hourCycle: 'h23'
-		}).formatToParts(new Date(value));
-		const p = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-		return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
-	}
-
 	function openEdit(row: { id: number; readTimestamp: Date | string }) {
 		editingId = row.id;
-		editTimestamp = toRomeInput(row.readTimestamp);
+		editTimestamp = toRomeDateTimeInputValue(new Date(row.readTimestamp));
 		editError = '';
 		editOpen = true;
 	}
@@ -243,11 +222,11 @@
 	<form onsubmit={handleSubmit} class="filter-panel">
 		<div class="space-y-1">
 			<Label for="from">Dal</Label>
-			<Input id="from" name="from" type="date" value={data.from} class="w-40" />
+			<DatePicker id="from" name="from" value={data.from} class="w-40" />
 		</div>
 		<div class="space-y-1">
 			<Label for="to">Al</Label>
-			<Input id="to" name="to" type="date" value={data.to} class="w-40" />
+			<DatePicker id="to" name="to" value={data.to} class="w-40" />
 		</div>
 		<div class="space-y-1">
 			<Label for="subscriber">Iscritto</Label>
@@ -355,7 +334,9 @@
 							/>
 						</TableCell>
 						<TableCell>
-							<span class="font-mono text-xs">{formatDateTime(row.readTimestamp)}</span>
+							<span class="font-mono text-xs"
+								>{formatDateTimeIT(row.readTimestamp, { seconds: true }) || '—'}</span
+							>
 						</TableCell>
 						<TableCell>
 							{#if row.subscriberId && row.subscriberName}
@@ -416,7 +397,7 @@
 		</DialogHeader>
 		<div class="space-y-2 py-2">
 			<Label for="edit-time">Data e ora</Label>
-			<Input id="edit-time" type="datetime-local" bind:value={editTimestamp} />
+			<DatePicker id="edit-time" withTime bind:value={editTimestamp} />
 			{#if editError}
 				<p class="text-sm text-red-600">{editError}</p>
 			{/if}

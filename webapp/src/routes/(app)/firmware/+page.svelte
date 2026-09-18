@@ -14,6 +14,7 @@
 		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
+	import { formatDateIT } from '$lib/utils/date.js';
 
 	let { data, form } = $props();
 
@@ -29,12 +30,7 @@
 	}
 
 	function formatDate(d: Date | null | string): string {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString('it-IT', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		});
+		return formatDateIT(d) || '—';
 	}
 
 	$effect(() => {

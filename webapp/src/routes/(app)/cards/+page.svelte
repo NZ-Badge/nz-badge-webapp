@@ -31,6 +31,7 @@
 		DialogHeader,
 		DialogTitle
 	} from '$lib/components/ui/dialog';
+	import { formatDateIT } from '$lib/utils/date.js';
 
 	let { data } = $props();
 
@@ -101,12 +102,7 @@
 			if (match) return `${match[3]}/${match[2]}/${match[1]}`;
 		}
 
-		return new Intl.DateTimeFormat('it-IT', {
-			timeZone: 'Europe/Rome',
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		}).format(new Date(value));
+		return formatDateIT(value) || '—';
 	}
 
 	function buildListUrl({
@@ -234,10 +230,10 @@
 								{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
 							</TableCell>
 							<TableCell>
-								{card.writeDate ? new Date(card.writeDate).toLocaleDateString('it-IT') : '—'}
+								{card.writeDate ? formatDateIT(card.writeDate) : '—'}
 							</TableCell>
 							<TableCell>
-								{card.deletedAt ? new Date(card.deletedAt).toLocaleDateString('it-IT') : '—'}
+								{card.deletedAt ? formatDateIT(card.deletedAt) : '—'}
 							</TableCell>
 							<TableCell class="w-px whitespace-nowrap text-right">
 								<div class="flex items-center justify-end gap-1">
@@ -401,7 +397,7 @@
 								{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
 							</TableCell>
 							<TableCell>
-								{card.writeDate ? new Date(card.writeDate).toLocaleDateString('it-IT') : '—'}
+								{card.writeDate ? formatDateIT(card.writeDate) : '—'}
 							</TableCell>
 							<TableCell>{formatExpirationDate(card.expirationDate)}</TableCell>
 							<TableCell>

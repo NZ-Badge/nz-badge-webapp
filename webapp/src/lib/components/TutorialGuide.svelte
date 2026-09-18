@@ -28,7 +28,8 @@
 		'textarea:not([disabled])',
 		'[role="button"]',
 		'[role="menuitem"]',
-		'[role="switch"]'
+		'[role="switch"]',
+		'[role="spinbutton"]'
 	].join(',');
 
 	function compact(value: string | null | undefined): string {

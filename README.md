@@ -292,6 +292,12 @@ export sono riservati ad Amministratori e Operatori; i Collaboratori consultano 
 presenze da `/my-attendance`. Gli endpoint di download sono rispettivamente
 `GET /api/v1/attendance/export` e `GET /api/v1/staff-attendance/export`.
 
+Nell'interfaccia le date sono visualizzate come `gg/mm/aaaa`, anche nei calendari di
+selezione; gli orari usano il formato 24 ore e il fuso `Europe/Rome`. Il formato non
+dipende dalla lingua o dal fuso del browser. I campi data si modificano da tastiera
+(giorno, mese, anno) oppure dal calendario. I valori inviati nei form e alle API
+restano ISO (`yyyy-MM-dd` o `yyyy-MM-ddTHH:mm`).
+
 ### Writer
 
 Il writer non parla direttamente con un'API device dedicata: la scrittura avviene dal browser admin tramite WebSerial.

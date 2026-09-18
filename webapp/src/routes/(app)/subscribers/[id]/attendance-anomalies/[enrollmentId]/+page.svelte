@@ -7,18 +7,9 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { ArrowLeft } from '@lucide/svelte';
+	import { formatDateIT, formatDateTimeIT } from '$lib/utils/date.js';
 
 	let { data, form } = $props();
-
-	function formatDate(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString('it-IT');
-	}
-
-	function formatDateTime(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleString('it-IT');
-	}
 
 	function formatHours(value: number | null | undefined) {
 		if (value === null || value === undefined) return '—';
@@ -69,11 +60,11 @@
 			</div>
 			<div class="flex gap-2">
 				<dt class="w-32 shrink-0 text-muted-foreground">Data inizio</dt>
-				<dd>{formatDate(data.enrollment.startDate)}</dd>
+				<dd>{formatDateIT(data.enrollment.startDate) || '—'}</dd>
 			</div>
 			<div class="flex gap-2">
 				<dt class="w-32 shrink-0 text-muted-foreground">Data fine</dt>
-				<dd>{formatDate(data.enrollment.endDate)}</dd>
+				<dd>{formatDateIT(data.enrollment.endDate) || '—'}</dd>
 			</div>
 			<div class="flex gap-2">
 				<dt class="w-32 shrink-0 text-muted-foreground">Ore valide</dt>
@@ -108,11 +99,13 @@
 						<div class="flex flex-wrap items-center justify-between gap-2">
 							<div>
 								<div class="font-medium">Ingresso #{row.entryAttendanceId}</div>
-								<div class="text-sm text-muted-foreground">{formatDateTime(row.entryAt)}</div>
+								<div class="text-sm text-muted-foreground">
+									{formatDateTimeIT(row.entryAt) || '—'}
+								</div>
 							</div>
 							<Badge variant="outline">
 								{row.nextEventAt
-									? `Prossimo evento: ${formatDateTime(row.nextEventAt)}`
+									? `Prossimo evento: ${formatDateTimeIT(row.nextEventAt)}`
 									: 'Ultimo evento disponibile'}
 							</Badge>
 						</div>

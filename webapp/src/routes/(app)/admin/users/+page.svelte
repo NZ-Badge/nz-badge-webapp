@@ -14,6 +14,7 @@
 		RotateCcw
 	} from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { formatDateIT } from '$lib/utils/date.js';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -298,11 +299,7 @@
 	}
 
 	function formatDate(dateString: string): string {
-		return new Date(dateString).toLocaleDateString('it-IT', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric'
-		});
+		return formatDateIT(dateString) || '—';
 	}
 </script>
 

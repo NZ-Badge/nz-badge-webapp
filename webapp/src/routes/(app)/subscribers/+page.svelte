@@ -21,6 +21,7 @@
 		DialogTitle
 	} from '$lib/components/ui/dialog';
 	import SubscriberFormDialog from '$lib/components/SubscriberFormDialog.svelte';
+	import { formatDateTimeIT } from '$lib/utils/date.js';
 	import { enhance } from '$app/forms';
 	import {
 		Pencil,
@@ -59,11 +60,6 @@
 			| null
 	) {
 		return Boolean(sub?.hasActiveCard || sub?.hasNfcPairing);
-	}
-
-	function formatDateTime(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleString('it-IT');
 	}
 
 	function buildListUrl({
@@ -306,7 +302,7 @@
 							</span>
 						</TableCell>
 						<TableCell class="text-sm text-muted-foreground">
-							{formatDateTime(sub.lastEntryAt)}
+							{formatDateTimeIT(sub.lastEntryAt) || '—'}
 						</TableCell>
 						<TableCell class="w-48 text-center">
 							<div class="flex items-center justify-center gap-1.5">

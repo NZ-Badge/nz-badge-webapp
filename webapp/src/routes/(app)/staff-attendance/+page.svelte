@@ -7,7 +7,9 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
+	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { Label } from '$lib/components/ui/label';
+	import { formatDateTimeIT, toRomeDateTimeInputValue } from '$lib/utils/date.js';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import {
 		Table,
@@ -30,30 +32,6 @@
 	let editError = $state('');
 	let editBusy = $state(false);
 	const isLoading = $derived(Boolean($navigating));
-
-	function formatDateTime(value: Date | string | null): string {
-		return value
-			? new Date(value).toLocaleString('it-IT', {
-					timeZone: 'Europe/Rome',
-					dateStyle: 'short',
-					timeStyle: 'medium'
-				})
-			: '—';
-	}
-
-	function toRomeInput(value: Date | string): string {
-		const parts = new Intl.DateTimeFormat('en-CA', {
-			timeZone: 'Europe/Rome',
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit',
-			hourCycle: 'h23'
-		}).formatToParts(new Date(value));
-		const p = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-		return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
-	}
 
 	function sourceLabel(source: string): string {
 		return source === 'card' ? 'Card RFID' : source === 'manual' ? 'Manuale' : 'Pulsante Home';
@@ -83,7 +61,7 @@
 
 	function openEdit(row: { id: number; readTimestamp: Date | string }) {
 		editingId = row.id;
-		editTimestamp = toRomeInput(row.readTimestamp);
+		editTimestamp = toRomeDateTimeInputValue(new Date(row.readTimestamp));
 		editError = '';
 		editOpen = true;
 	}
@@ -134,16 +112,15 @@
 
 	<form onsubmit={filter} class="filter-panel">
 		<div class="space-y-1">
-			<Label for="from">Dal</Label><Input
+			<Label for="from">Dal</Label><DatePicker
 				id="from"
 				name="from"
-				type="date"
 				value={data.from}
 				class="w-40"
 			/>
 		</div>
 		<div class="space-y-1">
-			<Label for="to">Al</Label><Input id="to" name="to" type="date" value={data.to} class="w-40" />
+			<Label for="to">Al</Label><DatePicker id="to" name="to" value={data.to} class="w-40" />
 		</div>
 		{#if data.canManage}<div class="space-y-1">
 				<Label for="user">Utente</Label><Input
@@ -201,7 +178,8 @@
 					<TableRow>
 						<TableCell
 							><span class="inline-flex items-center gap-1.5 font-mono text-xs"
-								>{formatDateTime(row.readTimestamp)}{#if row.isBackdated}<History
+								>{formatDateTimeIT(row.readTimestamp, { seconds: true }) ||
+									'—'}{#if row.isBackdated}<History
 										size={14}
 										class="text-amber-600"
 										aria-label="Inserimento retrodatato"
@@ -262,9 +240,9 @@
 			></Dialog.Header
 		>
 		<div class="space-y-2 py-2">
-			<Label for="edit-time">Data e ora</Label><Input
+			<Label for="edit-time">Data e ora</Label><DatePicker
 				id="edit-time"
-				type="datetime-local"
+				withTime
 				bind:value={editTimestamp}
 			/>{#if editError}<p class="text-sm text-red-600">{editError}</p>{/if}
 		</div>

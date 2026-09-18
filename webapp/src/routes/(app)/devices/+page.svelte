@@ -28,6 +28,7 @@
 	import { connection, disconnect } from '$lib/stores/webserial.svelte';
 	import { WebSerialProvisioner } from '$lib/utils/webserial-provisioner';
 	import type { ProvisionLogEntry, ProvisionState } from '$lib/utils/webserial-provisioner';
+	import { formatDateTimeIT } from '$lib/utils/date.js';
 
 	let { data, form } = $props();
 
@@ -152,7 +153,7 @@
 
 	function formatDate(date: Date | null) {
 		if (!date) return 'Mai';
-		return new Date(date).toLocaleString('it-IT');
+		return formatDateTimeIT(date, { seconds: true });
 	}
 
 	function openEdit(device: (typeof data.devices)[0]) {

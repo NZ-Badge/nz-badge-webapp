@@ -2,6 +2,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import EmailAutocomplete from '$lib/components/EmailAutocomplete.svelte';
 	import { Input } from '$lib/components/ui/input';
+	import { DatePicker } from '$lib/components/ui/date-picker';
+	import { toRomeDateTimeInputValue } from '$lib/utils/date';
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
 
@@ -35,17 +37,7 @@
 	);
 
 	function nowInRomeInput(): string {
-		const parts = new Intl.DateTimeFormat('en-CA', {
-			timeZone: 'Europe/Rome',
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit',
-			hourCycle: 'h23'
-		}).formatToParts(new Date());
-		const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-		return `${value.year}-${value.month}-${value.day}T${value.hour}:${value.minute}`;
+		return toRomeDateTimeInputValue();
 	}
 
 	$effect(() => {
@@ -128,7 +120,7 @@
 
 			<div class="space-y-2">
 				<Label for="manual-time">Data e ora</Label>
-				<Input id="manual-time" type="datetime-local" bind:value={readTimestamp} />
+				<DatePicker id="manual-time" withTime bind:value={readTimestamp} />
 			</div>
 
 			<div class="space-y-2">

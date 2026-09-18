@@ -4,7 +4,8 @@
 	import { Clock, CalendarDays, TriangleAlert, Plus } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Input } from '$lib/components/ui/input';
+	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
+	import { formatDateIT, formatDateTimeIT } from '$lib/utils/date';
 	import { Label } from '$lib/components/ui/label';
 	import {
 		Table,
@@ -39,17 +40,11 @@
 	let manualOpen = $state(false);
 
 	function formatDate(value: string): string {
-		const [year, month, day] = value.split('-');
-		return `${day}/${month}/${year}`;
+		return formatDateIT(value) || '—';
 	}
 
 	function formatDateTime(value: Date | string | null | undefined): string {
-		if (!value) return '—';
-		return new Date(value).toLocaleString('it-IT', {
-			timeZone: 'Europe/Rome',
-			dateStyle: 'short',
-			timeStyle: 'short'
-		});
+		return formatDateTimeIT(value) || '—';
 	}
 </script>
 
@@ -112,11 +107,11 @@
 	<form method="GET" class="filter-panel">
 		<div class="min-w-44 flex-1 space-y-1">
 			<Label for="hours-from">Dal</Label>
-			<Input id="hours-from" name="from" type="date" value={from} class="w-full" />
+			<DatePicker id="hours-from" name="from" value={from} class="w-full" />
 		</div>
 		<div class="min-w-44 flex-1 space-y-1">
 			<Label for="hours-to">Al</Label>
-			<Input id="hours-to" name="to" type="date" value={to} class="w-full" />
+			<DatePicker id="hours-to" name="to" value={to} class="w-full" />
 		</div>
 		<Button type="submit" variant="outline">Calcola</Button>
 	</form>

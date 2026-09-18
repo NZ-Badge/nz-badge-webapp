@@ -19,6 +19,8 @@
 		DialogTitle
 	} from '$lib/components/ui/dialog';
 	import SubscriberFormDialog from '$lib/components/SubscriberFormDialog.svelte';
+	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
+	import { formatDateIT, formatDateTimeIT, toRomeDateInputValue } from '$lib/utils/date.js';
 	import { enhance } from '$app/forms';
 	import {
 		Pencil,
@@ -68,19 +70,8 @@
 						? 'Annullato'
 						: status;
 
-	function formatDate(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString('it-IT');
-	}
-
 	function dateInputValue(d: Date | string | null | undefined) {
-		if (!d) return '';
-		if (typeof d === 'string') return d.slice(0, 10);
-
-		const year = d.getFullYear();
-		const month = String(d.getMonth() + 1).padStart(2, '0');
-		const day = String(d.getDate()).padStart(2, '0');
-		return `${year}-${month}-${day}`;
+		return toRomeDateInputValue(d);
 	}
 
 	function enrollmentEndDateValue(enrollment: { id: number; endDate: Date | string | null }) {
@@ -114,11 +105,6 @@
 		}
 
 		return undefined;
-	}
-
-	function formatDateTime(d: Date | string | null | undefined) {
-		if (!d) return '—';
-		return new Date(d).toLocaleString('it-IT');
 	}
 
 	const cardStatusVariant = (status: string) =>
@@ -249,7 +235,7 @@
 					/>
 					<div>
 						<dt class="text-xs font-medium text-muted-foreground">Creato il</dt>
-						<dd class="mt-1 font-medium">{formatDate(sub.createdAt)}</dd>
+						<dd class="mt-1 font-medium">{formatDateIT(sub.createdAt) || '—'}</dd>
 					</div>
 				</div>
 
@@ -358,11 +344,11 @@
 							<dl class="mt-4 grid grid-cols-2 gap-3 border-t border-current/10 pt-3 text-sm">
 								<div>
 									<dt class="text-xs text-muted-foreground">Scritta il</dt>
-									<dd class="mt-1 font-medium">{formatDate(card.writeDate)}</dd>
+									<dd class="mt-1 font-medium">{formatDateIT(card.writeDate) || '—'}</dd>
 								</div>
 								<div>
 									<dt class="text-xs text-muted-foreground">Scadenza</dt>
-									<dd class="mt-1 font-medium">{formatDate(card.expirationDate)}</dd>
+									<dd class="mt-1 font-medium">{formatDateIT(card.expirationDate) || '—'}</dd>
 								</div>
 							</dl>
 						</article>
@@ -467,7 +453,9 @@
 									<div>
 										<dt class="text-xs font-medium text-muted-foreground">Periodo del corso</dt>
 										<dd class="mt-1 font-medium">
-											{formatDate(enrollment.startDate)} → {formatDate(enrollment.endDate)}
+											{formatDateIT(enrollment.startDate) || '—'} → {formatDateIT(
+												enrollment.endDate
+											) || '—'}
 										</dd>
 									</div>
 									<div>
@@ -475,7 +463,7 @@
 											Ultima sessione valida
 										</dt>
 										<dd class="mt-1 font-medium">
-											{lastSession ? formatDate(lastSession.exitAt) : 'Nessuna sessione'}
+											{lastSession ? formatDateIT(lastSession.exitAt) : 'Nessuna sessione'}
 										</dd>
 									</div>
 								</dl>
@@ -591,11 +579,10 @@
 								<input type="hidden" name="enrollmentId" value={enrollment.id} />
 								<label class="grid gap-1.5 text-sm font-medium">
 									Data fine corso
-									<input
-										type="date"
+									<DatePicker
 										name="endDate"
 										value={enrollmentEndDateValue(enrollment)}
-										class="h-9 rounded-md border bg-background px-3 text-sm"
+										class="w-44"
 										aria-invalid={Boolean(endDateError)}
 										aria-describedby={endDateError ? `end-date-error-${enrollment.id}` : undefined}
 									/>
@@ -658,7 +645,7 @@
 					{#each data.recentAttendance as row}
 						<TableRow>
 							<TableCell class="font-mono text-sm font-medium"
-								>{formatDateTime(row.readTimestamp)}</TableCell
+								>{formatDateTimeIT(row.readTimestamp) || '—'}</TableCell
 							>
 							<TableCell>
 								<Badge variant={row.eventType === 'entry' ? 'default' : 'secondary'}>
