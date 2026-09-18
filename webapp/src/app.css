@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 
 @import 'tw-animate-css';
+@import './lib/components/ui/table/table.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -12,7 +13,7 @@
 	--card-foreground: oklch(0.129 0.042 264.695);
 	--popover: oklch(1 0 0);
 	--popover-foreground: oklch(0.129 0.042 264.695);
-	--primary: oklch(0.208 0.042 265.755);
+	--primary: oklch(0.546 0.245 262.881);
 	--primary-foreground: oklch(0.984 0.003 247.858);
 	--secondary: oklch(0.968 0.007 247.896);
 	--secondary-foreground: oklch(0.208 0.042 265.755);
@@ -23,7 +24,7 @@
 	--destructive: oklch(0.577 0.245 27.325);
 	--border: oklch(0.929 0.013 255.508);
 	--input: oklch(0.929 0.013 255.508);
-	--ring: oklch(0.704 0.04 256.788);
+	--ring: oklch(0.623 0.214 259.815);
 	--chart-1: oklch(0.646 0.222 41.116);
 	--chart-2: oklch(0.6 0.118 184.704);
 	--chart-3: oklch(0.398 0.07 227.392);
@@ -31,7 +32,7 @@
 	--chart-5: oklch(0.769 0.188 70.08);
 	--sidebar: oklch(0.984 0.003 247.858);
 	--sidebar-foreground: oklch(0.129 0.042 264.695);
-	--sidebar-primary: oklch(0.208 0.042 265.755);
+	--sidebar-primary: oklch(0.546 0.245 262.881);
 	--sidebar-primary-foreground: oklch(0.984 0.003 247.858);
 	--sidebar-accent: oklch(0.968 0.007 247.896);
 	--sidebar-accent-foreground: oklch(0.208 0.042 265.755);
@@ -46,8 +47,8 @@
 	--card-foreground: oklch(0.984 0.003 247.858);
 	--popover: oklch(0.208 0.042 265.755);
 	--popover-foreground: oklch(0.984 0.003 247.858);
-	--primary: oklch(0.929 0.013 255.508);
-	--primary-foreground: oklch(0.208 0.042 265.755);
+	--primary: oklch(0.546 0.245 262.881);
+	--primary-foreground: oklch(0.984 0.003 247.858);
 	--secondary: oklch(0.279 0.041 260.031);
 	--secondary-foreground: oklch(0.984 0.003 247.858);
 	--muted: oklch(0.279 0.041 260.031);
@@ -57,7 +58,7 @@
 	--destructive: oklch(0.704 0.191 22.216);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.551 0.027 264.364);
+	--ring: oklch(0.623 0.214 259.815);
 	--chart-1: oklch(0.488 0.243 264.376);
 	--chart-2: oklch(0.696 0.17 162.48);
 	--chart-3: oklch(0.769 0.188 70.08);
@@ -65,7 +66,7 @@
 	--chart-5: oklch(0.645 0.246 16.439);
 	--sidebar: oklch(0.208 0.042 265.755);
 	--sidebar-foreground: oklch(0.984 0.003 247.858);
-	--sidebar-primary: oklch(0.488 0.243 264.376);
+	--sidebar-primary: oklch(0.546 0.245 262.881);
 	--sidebar-primary-foreground: oklch(0.984 0.003 247.858);
 	--sidebar-accent: oklch(0.279 0.041 260.031);
 	--sidebar-accent-foreground: oklch(0.984 0.003 247.858);
@@ -117,5 +118,126 @@
 	}
 	body {
 		@apply bg-background text-foreground;
+	}
+}
+
+@layer components {
+	/* Each tutorial outline extends 4px outwards: 12px leaves a visible 4px gap.
+	   Keep the same spacing with the tutorial off to avoid navigation jumping. */
+	.sidebar-nav-list {
+		@apply flex flex-col gap-3;
+	}
+
+	.sidebar-nav-sublist {
+		@apply mt-3 pl-4;
+	}
+
+	.app-workspace {
+		--area-surface: var(--color-blue-50);
+		--area-border: var(--color-blue-200);
+		--area-ink: var(--color-blue-950);
+		--area-accent: var(--color-blue-600);
+		@apply bg-slate-50 dark:bg-slate-950;
+	}
+
+	.app-workspace[data-area='administration'] {
+		--area-surface: var(--color-violet-50);
+		--area-border: var(--color-violet-200);
+		--area-ink: var(--color-violet-950);
+		--area-accent: var(--color-violet-700);
+	}
+
+	.dark .app-workspace {
+		--area-surface: var(--color-blue-950);
+		--area-border: var(--color-blue-900);
+		--area-ink: var(--color-blue-100);
+	}
+
+	.dark .app-workspace[data-area='administration'] {
+		--area-surface: var(--color-violet-950);
+		--area-border: var(--color-violet-900);
+		--area-ink: var(--color-violet-100);
+	}
+
+	.page-header {
+		@apply rounded-xl border p-5 shadow-sm sm:p-6;
+		border-color: var(--area-border, var(--color-blue-200));
+		background: linear-gradient(110deg, var(--area-surface, var(--color-blue-50)), var(--card));
+		color: var(--area-ink, var(--foreground));
+	}
+
+	.page-header-icon {
+		@apply grid size-11 shrink-0 place-items-center rounded-xl text-white shadow-sm sm:size-12;
+		background: var(--area-accent, var(--color-blue-600));
+	}
+
+	.administration-icon {
+		display: none;
+	}
+	[data-area='administration'] .administration-icon {
+		display: block;
+	}
+	[data-area='administration'] .operations-icon {
+		display: none;
+	}
+
+	.area-label {
+		@apply inline-flex items-center gap-2 text-xs font-semibold;
+		color: var(--area-ink);
+	}
+
+	.filter-panel {
+		@apply flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4 shadow-sm;
+	}
+
+	.app-workspace :is(a, button, input, select, textarea):focus-visible {
+		@apply outline-2 outline-offset-2 outline-blue-500;
+	}
+
+	.app-link {
+		@apply text-blue-700 underline-offset-4 hover:text-blue-800 hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-blue-300 dark:hover:text-blue-200;
+	}
+
+	.app-link-muted {
+		@apply text-slate-600 underline-offset-4 hover:text-slate-900 hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:text-slate-100;
+	}
+}
+
+/* Gli elementi interattivi restano riconoscibili finché la guida Tutorial è attiva. */
+html.tutorial-mode
+	:is(
+		a[href],
+		button:not([disabled]),
+		input:not([type='hidden']):not([disabled]),
+		select:not([disabled]),
+		textarea:not([disabled]),
+		[role='button'],
+		[role='menuitem'],
+		[role='switch']
+	):not([data-tutorial-ignore]):not([data-tutorial-ignore] *) {
+	cursor: help !important;
+	outline: 2px solid rgb(251 191 36 / 0.8);
+	outline-offset: 2px;
+	animation: tutorial-pulse 2s ease-in-out infinite;
+}
+
+html.tutorial-mode .tutorial-active {
+	outline-color: rgb(251 191 36) !important;
+	animation: none !important;
+}
+
+@keyframes tutorial-pulse {
+	0%,
+	100% {
+		outline-color: rgb(251 191 36 / 0.55);
+	}
+	50% {
+		outline-color: rgb(251 191 36);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html.tutorial-mode :is(a[href], button, input, select, textarea, [role='button']) {
+		animation: none;
 	}
 }

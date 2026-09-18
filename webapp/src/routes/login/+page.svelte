@@ -3,15 +3,26 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import { Eye, EyeOff } from '@lucide/svelte';
+	import { CreditCard, Eye, EyeOff } from '@lucide/svelte';
 
 	let { form } = $props();
 	let showPassword = $state(false);
 </script>
 
-<div class="flex min-h-screen items-center justify-center bg-gray-50">
-	<div class="w-full max-w-sm space-y-6 rounded-lg bg-white p-8 shadow">
-		<h1 class="text-center text-2xl font-bold">Accesso staff</h1>
+<div class="flex min-h-dvh items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+	<div
+		class="w-full max-w-sm space-y-6 rounded-xl border border-blue-200 bg-card p-6 shadow-sm sm:p-8 dark:border-blue-900"
+	>
+		<div class="text-center">
+			<div class="mx-auto mb-4 grid size-12 place-items-center rounded-xl bg-blue-600 text-white">
+				<CreditCard size={25} aria-hidden="true" />
+			</div>
+			<p class="mb-1 text-xs font-semibold tracking-widest text-muted-foreground">NZBADGE</p>
+			<h1 class="text-2xl font-bold">Accesso staff</h1>
+			<p class="mt-2 text-sm text-muted-foreground">
+				Accedi con le tue credenziali per gestire tessere e presenze.
+			</p>
+		</div>
 
 		{#if form?.error}
 			<p class="text-center text-sm text-red-600">{form.error}</p>

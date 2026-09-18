@@ -6,6 +6,8 @@ import Footer from './table-footer.svelte';
 import Head from './table-head.svelte';
 import Header from './table-header.svelte';
 import Row from './table-row.svelte';
+import Panel from './table-panel.svelte';
+import Pagination from './table-pagination.svelte';
 
 export {
 	Root,
@@ -16,6 +18,8 @@ export {
 	Head,
 	Header,
 	Row,
+	Panel,
+	Pagination,
 	//
 	Root as Table,
 	Body as TableBody,
@@ -24,5 +28,7 @@ export {
 	Footer as TableFooter,
 	Head as TableHead,
 	Header as TableHeader,
-	Row as TableRow
+	Row as TableRow,
+	Panel as TablePanel,
+	Pagination as TablePagination
 };

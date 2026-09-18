@@ -94,7 +94,8 @@ function sortSubscribers(
 }
 
 export const load: PageServerLoad = async ({ url }) => {
-	const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
+	const pageParam = Number(url.searchParams.get('page') ?? 1);
+	const requestedPage = Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1;
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const sort = parseSortField(url.searchParams.get('sort'));
 	const dir = parseSortDirection(url.searchParams.get('dir'));
@@ -128,6 +129,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	]);
 	const subscriberList = sortSubscribers(await enrichSubscribersForList(subscriberRows), sort, dir);
 	const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+	const page = Math.min(requestedPage, totalPages);
 	const paginatedSubscribers = subscriberList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
 	return {

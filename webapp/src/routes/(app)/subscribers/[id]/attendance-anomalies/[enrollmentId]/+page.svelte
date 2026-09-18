@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { enhance } from '$app/forms';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -42,18 +43,17 @@
 </script>
 
 <div class="space-y-6">
-	<div class="flex items-center gap-3">
-		<a href="/subscribers/{data.subscriber.id}" class="text-muted-foreground hover:text-foreground">
-			<ArrowLeft size={18} />
-		</a>
-		<div>
-			<h1 class="text-2xl font-bold">Risolvi anomalie presenze</h1>
-			<p class="text-sm text-muted-foreground">
-				{data.subscriber.firstName}
-				{data.subscriber.lastName}
-			</p>
-		</div>
-	</div>
+	<a
+		href="/subscribers/{data.subscriber.id}"
+		class="app-link-muted inline-flex items-center gap-2 text-sm"
+		data-tutorial-title="Torna alla scheda"
+		data-tutorial-description="Torna alla scheda dell’iscritto per consultare dati, tessere e corsi."
+		><ArrowLeft size={16} /> Scheda iscritto</a
+	>
+	<PageHeader
+		title="Risolvi anomalie presenze"
+		description={`Controlla e correggi le presenze di ${data.subscriber.firstName} ${data.subscriber.lastName}.`}
+	/>
 
 	<div class="rounded-lg border bg-white p-5 space-y-3">
 		<div class="flex flex-wrap items-center gap-2">

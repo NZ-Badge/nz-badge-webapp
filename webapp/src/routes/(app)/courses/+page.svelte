@@ -1,14 +1,17 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
+		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
 	import { RefreshCw, ExternalLink, ChevronRight } from '@lucide/svelte';
@@ -41,7 +44,7 @@
 	}
 
 	const statusVariant = (status: string) =>
-		status === 'COMPLETED' ? 'default' : status === 'SUBMITTED' ? 'secondary' : 'outline';
+		status === 'COMPLETED' ? 'positive' : status === 'SUBMITTED' ? 'secondary' : 'warning';
 
 	const statusLabel = (status: string) =>
 		status === 'COMPLETED'
@@ -140,9 +143,11 @@
 </script>
 
 <div class="space-y-4">
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">Corsi</h1>
+	<PageHeader
+		title="Corsi"
+		description="Consulta i corsi e le iscrizioni. Aggiorna l’elenco per recuperare i dati più recenti dal servizio collegato."
+	>
+		{#snippet summary()}
 			{#if data.lastSync}
 				<p class="text-muted-foreground text-sm">
 					Ultimo aggiornamento: {formatDate(data.lastSync.completedAt ?? data.lastSync.startedAt)}
@@ -154,12 +159,12 @@
 					{/if}
 				</p>
 			{/if}
-		</div>
+		{/snippet}
 		<Button onclick={handleSync} disabled={syncing}>
 			<RefreshCw size={16} class="mr-2 {syncing ? 'animate-spin' : ''}" />
 			{syncing ? 'Aggiornamento...' : 'Aggiorna corsi'}
 		</Button>
-	</div>
+	</PageHeader>
 
 	{#if syncError}
 		<div class="rounded-md bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
@@ -168,14 +173,20 @@
 	{/if}
 
 	<!-- Filtri -->
-	<form method="GET" class="flex flex-wrap items-center gap-3">
-		<Input name="q" placeholder="Cerca email, nome, corso..." value={data.q} class="max-w-xs" />
-		<select name="status" class="rounded border px-2 py-1 text-sm">
-			<option value="">Tutti gli stati</option>
-			{#each ['PENDING', 'SUBMITTED', 'COMPLETED'] as opt}
-				<option value={opt} selected={data.status === opt}>{statusLabel(opt)}</option>
-			{/each}
-		</select>
+	<form method="GET" class="filter-panel">
+		<label class="grid min-w-0 flex-1 gap-1.5 text-sm font-medium"
+			>Cerca corsi e iscritti
+			<Input name="q" placeholder="Email, nome o corso..." value={data.q} />
+		</label>
+		<label class="grid gap-1.5 text-sm font-medium"
+			>Stato iscrizione
+			<select name="status" class="h-9 rounded-md border bg-background px-3 text-sm">
+				<option value="">Tutti gli stati</option>
+				{#each ['PENDING', 'SUBMITTED', 'COMPLETED'] as opt}
+					<option value={opt} selected={data.status === opt}>{statusLabel(opt)}</option>
+				{/each}
+			</select>
+		</label>
 		<label class="flex cursor-pointer items-center gap-2 text-sm">
 			<input type="checkbox" name="showPast" value="1" checked={data.showPast} />
 			Mostra passati
@@ -217,8 +228,8 @@
 
 					<div class="space-y-4 border-t px-4 py-4">
 						{#each dateGroup.courses as courseGroup}
-							<div class="overflow-hidden rounded-lg border">
-								<div class="bg-muted/40 flex items-center gap-2 border-b px-4 py-3">
+							<TablePanel>
+								<div data-slot="table-panel-header">
 									<div class="min-w-0">
 										<div class="truncate font-medium" title={courseGroup.productTitle}>
 											{courseGroup.productTitle}
@@ -237,7 +248,7 @@
 										{courseGroup.enrollments.length === 1 ? ' iscritto' : ' iscritti'}
 									</Badge>
 								</div>
-								<Table class="min-w-[68rem] table-fixed">
+								<Table embedded class="min-w-[68rem] table-fixed">
 									<colgroup>
 										<col class="w-40" />
 										<col class="w-56" />
@@ -276,7 +287,7 @@
 													{#if enrollment.subscriberId}
 														<a
 															href="/subscribers/{enrollment.subscriberId}"
-															class="inline-flex max-w-full items-center gap-1 overflow-hidden text-sm text-blue-600 hover:underline"
+															class="app-link inline-flex max-w-full items-center gap-1 overflow-hidden text-sm"
 															title={`${enrollment.subscriberFirstName ?? ''} ${enrollment.subscriberLastName ?? ''}`.trim()}
 														>
 															<span class="truncate">
@@ -300,7 +311,8 @@
 										{/each}
 									</TableBody>
 								</Table>
-							</div>
+								<TablePagination page={1} totalPages={1} total={courseGroup.enrollments.length} />
+							</TablePanel>
 						{/each}
 					</div>
 				</details>

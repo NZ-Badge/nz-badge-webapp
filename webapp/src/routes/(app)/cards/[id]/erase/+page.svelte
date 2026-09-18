@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { onDestroy } from 'svelte';
@@ -157,10 +158,11 @@
 </script>
 
 <div class="mx-auto max-w-lg space-y-6">
-	<div class="flex items-center gap-3">
-		<a href={data.backHref} class="text-sm text-gray-500 hover:text-gray-900">← {data.backLabel}</a>
-		<h1 class="text-xl font-bold">Cancella Carta</h1>
-	</div>
+	<a href={data.backHref} class="app-link-muted text-sm">← {data.backLabel}</a>
+	<PageHeader
+		title="Cancella tessera"
+		description="Questa operazione rimuove i dati dalla tessera. Verifica l’intestatario prima di procedere e segui le istruzioni del lettore."
+	/>
 
 	<div class="space-y-4 rounded-lg border bg-white p-6">
 		<!-- Info carta -->
@@ -204,7 +206,7 @@
 							<Button
 								onclick={chooseSoftDelete}
 								disabled={isLoading}
-								variant="default"
+								variant="destructive"
 								class="w-full"
 							>
 								Cancella

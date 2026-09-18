@@ -1,14 +1,17 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
+		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
 
@@ -44,12 +47,10 @@
 </script>
 
 <div class="space-y-6">
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">Firmware OTA</h1>
-			<p class="text-sm text-gray-500 mt-1">Gestione release firmware per reader-station</p>
-		</div>
-	</div>
+	<PageHeader
+		title="Aggiornamenti dispositivi"
+		description="Carica il software (firmware) dei lettori e scegli la versione da distribuire. Solo la versione attiva è disponibile per l’aggiornamento."
+	/>
 
 	<!-- Upload form -->
 	<div class="rounded-lg border bg-white p-5 shadow-sm space-y-4">
@@ -126,8 +127,8 @@
 	</div>
 
 	<!-- Release table -->
-	<div class="rounded-lg border bg-white shadow-sm">
-		<Table>
+	<TablePanel>
+		<Table embedded>
 			<TableHeader>
 				<TableRow>
 					<TableHead>Versione</TableHead>
@@ -136,7 +137,7 @@
 					<TableHead>SHA-256</TableHead>
 					<TableHead>Stato</TableHead>
 					<TableHead>Note</TableHead>
-					<TableHead></TableHead>
+					<TableHead class="w-px text-right">Azioni</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
@@ -151,7 +152,7 @@
 						>
 						<TableCell>
 							{#if release.isActive}
-								<Badge variant="default" class="bg-green-600">Attiva</Badge>
+								<Badge variant="positive">Attiva</Badge>
 							{:else}
 								<Badge variant="secondary">Inattiva</Badge>
 							{/if}
@@ -162,12 +163,20 @@
 						>
 							{release.releaseNotes || '—'}
 						</TableCell>
-						<TableCell>
-							<div class="flex gap-2">
+						<TableCell class="w-px whitespace-nowrap text-right">
+							<div class="flex items-center justify-end gap-1">
 								{#if !release.isActive}
 									<form method="POST" action="?/activate" use:enhance>
 										<input type="hidden" name="id" value={release.id} />
-										<Button type="submit" size="sm" variant="outline">Attiva</Button>
+										<Button
+											type="submit"
+											size="sm"
+											variant="positive-ghost"
+											data-tutorial-title={`Attiva firmware ${release.version}`}
+											data-tutorial-description="Rende questa release disponibile per l’aggiornamento dei dispositivi."
+										>
+											Attiva
+										</Button>
 									</form>
 								{:else}
 									<form method="POST" action="?/deactivate" use:enhance>
@@ -175,8 +184,9 @@
 										<Button
 											type="submit"
 											size="sm"
-											variant="ghost"
-											class="text-orange-600 hover:text-orange-700"
+											variant="warning-ghost"
+											data-tutorial-title={`Ritira firmware ${release.version}`}
+											data-tutorial-description="Interrompe la distribuzione di questa release ai dispositivi."
 										>
 											Ritira
 										</Button>
@@ -187,14 +197,13 @@
 					</TableRow>
 				{:else}
 					<TableRow>
-						<TableCell colspan={7} class="py-8 text-center text-gray-500">
-							Nessuna release caricata.
-						</TableCell>
+						<TableCell colspan={7} data-empty>Nessuna release caricata.</TableCell>
 					</TableRow>
 				{/each}
 			</TableBody>
 		</Table>
-	</div>
+		<TablePagination page={1} totalPages={1} total={data.releases.length} />
+	</TablePanel>
 
 	<p class="text-xs text-gray-400">
 		Solo una release può essere attiva per tipo di device. Attivarne una disattiva automaticamente

@@ -6,17 +6,13 @@
 		ref = $bindable(null),
 		class: className,
 		children,
+		embedded = false,
 		...restProps
-	}: WithElementRef<HTMLTableAttributes> = $props();
+	}: WithElementRef<HTMLTableAttributes> & { embedded?: boolean } = $props();
 </script>
 
-<div data-slot="table-container" class="relative w-full overflow-x-auto">
-	<table
-		bind:this={ref}
-		data-slot="table"
-		class={cn('w-full caption-bottom text-sm', className)}
-		{...restProps}
-	>
+<div data-slot="table-container" data-embedded={embedded}>
+	<table bind:this={ref} data-slot="table" class={cn(className)} {...restProps}>
 		{@render children?.()}
 	</table>
 </div>

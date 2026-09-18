@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
@@ -40,14 +41,10 @@
 </script>
 
 <div class="mb-4 flex items-center gap-3">
-	<a
-		href="/admin/users"
-		class="text-muted-foreground hover:text-foreground"
-		aria-label="Torna allo Staff"
-	>
+	<a href="/admin/users" class="app-link-muted" aria-label="Torna allo Staff">
 		<ArrowLeft size={18} />
 	</a>
-	<Badge variant={data.targetUser.status === 'active' ? 'default' : 'secondary'}>
+	<Badge variant={data.targetUser.status === 'active' ? 'positive' : 'secondary'}>
 		{data.targetUser.status === 'active' ? 'Attivo' : 'Disattivato'}
 	</Badge>
 </div>
@@ -62,20 +59,25 @@
 	showManualAction={data.targetUser.status === 'active'}
 />
 
-<div class="mt-6 rounded-lg border bg-white">
-	<div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-3">
+<TablePanel class="mt-6">
+	<div data-slot="table-panel-header">
 		<h2 class="font-semibold">Card RFID</h2>
 		{#if data.targetUser.status === 'active' && !hasActiveCard}
-			<a href="/admin/users/{data.targetUser.id}/write-card">
-				<Button size="sm" variant="outline"><CreditCard size={14} /> Scrivi card RFID</Button>
-			</a>
+			<Button
+				href="/admin/users/{data.targetUser.id}/write-card"
+				size="sm"
+				variant="outline"
+				data-tutorial-title="Scrivi tessera staff"
+				data-tutorial-description="Apre la procedura guidata per associare una tessera a questa persona tramite il lettore USB."
+				><CreditCard size={14} /> Scrivi tessera</Button
+			>
 		{/if}
 	</div>
 	{#if cardError}<p class="px-5 pt-3 text-sm text-red-600">{cardError}</p>{/if}
 	{#if data.cards.length === 0}
 		<p class="px-5 py-5 text-sm text-muted-foreground">Nessuna card RFID associata.</p>
 	{:else}
-		<Table>
+		<Table embedded>
 			<TableHeader
 				><TableRow
 					><TableHead>UID</TableHead><TableHead>Stato</TableHead><TableHead>Scritta il</TableHead
@@ -87,8 +89,18 @@
 					<TableRow>
 						<TableCell class="font-mono text-xs">{card.uid}</TableCell>
 						<TableCell
-							><Badge variant={card.status === 'active' ? 'default' : 'secondary'}
-								>{card.status}</Badge
+							><Badge variant={card.status === 'active' ? 'positive' : 'secondary'}
+								>{card.status === 'active'
+									? 'Attiva'
+									: card.status === 'disabled'
+										? 'Disabilitata'
+										: card.status === 'deleted'
+											? 'Cancellata'
+											: card.status === 'lost'
+												? 'Smarrita'
+												: card.status === 'replaced'
+													? 'Sostituita'
+													: card.status}</Badge
 							></TableCell
 						>
 						<TableCell>{formatDate(card.writeDate)}</TableCell>
@@ -96,28 +108,28 @@
 							{#if card.status === 'active'}
 								<Button
 									size="sm"
-									variant="outline"
+									variant="destructive-ghost"
 									disabled={cardBusy === card.id}
 									onclick={() => changeCardStatus(card.id, 'disable')}>Disabilita</Button
 								>
 							{:else if card.status === 'disabled' && data.targetUser.status === 'active' && !hasActiveCard}
 								<Button
 									size="sm"
-									variant="outline"
+									variant="positive"
 									disabled={cardBusy === card.id}
 									onclick={() => changeCardStatus(card.id, 'enable')}>Riabilita</Button
 								>
 							{:else if card.status === 'deleted' && data.targetUser.status === 'active'}
 								<Button
 									size="sm"
-									variant="outline"
+									variant="positive"
 									disabled={cardBusy === card.id}
 									onclick={() => changeCardStatus(card.id, 'restore')}>Ripristina</Button
 								>
 							{/if}
 							{#if card.status === 'active' || card.status === 'disabled'}
 								<a class="ml-2" href="/cards/{card.id}/erase"
-									><Button size="sm" variant="ghost">Erase</Button></a
+									><Button size="sm" variant="destructive-ghost">Erase</Button></a
 								>
 							{/if}
 						</TableCell>
@@ -126,4 +138,4 @@
 			</TableBody>
 		</Table>
 	{/if}
-</div>
+</TablePanel>

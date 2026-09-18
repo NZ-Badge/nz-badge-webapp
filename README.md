@@ -50,7 +50,7 @@ Accesso tramite login con cookie di sessione JWT.
 
 I Collaboratori vedono soltanto Panoramica, Ingressi collaboratori e I miei ingressi. Gli
 Operatori possono consultare lo Staff, gestire card e strisciate, ma la creazione, modifica e
-disattivazione degli account resta riservata agli Amministratori.
+disattivazione o riattivazione degli account resta riservata agli Amministratori.
 
 ### 2. Device backend
 

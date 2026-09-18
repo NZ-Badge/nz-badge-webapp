@@ -1,13 +1,16 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
+		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
 	import {
@@ -156,114 +159,127 @@
 		editDevice = device;
 		editDialogOpen = true;
 	}
+
+	function buildListUrl(page: number): string {
+		const params = new URLSearchParams();
+		if (page > 1) params.set('page', String(page));
+		if (data.q) params.set('q', data.q);
+		return params.size ? `?${params}` : '?';
+	}
 </script>
 
 <div class="space-y-4">
-	<div class="flex items-center justify-between">
-		<h1 class="text-2xl font-bold">Dispositivi</h1>
+	<PageHeader
+		title="Dispositivi"
+		description="Gestisci i lettori delle presenze e i dispositivi per scrivere le tessere. Controlla lo stato e autorizza nuovi dispositivi."
+	>
 		<Button onclick={() => (createDialogOpen = true)}
 			><Plus size={16} class="mr-2" /> Registra dispositivo</Button
 		>
-	</div>
-
-	<p class="text-sm text-gray-600">
-		Gestisci i dispositivi RFID. Ogni dispositivo richiede un token univoco per l’autenticazione.
-	</p>
+	</PageHeader>
 
 	<!-- Filters -->
-	<form method="GET" class="flex gap-3">
-		<Input
-			name="q"
-			placeholder="Cerca ID dispositivo o posizione..."
-			value={data.q}
-			class="max-w-xs"
-		/>
+	<form method="GET" class="filter-panel">
+		<label class="grid min-w-0 flex-1 gap-1.5 text-sm font-medium">
+			Cerca dispositivi
+			<Input
+				name="q"
+				placeholder="Cerca ID dispositivo o posizione..."
+				value={data.q}
+				class="w-full"
+			/>
+		</label>
 		<Button type="submit" variant="outline">Filtra</Button>
 	</form>
 
 	<!-- Table -->
-	<Table>
-		<TableHeader>
-			<TableRow>
-				<TableHead>ID dispositivo</TableHead>
-				<TableHead>Tipo</TableHead>
-				<TableHead>Posizione</TableHead>
-				<TableHead>Stato</TableHead>
-				<TableHead>Ultimo ping</TableHead>
-				<TableHead>Firmware</TableHead>
-				<TableHead></TableHead>
-			</TableRow>
-		</TableHeader>
-		<TableBody>
-			{#each data.devices as device}
+	<TablePanel>
+		<Table embedded>
+			<TableHeader>
 				<TableRow>
-					<TableCell class="font-mono text-sm">{device.deviceId}</TableCell>
-					<TableCell>
-						<Badge variant={device.deviceType === 'reader' ? 'default' : 'secondary'}>
-							{device.deviceType}
-						</Badge>
-					</TableCell>
-					<TableCell>{device.location || '—'}</TableCell>
-					<TableCell>
-						{#if device.active}
-							<span class="inline-flex items-center gap-1.5">
-								<span class="h-2 w-2 rounded-full bg-green-500"></span>
-								<span class="text-sm text-green-700">Attivo</span>
-							</span>
-						{:else}
-							<span class="inline-flex items-center gap-1.5">
-								<span class="h-2 w-2 rounded-full bg-gray-400"></span>
-								<span class="text-sm text-gray-600">Disabilitato</span>
-							</span>
-						{/if}
-					</TableCell>
-					<TableCell class="text-sm text-gray-600">{formatDate(device.lastPing)}</TableCell>
-					<TableCell class="text-sm text-gray-600">{device.firmwareVersion || '—'}</TableCell>
-					<TableCell class="flex gap-2">
-						<Button size="sm" variant="ghost" onclick={() => openEdit(device)}>
-							<Pencil size={16} />
-						</Button>
-						<Button
-							size="sm"
-							variant="ghost"
-							onclick={() => {
-								deleteDevice = device;
-								deleteDialogOpen = true;
-							}}
-						>
-							<Trash2 size={16} />
-						</Button>
-					</TableCell>
+					<TableHead>ID dispositivo</TableHead>
+					<TableHead>Tipo</TableHead>
+					<TableHead>Posizione</TableHead>
+					<TableHead>Stato</TableHead>
+					<TableHead>Ultimo ping</TableHead>
+					<TableHead>Firmware</TableHead>
+					<TableHead class="w-px text-right">Azioni</TableHead>
 				</TableRow>
-			{:else}
-				<TableRow>
-					<TableCell colspan={7} class="py-8 text-center text-gray-500">
-						Nessun dispositivo registrato.
-						<Button variant="link" onclick={() => (createDialogOpen = true)}
-							>Registrane uno ora</Button
-						>
-					</TableCell>
-				</TableRow>
-			{/each}
-		</TableBody>
-	</Table>
+			</TableHeader>
+			<TableBody>
+				{#each data.devices as device}
+					<TableRow>
+						<TableCell class="font-mono text-sm">{device.deviceId}</TableCell>
+						<TableCell>
+							<Badge variant={device.deviceType === 'reader' ? 'default' : 'secondary'}>
+								{device.deviceType}
+							</Badge>
+						</TableCell>
+						<TableCell>{device.location || '—'}</TableCell>
+						<TableCell>
+							{#if device.active}
+								<span class="inline-flex items-center gap-1.5">
+									<span class="h-2 w-2 rounded-full bg-green-500"></span>
+									<span class="text-sm text-green-700">Attivo</span>
+								</span>
+							{:else}
+								<span class="inline-flex items-center gap-1.5">
+									<span class="h-2 w-2 rounded-full bg-gray-400"></span>
+									<span class="text-sm text-gray-600">Disabilitato</span>
+								</span>
+							{/if}
+						</TableCell>
+						<TableCell class="text-sm text-gray-600">{formatDate(device.lastPing)}</TableCell>
+						<TableCell class="text-sm text-gray-600">{device.firmwareVersion || '—'}</TableCell>
+						<TableCell class="w-px whitespace-nowrap text-right">
+							<div class="flex items-center justify-end gap-1">
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									onclick={() => openEdit(device)}
+									aria-label={`Modifica ${device.deviceId}`}
+									data-tutorial-title={`Modifica ${device.deviceId}`}
+									data-tutorial-description="Apre il modulo per aggiornare tipo, posizione e stato del dispositivo."
+								>
+									<Pencil size={16} />
+								</Button>
+								<Button
+									size="icon-sm"
+									variant="destructive-ghost"
+									onclick={() => {
+										deleteDevice = device;
+										deleteDialogOpen = true;
+									}}
+									aria-label={`Elimina ${device.deviceId}`}
+									data-tutorial-title={`Elimina ${device.deviceId}`}
+									data-tutorial-description="Apre la conferma per eliminare questo dispositivo e revocarne l’accesso."
+								>
+									<Trash2 size={16} />
+								</Button>
+							</div>
+						</TableCell>
+					</TableRow>
+				{:else}
+					<TableRow>
+						<TableCell colspan={7} data-empty>
+							Nessun dispositivo registrato.
+							<Button variant="link" onclick={() => (createDialogOpen = true)}
+								>Registrane uno ora</Button
+							>
+						</TableCell>
+					</TableRow>
+				{/each}
+			</TableBody>
+		</Table>
 
-	<!-- Pagination -->
-	<div class="flex items-center justify-between text-sm text-gray-600">
-		<span>Pagina {data.page} di {data.totalPages} ({data.total} totali)</span>
-		<div class="flex gap-2">
-			{#if data.page > 1}
-				<a href="?page={data.page - 1}&q={data.q}">
-					<Button variant="outline" size="sm">Precedente</Button>
-				</a>
-			{/if}
-			{#if data.page < data.totalPages}
-				<a href="?page={data.page + 1}&q={data.q}">
-					<Button variant="outline" size="sm">Successiva</Button>
-				</a>
-			{/if}
-		</div>
-	</div>
+		<TablePagination
+			page={data.page}
+			totalPages={data.totalPages}
+			total={data.total}
+			getPageHref={buildListUrl}
+			ariaLabel="Paginazione dispositivi"
+		/>
+	</TablePanel>
 </div>
 
 <!-- Create Dialog -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -13,7 +14,6 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import {
 		Save,
-		Settings,
 		AlertCircle,
 		Check,
 		Key,
@@ -269,14 +269,10 @@
 </script>
 
 <div class="mx-auto max-w-2xl space-y-6">
-	<div class="flex items-center gap-3">
-		<Settings size={28} class="text-gray-700" />
-		<h1 class="text-2xl font-bold">Impostazioni</h1>
-	</div>
-
-	<p class="text-sm text-gray-600">
-		Configura le regole per la gestione delle presenze e delle strisciate.
-	</p>
+	<PageHeader
+		title="Impostazioni"
+		description="Configura le regole delle presenze, la sicurezza delle tessere e i collegamenti con gli altri servizi."
+	/>
 
 	{#if saveError}
 		<Alert variant="destructive">
@@ -403,19 +399,10 @@
 						funzioneranno più e dovranno essere riscritte.
 					</p>
 					<div class="pt-2">
-						<Button
-							onclick={dismissSingleKeyWarning}
-							variant="outline"
-							size="sm"
-							class="border-red-300 text-red-700 hover:bg-red-100"
-						>
+						<Button onclick={dismissSingleKeyWarning} variant="outline" size="sm">
 							Ho capito, annulla
 						</Button>
-						<a href="/cards" class="ml-2">
-							<Button variant="default" size="sm" class="bg-red-600 hover:bg-red-700">
-								Vai alle card
-							</Button>
-						</a>
+						<Button href="/cards" variant="warning" size="sm" class="ml-2">Vai alle card</Button>
 					</div>
 				</div>
 			</div>
@@ -489,9 +476,8 @@
 							<Button
 								onclick={regenerateKeys}
 								disabled={regeneratingKeys}
-								variant="outline"
+								variant="warning"
 								size="sm"
-								class="text-amber-700 border-amber-300 hover:bg-amber-100"
 							>
 								{#if regeneratingKeys}
 									<span
@@ -699,11 +685,10 @@
 					</p>
 				{/if}
 				<Button
-					variant="outline"
+					variant={webhookSecret ? 'warning' : 'outline'}
 					size="sm"
 					onclick={generateWebhookSecret}
 					disabled={generatingSecret}
-					class="text-gray-700"
 				>
 					{#if generatingSecret}
 						<span

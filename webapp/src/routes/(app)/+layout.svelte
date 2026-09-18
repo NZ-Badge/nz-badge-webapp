@@ -19,8 +19,10 @@
 		Plug,
 		UserCog,
 		Clock3,
-		LogIn
+		LogIn,
+		CircleHelp
 	} from '@lucide/svelte';
+	import TutorialGuide from '$lib/components/TutorialGuide.svelte';
 	import {
 		connection,
 		connect,
@@ -39,6 +41,7 @@
 	let isMobile = $state(false);
 	let adminSubmenuOpen = $state(false);
 	let attendanceSubmenuOpen = $state(false);
+	let tutorialEnabled = $state(false);
 
 	// Navigation links with icons
 	const isCollaborator = $derived(data.user.role === 'collaborator');
@@ -68,13 +71,13 @@
 	const adminLinks = $derived([
 		...(isUserAdmin
 			? [
-					{ href: '/card-diagnostics', label: 'Diagnostica card', icon: ScanLine },
+					{ href: '/card-diagnostics', label: 'Verifica tessera', icon: ScanLine },
 					{ href: '/devices', label: 'Dispositivi', icon: Cpu },
-					{ href: '/firmware', label: 'Firmware', icon: Microchip },
+					{ href: '/firmware', label: 'Aggiornamenti', icon: Microchip },
 					{ href: '/settings', label: 'Impostazioni', icon: Settings }
 				]
 			: []),
-		{ href: '/admin/users', label: 'Staff', icon: UserCog }
+		{ href: '/admin/users', label: 'Staff e accessi', icon: UserCog }
 	]);
 
 	// Check if any admin link is active
@@ -84,6 +87,12 @@
 	const isAttendanceActive = $derived(
 		attendanceLinks.some((link) => $page.url.pathname.startsWith(link.href))
 	);
+
+	$effect(() => {
+		const pathname = $page.url.pathname;
+		adminSubmenuOpen = adminLinks.some((link) => pathname.startsWith(link.href));
+		attendanceSubmenuOpen = attendanceLinks.some((link) => pathname.startsWith(link.href));
+	});
 
 	// Derived state
 	const isActiveLink = $derived((href: string) => $page.url.pathname.startsWith(href));
@@ -96,6 +105,8 @@
 
 	// Check for mobile viewport
 	onMount(() => {
+		tutorialEnabled = window.localStorage.getItem('nzbadge-tutorial-enabled') === 'true';
+
 		const checkMobile = () => {
 			isMobile = window.innerWidth < 768;
 			if (!isMobile) sidebarOpen = false;
@@ -106,6 +117,11 @@
 
 		return () => window.removeEventListener('resize', checkMobile);
 	});
+
+	function setTutorialEnabled(enabled: boolean) {
+		tutorialEnabled = enabled;
+		window.localStorage.setItem('nzbadge-tutorial-enabled', String(enabled));
+	}
 
 	// Close sidebar handler
 	function closeSidebar() {
@@ -141,7 +157,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex h-screen overflow-hidden bg-background">
+<div class="flex h-dvh overflow-hidden bg-background">
 	<!-- Mobile Backdrop -->
 	{#if sidebarOpen}
 		<div
@@ -154,6 +170,7 @@
 
 	<!-- Sidebar (fissa, non scrolla) -->
 	<aside
+		id="sidebar"
 		class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-slate-900 text-white
 		       transform transition-transform duration-300 ease-out
 		       md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 md:overflow-hidden
@@ -176,7 +193,10 @@
 
 		<!-- Navigation -->
 		<nav class="flex-1 overflow-y-auto px-3 py-4">
-			<ul class="space-y-1" role="menubar">
+			<p class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+				Gestione quotidiana
+			</p>
+			<ul class="sidebar-nav-list" role="menubar">
 				{#each navLinks as link}
 					{@const isActive = isActiveLink(link.href)}
 					<li role="none">
@@ -198,7 +218,7 @@
 				{/each}
 
 				{#if isStaffManager}
-					<li role="none" class="pt-2">
+					<li role="none">
 						<button
 							type="button"
 							role="menuitem"
@@ -216,8 +236,8 @@
 								class="transition-transform {attendanceSubmenuOpen ? 'rotate-180' : ''}"
 							/>
 						</button>
-						{#if attendanceSubmenuOpen || isAttendanceActive}
-							<ul class="mt-1 space-y-1 pl-4" role="menu">
+						{#if attendanceSubmenuOpen}
+							<ul class="sidebar-nav-list sidebar-nav-sublist" role="menu">
 								{#each attendanceLinks as link}
 									{@const isActive = isActiveLink(link.href)}
 									<li>
@@ -253,7 +273,7 @@
 
 				<!-- Admin submenu: full for admins, Staff only for operators. -->
 				{#if isStaffManager}
-					<li role="none" class="pt-2">
+					<li role="none">
 						<button
 							type="button"
 							role="menuitem"
@@ -261,7 +281,7 @@
 							aria-haspopup="true"
 							class="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
 						       {isAdminActive
-								? 'bg-blue-600 text-white'
+								? 'bg-violet-700 text-white'
 								: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
 							onclick={toggleAdminSubmenu}
 						>
@@ -274,7 +294,7 @@
 						</button>
 
 						{#if adminSubmenuOpen}
-							<ul class="mt-1 space-y-1 pl-4" role="menu">
+							<ul class="sidebar-nav-list sidebar-nav-sublist" role="menu">
 								{#each adminLinks as link}
 									{@const isActive = isActiveLink(link.href)}
 									<li role="none">
@@ -284,7 +304,7 @@
 											aria-current={isActive ? 'page' : undefined}
 											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all
 										       {isActive
-												? 'bg-blue-600/50 text-white'
+												? 'bg-violet-700/50 text-white'
 												: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
 											onclick={closeSidebar}
 										>
@@ -302,6 +322,25 @@
 				{/if}
 			</ul>
 		</nav>
+
+		<!-- Tutorial mode -->
+		<div class="border-t border-slate-700 px-3 py-3" data-tutorial-ignore>
+			<button
+				type="button"
+				class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors {tutorialEnabled
+					? 'bg-amber-400 text-slate-950 hover:bg-amber-500'
+					: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
+				onclick={() => setTutorialEnabled(!tutorialEnabled)}
+				aria-pressed={tutorialEnabled}
+				aria-label={tutorialEnabled ? 'Disattiva modalità Tutorial' : 'Attiva modalità Tutorial'}
+			>
+				<CircleHelp size={18} aria-hidden="true" />
+				<span class="flex-1 text-left">Tutorial</span>
+				<span class="text-[10px] font-semibold uppercase tracking-wide">
+					{tutorialEnabled ? 'Attivo' : 'Avvia'}
+				</span>
+			</button>
+		</div>
 
 		<!-- Sidebar Footer -->
 		<div class="border-t border-slate-700 p-4">
@@ -346,12 +385,14 @@
 				</button>
 
 				<!-- Page Title (mobile only) -->
-				<h1 class="text-lg font-semibold text-slate-900 md:hidden">Presenze RFID</h1>
+				<span class="mr-4 hidden text-sm font-semibold text-slate-900 sm:block md:hidden"
+					>NZBadge</span
+				>
 
 				<!-- WebSerial Connection Section (integrato come sezione della toolbar) -->
 				{#if !isCollaborator && browser && isWebSerialSupported()}
 					<div
-						class="-ml-4 flex h-full items-center border-slate-200 bg-slate-50/50 px-4 {connection.state ===
+						class="flex h-full items-center border-slate-200 bg-slate-50/50 px-4 md:-ml-4 {connection.state ===
 						'connected'
 							? 'border-l'
 							: 'border-x'}"
@@ -392,7 +433,7 @@
 						{#if connectionStatus.canConnect}
 							<button
 								type="button"
-								class="ml-3 -mr-4 flex h-full items-center gap-2 border-l border-slate-200 px-4 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:outline-none"
+								class="ml-3 -mr-4 flex h-full items-center gap-2 border-l border-slate-200 px-4 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-500"
 								onclick={handleConnect}
 								aria-label="Connetti dispositivo USB"
 							>
@@ -402,7 +443,7 @@
 						{:else if connectionStatus.canDisconnect}
 							<button
 								type="button"
-								class="ml-3 -mr-4 flex h-full items-center gap-2 border-l border-r border-slate-200 px-4 text-sm font-medium text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none"
+								class="ml-3 -mr-4 flex h-full items-center gap-2 border-l border-r border-slate-200 px-4 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 hover:text-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
 								onclick={disconnect}
 								aria-label="Disconnetti dispositivo USB"
 							>
@@ -418,16 +459,16 @@
 			<div class="-mr-4 flex h-full items-center">
 				<!-- User Info Section -->
 				<div
-					class="flex h-full flex-col justify-center border-l border-slate-200 bg-slate-50/50 px-4"
+					class="hidden h-full max-w-64 flex-col justify-center border-l border-slate-200 bg-slate-50/50 px-4 lg:flex"
 				>
-					<p class="text-sm font-medium text-slate-900">{data.user.email}</p>
+					<p class="truncate text-sm font-medium text-slate-900">{data.user.email}</p>
 				</div>
 
 				<!-- Logout Section -->
 				<form method="POST" action="/login?/logout" class="m-0 flex h-full">
 					<button
 						type="submit"
-						class="flex h-full items-center gap-2 border-l border-slate-200 px-4 text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none"
+						class="flex h-full items-center gap-2 border-l border-slate-200 px-4 text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
 						aria-label="Esci"
 						title="Esci"
 					>
@@ -438,8 +479,21 @@
 		</header>
 
 		<!-- Main Content (scrollabile) -->
-		<main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8" aria-label="Contenuto principale">
-			{@render children()}
+		<main
+			class="app-workspace flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"
+			data-area={isAdminActive ? 'administration' : 'operations'}
+			aria-label="Contenuto principale"
+		>
+			<div class="mx-auto w-full max-w-screen-2xl">
+				<div class="area-label mb-4">
+					{#if isAdminActive}<Shield size={15} aria-hidden="true" />{:else}<LayoutDashboard
+							size={15}
+							aria-hidden="true"
+						/>{/if}
+					{isAdminActive ? 'Amministrazione · Configurazione e accessi' : 'Gestione quotidiana'}
+				</div>
+				{@render children()}
+			</div>
 		</main>
 	</div>
 </div>
@@ -481,3 +535,5 @@
 		</div>
 	</div>
 {/if}
+
+<TutorialGuide enabled={tutorialEnabled} onDisable={() => setTutorialEnabled(false)} />

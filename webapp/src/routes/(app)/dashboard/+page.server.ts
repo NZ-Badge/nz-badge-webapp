@@ -8,7 +8,7 @@ import {
 	enrollments,
 	staffAttendance
 } from '$lib/db/schema';
-import { and, count, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import {
 	enrichSubscribersForList,
 	enrollmentMatchesMonth,
@@ -57,12 +57,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}
 
 	// Query aggregate in parallelo per performance
+	const today = new Date(`${formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd')}T00:00:00.000Z`);
 	const [
 		[{ activeSubscribers }],
 		[{ todayAttendance }],
 		[{ activeCards }],
 		[{ onlineDevices }],
-		enrollmentRows
+		enrollmentRows,
+		activeEnrollmentRows
 	] = await Promise.all([
 		db
 			.select({ activeSubscribers: count() })
@@ -95,8 +97,59 @@ export const load: PageServerLoad = async ({ locals }) => {
 				desc(enrollments.startDate),
 				desc(enrollments.externalCreatedAt),
 				desc(enrollments.id)
-			)
+			),
+		db
+			.select({
+				id: enrollments.id,
+				variantId: enrollments.variantId,
+				productTitle: enrollments.productTitle,
+				variantTitle: enrollments.variantTitle,
+				startDate: enrollments.startDate,
+				endDate: enrollments.endDate
+			})
+			.from(enrollments)
+			.where(and(lte(enrollments.startDate, today), gte(enrollments.endDate, today)))
+			.orderBy(enrollments.endDate, enrollments.productTitle, enrollments.variantTitle)
 	]);
+
+	const activeCoursesByKey = new Map<
+		string,
+		{
+			variantId: string | null;
+			productTitle: string;
+			variantTitle: string | null;
+			startDate: Date | null;
+			endDate: Date | null;
+			enrollmentCount: number;
+		}
+	>();
+
+	for (const enrollment of activeEnrollmentRows) {
+		const startDateKey = enrollment.startDate?.toISOString().slice(0, 10) ?? '';
+		const endDateKey = enrollment.endDate?.toISOString().slice(0, 10) ?? '';
+		const courseKey = JSON.stringify([
+			enrollment.variantId,
+			enrollment.productTitle,
+			enrollment.variantTitle,
+			startDateKey,
+			endDateKey
+		]);
+		const course = activeCoursesByKey.get(courseKey);
+
+		if (course) {
+			course.enrollmentCount += 1;
+			continue;
+		}
+
+		activeCoursesByKey.set(courseKey, {
+			variantId: enrollment.variantId,
+			productTitle: enrollment.productTitle ?? 'Corso senza nome',
+			variantTitle: enrollment.variantTitle,
+			startDate: enrollment.startDate,
+			endDate: enrollment.endDate,
+			enrollmentCount: 1
+		});
+	}
 
 	const currentMonthEnrollments = enrollmentRows.filter((enrollment) =>
 		enrollmentMatchesMonth(enrollment, now)
@@ -142,6 +195,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		todayAttendance,
 		activeCards,
 		onlineDevices,
+		activeCourses: [...activeCoursesByKey.values()],
 		currentMonthLabel: formatInTimeZone(now, TIMEZONE, 'MMMM yyyy'),
 		currentMonthSubscribers
 	};

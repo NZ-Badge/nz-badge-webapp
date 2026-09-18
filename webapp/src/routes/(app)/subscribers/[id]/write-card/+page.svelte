@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { browser } from '$app/environment';
 	import { onDestroy } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -360,10 +361,11 @@
 </script>
 
 <div class="mx-auto max-w-lg space-y-6">
-	<div class="flex items-center gap-3">
-		<a href={data.backHref} class="text-sm text-gray-500 hover:text-gray-900">← {data.backLabel}</a>
-		<h1 class="text-xl font-bold">Scrivi tessera</h1>
-	</div>
+	<a href={data.backHref} class="app-link-muted text-sm">← {data.backLabel}</a>
+	<PageHeader
+		title="Scrivi tessera"
+		description="Collega il lettore USB e segui le istruzioni per associare una tessera alla persona."
+	/>
 
 	<div class="space-y-4 rounded-lg border bg-white p-6">
 		<p class="text-gray-600">
@@ -480,7 +482,11 @@
 							<strong>{data.subscriber.firstName} {data.subscriber.lastName}</strong>.
 						</p>
 						<div class="flex gap-2">
-							<Button onclick={handleDeletedHistoryContinue} disabled={isLoading}>
+							<Button
+								onclick={handleDeletedHistoryContinue}
+								disabled={isLoading}
+								variant={deletedHistoryRequiresErase ? 'warning' : 'default'}
+							>
 								{isLoading
 									? 'Aggiornamento...'
 									: deletedHistoryRequiresErase

@@ -1,0 +1,80 @@
+/* Single visual contract for every table, including those outside the app layout.
+   Pages may set column widths/alignment, but must not restyle rows or surfaces. */
+@layer components {
+	[data-slot='table-panel'],
+	[data-slot='table-container']:not([data-embedded='true']) {
+		@apply rounded-xl border border-border bg-card text-card-foreground shadow-sm;
+	}
+
+	[data-slot='table-panel'] {
+		@apply relative overflow-hidden;
+	}
+	[data-slot='table-container'] {
+		@apply relative w-full overflow-x-auto;
+	}
+	[data-slot='table'] {
+		@apply w-full border-collapse caption-bottom text-sm;
+	}
+
+	[data-slot='table-panel-header'],
+	[data-slot='table-panel-footer'] {
+		@apply flex flex-wrap items-center justify-between gap-3 bg-muted/40 px-4 py-3 text-sm;
+	}
+	[data-slot='table-panel-header'] {
+		@apply border-b;
+	}
+	[data-slot='table-panel-footer'] {
+		@apply border-t text-muted-foreground;
+	}
+
+	[data-slot='table-header'] {
+		background: var(--area-surface, var(--muted));
+		color: var(--area-ink, var(--foreground));
+	}
+	[data-slot='table-row'] {
+		@apply border-b border-border;
+	}
+	[data-slot='table-body'] > [data-slot='table-row']:last-child,
+	[data-slot='table-footer'] > [data-slot='table-row']:last-child {
+		border-bottom: 0;
+	}
+
+	[data-slot='table-head'] {
+		@apply h-12 px-4 py-3 text-start align-middle font-semibold whitespace-nowrap;
+	}
+	[data-slot='table-cell'] {
+		@apply h-14 px-4 py-3 align-middle whitespace-nowrap transition-colors;
+		background: var(--table-row-background, transparent);
+	}
+	[data-slot='table-body'] > [data-slot='table-row']:nth-child(even) {
+		--table-row-background: color-mix(in oklab, var(--muted) 45%, var(--card));
+	}
+	[data-slot='table-body']
+		> [data-slot='table-row']:where(:not(:has([data-empty]))):is(:hover, :focus-within) {
+		--table-row-background: var(--area-surface, var(--muted));
+	}
+	[data-slot='table-body'] > [data-slot='table-row'][data-state='selected'] {
+		--table-row-background: var(--color-blue-100);
+	}
+	.dark [data-slot='table-body'] > [data-slot='table-row'][data-state='selected'] {
+		--table-row-background: var(--color-blue-950);
+	}
+	[data-slot='table-cell'][data-empty] {
+		@apply h-28 px-4 py-8 text-center whitespace-normal text-muted-foreground;
+	}
+	[data-slot='table-footer'] {
+		@apply border-t bg-muted/40 font-medium;
+	}
+	[data-slot='table-caption'] {
+		@apply p-4 text-sm text-muted-foreground;
+	}
+	[data-slot='table-loading'] {
+		@apply absolute inset-0 z-10 grid place-items-center rounded-xl bg-card/80 text-sm text-muted-foreground;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		[data-slot='table-cell'] {
+			transition: none;
+		}
+	}
+}

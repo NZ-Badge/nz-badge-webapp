@@ -1,11 +1,24 @@
 <script lang="ts">
-	import { CreditCard, Smartphone, History, Plus, ScanLine } from '@lucide/svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import {
+		ArrowRight,
+		CalendarDays,
+		ClipboardList,
+		CreditCard,
+		History,
+		LogIn,
+		Plus,
+		ScanLine,
+		Smartphone,
+		Users
+	} from '@lucide/svelte';
 	import { invalidateAll } from '$app/navigation';
 	import CardQuickReader from '$lib/components/CardQuickReader.svelte';
 	import StaffManualEntryDialog from '$lib/components/StaffManualEntryDialog.svelte';
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
@@ -29,6 +42,7 @@
 	const currentMonthSubscribers = $derived(
 		data.mode === 'management' ? (data.currentMonthSubscribers ?? []) : []
 	);
+	const activeCourses = $derived(data.mode === 'management' ? (data.activeCourses ?? []) : []);
 	let manualOpen = $state(false);
 	let simulateBusy = $state(false);
 	let simulateMessage = $state('');
@@ -37,6 +51,11 @@
 	function formatDateTime(d: Date | string | null | undefined) {
 		if (!d) return '—';
 		return new Date(d).toLocaleString('it-IT', { timeZone: 'Europe/Rome' });
+	}
+
+	function formatDate(d: Date | string | null | undefined) {
+		if (!d) return '—';
+		return new Date(d).toLocaleDateString('it-IT', { timeZone: 'Europe/Rome' });
 	}
 
 	function sourceLabel(source: string): string {
@@ -69,16 +88,18 @@
 </script>
 
 {#if data.mode === 'collaborator'}
-	<h1 class="mb-2 text-2xl font-bold">Panoramica</h1>
-	<p class="mb-6 text-sm text-muted-foreground">
-		Ciao {data.targetUser.name}, gestisci qui i tuoi ingressi.
-	</p>
+	<div class="mb-6">
+		<PageHeader
+			title="Panoramica"
+			description={`Ciao ${data.targetUser.name}, da qui puoi registrare ingressi e uscite e controllare le tue presenze.`}
+		/>
+	</div>
 
 	<div class="grid gap-4 md:grid-cols-2">
 		<Card>
 			<CardContent class="space-y-4 p-5">
 				<div>
-					<h2 class="font-semibold">Simula strisciata</h2>
+					<h2 class="font-semibold">Registra la tua presenza</h2>
 					<p class="text-sm text-muted-foreground">
 						Il prossimo evento previsto è <strong
 							>{data.nextEventType === 'entry' ? 'Ingresso' : 'Uscita'}</strong
@@ -107,22 +128,22 @@
 				<Button class="w-full" variant="outline" onclick={() => (manualOpen = true)}
 					><Plus size={17} /> Inserisci evento</Button
 				>
-				<a href="/my-attendance" class="block text-center text-sm text-blue-700 hover:underline"
+				<a href="/my-attendance" class="app-link block text-center text-sm"
 					>Apri il riepilogo delle ore →</a
 				>
 			</CardContent>
 		</Card>
 	</div>
 
-	<div class="mt-8 rounded-lg border bg-white">
-		<div class="flex items-center justify-between border-b px-5 py-3">
+	<TablePanel class="mt-8">
+		<div data-slot="table-panel-header">
 			<h2 class="font-semibold">Le mie ultime 10 strisciate</h2>
-			<a href="/my-attendance" class="text-sm text-blue-700 hover:underline">Vedi tutte →</a>
+			<a href="/my-attendance" class="app-link text-sm">Vedi tutte →</a>
 		</div>
 		{#if data.recentStaffAttendance.length === 0}<p class="px-5 py-6 text-sm text-muted-foreground">
 				Nessuna strisciata registrata.
 			</p>{:else}
-			<Table
+			<Table embedded
 				><TableHeader
 					><TableRow
 						><TableHead>Data/ora</TableHead><TableHead>Evento</TableHead><TableHead
@@ -145,7 +166,7 @@
 				></Table
 			>
 		{/if}
-	</div>
+	</TablePanel>
 
 	<StaffManualEntryDialog
 		bind:open={manualOpen}
@@ -155,7 +176,51 @@
 		onsaved={invalidateAll}
 	/>
 {:else}
-	<h1 class="mb-6 text-2xl font-bold">Panoramica</h1>
+	<div class="mb-6">
+		<PageHeader
+			title="Panoramica"
+			description="Le attività di ogni giorno, in un unico posto. Cerca un iscritto, verifica una tessera o controlla le presenze."
+		/>
+	</div>
+
+	<section class="mb-8" aria-labelledby="quick-actions-title">
+		<h2 id="quick-actions-title" class="mb-4 text-xl font-semibold">Cosa fare</h2>
+		<div class="grid gap-3 md:grid-cols-3">
+			<Button
+				href="/subscribers"
+				variant="quick-action"
+				size="lg"
+				class="h-auto min-h-16 justify-between px-5 py-4"
+			>
+				<span class="flex items-center gap-3"
+					><Users size={22} /> Vai alla lista degli iscritti</span
+				>
+				<ArrowRight size={20} />
+			</Button>
+			<Button
+				href="/attendance"
+				variant="quick-action"
+				size="lg"
+				class="h-auto min-h-16 justify-between px-5 py-4"
+			>
+				<span class="flex items-center gap-3"
+					><ClipboardList size={22} /> Controlla accessi corsisti</span
+				>
+				<ArrowRight size={20} />
+			</Button>
+			<Button
+				href="/staff-attendance"
+				variant="quick-action"
+				size="lg"
+				class="h-auto min-h-16 justify-between px-5 py-4"
+			>
+				<span class="flex items-center gap-3"
+					><LogIn size={22} /> Controlla accessi collaboratori</span
+				>
+				<ArrowRight size={20} />
+			</Button>
+		</div>
+	</section>
 
 	<div class="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-stretch">
 		<div class="grid gap-3 lg:h-full lg:grid-rows-4">
@@ -177,11 +242,48 @@
 			/>
 		</div>
 	</div>
+
+	<section class="mt-8" aria-labelledby="active-courses-title">
+		<div class="mb-4 flex items-center gap-2">
+			<CalendarDays size={20} class="text-blue-600" />
+			<h2 id="active-courses-title" class="text-xl font-semibold">Corsi attivi</h2>
+		</div>
+
+		{#if activeCourses.length === 0}
+			<Card>
+				<CardContent class="text-muted-foreground py-6 text-sm">
+					Nessun corso attivo oggi.
+				</CardContent>
+			</Card>
+		{:else}
+			<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+				{#each activeCourses as course}
+					<Card class="gap-3 py-5">
+						<CardContent class="space-y-2 px-5">
+							<div>
+								<h3 class="font-semibold">{course.productTitle}</h3>
+								{#if course.variantTitle}
+									<p class="text-muted-foreground text-sm">{course.variantTitle}</p>
+								{/if}
+							</div>
+							<p class="text-sm">
+								{formatDate(course.startDate)} – {formatDate(course.endDate)}
+							</p>
+							<p class="text-muted-foreground text-sm">
+								{course.enrollmentCount}
+								{course.enrollmentCount === 1 ? ' iscrizione' : ' iscrizioni'}
+							</p>
+						</CardContent>
+					</Card>
+				{/each}
+			</div>
+		{/if}
+	</section>
 {/if}
 
 {#if data.mode === 'management'}
 	<div class="mt-8">
-		<div class="mb-4 flex items-center justify-between gap-4">
+		<div class="mb-4">
 			<div>
 				<h2 class="text-xl font-semibold">Iscritti del mese corrente</h2>
 				<p class="text-muted-foreground text-sm capitalize">
@@ -189,9 +291,6 @@
 					{currentMonthSubscribers.length === 1 ? ' iscritto' : ' iscritti'}
 				</p>
 			</div>
-			<a href="/subscribers">
-				<Button variant="outline" size="sm">Apri iscritti</Button>
-			</a>
 		</div>
 
 		{#if currentMonthSubscribers.length === 0}
@@ -215,7 +314,7 @@
 					{#each currentMonthSubscribers as sub}
 						<TableRow>
 							<TableCell>
-								<a href="/subscribers/{sub.id}" class="font-medium hover:underline">
+								<a href="/subscribers/{sub.id}" class="app-link font-medium">
 									{sub.firstName}
 									{sub.lastName}
 								</a>

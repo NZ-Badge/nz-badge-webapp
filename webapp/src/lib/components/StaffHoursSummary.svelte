@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Clock, CalendarDays, TriangleAlert, Plus } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -7,6 +8,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
@@ -52,15 +54,14 @@
 </script>
 
 <div class="space-y-6">
-	<div class="flex flex-wrap items-start justify-between gap-3">
-		<div>
-			<h1 class="text-2xl font-bold">{user.name}</h1>
-			<p class="text-sm text-muted-foreground">{user.email}</p>
-		</div>
+	<PageHeader
+		title={user.name}
+		description={`Riepilogo delle ore e delle presenze · ${user.email}`}
+	>
 		{#if showManualAction}
 			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
 		{/if}
-	</div>
+	</PageHeader>
 
 	<div class="grid gap-4 md:grid-cols-3">
 		<Card>
@@ -120,12 +121,12 @@
 		<Button type="submit" variant="outline">Calcola</Button>
 	</form>
 
-	<div class="rounded-lg border bg-white">
-		<div class="border-b px-5 py-3"><h2 class="font-semibold">Sessioni del periodo</h2></div>
+	<TablePanel>
+		<div data-slot="table-panel-header"><h2 class="font-semibold">Sessioni del periodo</h2></div>
 		{#if report.custom.sessions.length === 0}
 			<p class="px-5 py-5 text-sm text-muted-foreground">Nessuna sessione completa nel periodo.</p>
 		{:else}
-			<Table>
+			<Table embedded>
 				<TableHeader
 					><TableRow
 						><TableHead>Ingresso</TableHead><TableHead>Uscita</TableHead><TableHead
@@ -144,7 +145,7 @@
 				</TableBody>
 			</Table>
 		{/if}
-	</div>
+	</TablePanel>
 
 	{#if report.custom.issues.length > 0}
 		<div class="rounded-lg border border-amber-200 bg-amber-50">

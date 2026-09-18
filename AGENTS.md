@@ -74,3 +74,42 @@ richiedere `DATABASE_URL` e un MySQL disponibile. Per un database vuoto preferir
 
 Se cambiano endpoint, payload, autenticazione, webhook, schema o setup, aggiornare nello stesso
 intervento il README o il documento in `docs/` pertinente.
+
+## Note operative
+
+### Palette semantica per pulsanti e link
+
+Usare il colore per comunicare l'intento dell'azione, non la sezione della pagina. La palette di
+riferimento e' la seguente (scala Tailwind):
+
+| Intento | Uso | Colori |
+| --- | --- | --- |
+| Primario | Azione principale del contesto: crea, salva, avvia, sincronizza | `blue-600`, hover `blue-700`, testo `white` |
+| Positivo | Abilita, ripristina o conferma un esito esplicitamente positivo | `emerald-700`, hover `emerald-800`, testo `white` |
+| Attenzione | Azione rischiosa ma reversibile o che richiede cautela | `amber-400`, hover `amber-500`, testo `slate-950` |
+| Distruttivo | Elimina, revoca, disabilita o cancella dati/card | `red-600`, hover `red-700`, testo `white` |
+| Secondario | Annulla, chiudi, torna indietro, filtra e azioni di supporto | fondo `slate-100`, bordo `slate-300`, testo `slate-900`, hover `slate-200`; in dark mode usare `slate-800/700/100` |
+| Ghost | Azioni compatte e ripetute in tabelle o toolbar | fondo trasparente, testo `slate-700`, hover `slate-100`; in dark mode testo `slate-300`, hover `slate-800` |
+| Link interno | Navigazione verso pagine o dettagli dell'app | `blue-700`, hover `blue-800`; in dark mode `blue-300`, hover `blue-200` |
+| Link distruttivo | Azione testuale con conseguenza distruttiva | `red-700`, hover `red-800`; in dark mode `red-400`, hover `red-300` |
+| Link discreto | Breadcrumb, ritorno e navigazione a bassa priorita' | `slate-600`, hover `slate-900`; in dark mode `slate-400`, hover `slate-100` |
+
+Applicare queste regole insieme alle seguenti convenzioni:
+
+- Deve esserci una sola azione primaria per gruppo o dialog; le altre sono secondarie o ghost.
+- Il verde non sostituisce il primario: usarlo soltanto quando il significato e' davvero positivo
+  (per esempio `Ripristina` o `Abilita`). L'ambra non va usata per il tutorial fuori dagli elementi
+  della guida, cosi' rimane distinguibile dalle normali azioni.
+- Usare `Button` e le varianti condivise in `src/lib/components/ui/button`; se manca una variante
+  semantica, aggiungerla al componente invece di ripetere combinazioni di classi nelle pagine.
+- I link nel testo devono essere riconoscibili anche senza colore: sottolineatura permanente oppure
+  almeno su hover/focus. I pulsanti distruttivi devono avere anche etichetta o icona esplicita; non
+  comunicare mai il significato soltanto tramite il colore.
+- Mantenere un contrasto WCAG AA e uno stato `focus-visible` evidente. Non rimuovere il ring di focus;
+  per disabled usare anche l'attributo `disabled` o `aria-disabled`, non la sola opacita'.
+- Non colorare come pulsante un link puramente navigazionale. Usare `Button` con `href` solo quando la
+  navigazione rappresenta una vera call to action.
+
+Quando crei un nuovo link o pulsante, aggiungi sempre il supporto per renderlo visibile in modalita'
+tutorial con una spiegazione estesa della sua funzione. Non farlo per link esterni o non operativi
+(per esempio il link del copyright).

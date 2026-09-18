@@ -305,14 +305,6 @@
 						Connetti il Writer Station via USB usando il pulsante nella toolbar in alto.
 					</p>
 				</div>
-
-				{#if showDiagnosticsLink}
-					<div class="flex justify-end">
-						<a href="/card-diagnostics">
-							<Button variant="outline" size="sm">Apri diagnostica completa</Button>
-						</a>
-					</div>
-				{/if}
 			</CardContent>
 		</Card>
 	{/if}

@@ -1,14 +1,17 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Power, RotateCcw, Trash2, Eraser } from '@lucide/svelte';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
+		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
 	import {
@@ -54,7 +57,7 @@
 
 	const statusVariant = (status: string) =>
 		status === 'active'
-			? 'default'
+			? 'positive'
 			: status === 'disabled'
 				? 'secondary'
 				: status === 'lost'
@@ -75,6 +78,31 @@
 						: status === 'deleted'
 							? 'Eliminata'
 							: status;
+
+	function formatExpirationDate(value: Date | string | null): string {
+		if (!value) return '—';
+
+		// Le colonne SQL DATE arrivano come YYYY-MM-DD: le formatto senza convertirle in UTC,
+		// evitando che il giorno cambi in base al fuso orario del browser.
+		if (typeof value === 'string') {
+			const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+			if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+		}
+
+		return new Intl.DateTimeFormat('it-IT', {
+			timeZone: 'Europe/Rome',
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		}).format(new Date(value));
+	}
+
+	function buildListUrl(page: number): string {
+		const params = new URLSearchParams({ tab: data.tab });
+		if (page > 1) params.set('page', String(page));
+		if (data.status) params.set('status', data.status);
+		return `?${params}`;
+	}
 
 	async function confirmDisable() {
 		if (!cardToDisable) return;
@@ -121,7 +149,10 @@
 </script>
 
 <div class="space-y-4">
-	<h1 class="text-2xl font-bold">Tessere RFID</h1>
+	<PageHeader
+		title="Tessere"
+		description="Controlla le tessere associate alle persone, verifica il loro stato e consulta quelle cancellate."
+	/>
 
 	<!-- Tab navigation -->
 	<div class="flex gap-2 border-b">
@@ -146,71 +177,80 @@
 	{#if data.tab === 'history'}
 		<!-- Storico card cancellate -->
 		<p class="text-sm text-muted-foreground">
-			Card eliminate fisicamente. Le chiavi sono conservate per permettere cancellazioni fisiche
-			tardive. "Ripristina" riporta la card allo stato <em>disabled</em> per permettere una nuova cancellazione
-			fisica o riscrittura.
+			Tessere cancellate dal sistema. Con “Ripristina” una tessera torna disponibile come
+			disabilitata: potrai riscriverla o completarne la cancellazione con il lettore USB.
 		</p>
 
 		{#if restoreError}
 			<p class="text-sm text-red-600">{restoreError}</p>
 		{/if}
 
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>UID</TableHead>
-					<TableHead>Iscritto</TableHead>
-					<TableHead>Scritta il</TableHead>
-					<TableHead>Cancellata il</TableHead>
-					<TableHead></TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
-				{#each data.cards as card}
+		<TablePanel>
+			<Table embedded>
+				<TableHeader>
 					<TableRow>
-						<TableCell class="font-mono text-sm">{card.uid}</TableCell>
-						<TableCell>
-							{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
-						</TableCell>
-						<TableCell>
-							{card.writeDate ? new Date(card.writeDate).toLocaleDateString('it-IT') : '—'}
-						</TableCell>
-						<TableCell>
-							{card.deletedAt ? new Date(card.deletedAt).toLocaleDateString('it-IT') : '—'}
-						</TableCell>
-						<TableCell class="w-px whitespace-nowrap">
-							<div class="flex items-center gap-1">
-								<a href="/cards/{card.id}/erase" title="Cancella fisicamente">
+						<TableHead>UID</TableHead>
+						<TableHead>Iscritto</TableHead>
+						<TableHead>Scritta il</TableHead>
+						<TableHead>Cancellata il</TableHead>
+						<TableHead class="w-px text-right">Azioni</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{#each data.cards as card}
+						<TableRow>
+							<TableCell class="font-mono text-sm">{card.uid}</TableCell>
+							<TableCell>
+								{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
+							</TableCell>
+							<TableCell>
+								{card.writeDate ? new Date(card.writeDate).toLocaleDateString('it-IT') : '—'}
+							</TableCell>
+							<TableCell>
+								{card.deletedAt ? new Date(card.deletedAt).toLocaleDateString('it-IT') : '—'}
+							</TableCell>
+							<TableCell class="w-px whitespace-nowrap text-right">
+								<div class="flex items-center justify-end gap-1">
 									<Button
-										size="sm"
-										variant="ghost"
-										class="text-red-600 hover:text-red-700 hover:bg-red-50"
+										href={`/cards/${card.id}/erase`}
+										size="icon-sm"
+										variant="destructive-ghost"
+										aria-label={`Cancella fisicamente la tessera ${card.uid}`}
+										data-tutorial-title="Cancella fisicamente"
+										data-tutorial-description="Avvia la procedura guidata per cancellare i dati dalla tessera tramite il lettore USB."
 									>
 										<Eraser size={16} />
 									</Button>
-								</a>
-								<Button
-									size="sm"
-									variant="ghost"
-									onclick={() => restoreCard(card.id)}
-									disabled={restoring === card.id}
-									title="Ripristina"
-								>
-									<RotateCcw size={16} />
-								</Button>
-							</div>
-						</TableCell>
-					</TableRow>
-				{/each}
-				{#if data.cards.length === 0}
-					<TableRow>
-						<TableCell colspan={5} class="text-center text-muted-foreground py-8">
-							Nessuna card cancellata nello storico.
-						</TableCell>
-					</TableRow>
-				{/if}
-			</TableBody>
-		</Table>
+									<Button
+										size="icon-sm"
+										variant="positive-ghost"
+										onclick={() => restoreCard(card.id)}
+										disabled={restoring === card.id}
+										aria-label={`Ripristina la tessera ${card.uid}`}
+										data-tutorial-title="Ripristina tessera"
+										data-tutorial-description="Ripristina questa tessera nello stato disabilitato per consentirne il riutilizzo."
+									>
+										<RotateCcw size={16} />
+									</Button>
+								</div>
+							</TableCell>
+						</TableRow>
+					{/each}
+					{#if data.cards.length === 0}
+						<TableRow>
+							<TableCell colspan={5} data-empty>Nessuna card cancellata nello storico.</TableCell>
+						</TableRow>
+					{/if}
+				</TableBody>
+			</Table>
+			<TablePagination
+				page={data.page}
+				totalPages={data.totalPages}
+				total={data.total}
+				getPageHref={buildListUrl}
+				ariaLabel="Paginazione tessere cancellate"
+			/>
+		</TablePanel>
 	{:else}
 		<!-- Vista principale: card non cancellate -->
 		{#if enableError}
@@ -228,91 +268,95 @@
 			<Button type="submit" variant="outline" size="sm">Filtra</Button>
 		</form>
 
-		<Table>
-			<TableHeader>
-				<TableRow>
-					<TableHead>UID</TableHead>
-					<TableHead>Iscritto</TableHead>
-					<TableHead>Scritta il</TableHead>
-					<TableHead>Scadenza</TableHead>
-					<TableHead>Stato</TableHead>
-					<TableHead></TableHead>
-				</TableRow>
-			</TableHeader>
-			<TableBody>
-				{#each data.cards as card}
+		<TablePanel>
+			<Table embedded>
+				<TableHeader>
 					<TableRow>
-						<TableCell class="font-mono text-sm">{card.uid}</TableCell>
-						<TableCell>
-							{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
-						</TableCell>
-						<TableCell>
-							{card.writeDate ? new Date(card.writeDate).toLocaleDateString('it-IT') : '—'}
-						</TableCell>
-						<TableCell>{card.expirationDate ?? '—'}</TableCell>
-						<TableCell>
-							<Badge variant={statusVariant(card.status ?? '')}
-								>{statusLabel(card.status ?? '')}</Badge
-							>
-						</TableCell>
-						<TableCell class="w-px whitespace-nowrap">
-							{#if card.status === 'active' || card.status === 'disabled'}
-								<div class="flex items-center gap-1">
-									{#if card.status === 'active'}
+						<TableHead>UID</TableHead>
+						<TableHead>Iscritto</TableHead>
+						<TableHead>Scritta il</TableHead>
+						<TableHead>Scadenza</TableHead>
+						<TableHead>Stato</TableHead>
+						<TableHead class="w-px text-right">Azioni</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{#each data.cards as card}
+						<TableRow>
+							<TableCell class="font-mono text-sm">{card.uid}</TableCell>
+							<TableCell>
+								{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
+							</TableCell>
+							<TableCell>
+								{card.writeDate ? new Date(card.writeDate).toLocaleDateString('it-IT') : '—'}
+							</TableCell>
+							<TableCell>{formatExpirationDate(card.expirationDate)}</TableCell>
+							<TableCell>
+								<Badge variant={statusVariant(card.status ?? '')}
+									>{statusLabel(card.status ?? '')}</Badge
+								>
+							</TableCell>
+							<TableCell class="w-px whitespace-nowrap text-right">
+								{#if card.status === 'active' || card.status === 'disabled'}
+									<div class="flex items-center justify-end gap-1">
+										{#if card.status === 'active'}
+											<Button
+												size="icon-sm"
+												variant="destructive-ghost"
+												onclick={() => {
+													cardToDisable = card;
+													disableDialogOpen = true;
+												}}
+												aria-label={`Disabilita la tessera ${card.uid}`}
+												data-tutorial-title="Disabilita tessera"
+												data-tutorial-description="Apre la conferma per disabilitare questa tessera senza cancellarne i dati."
+											>
+												<Power size={16} />
+											</Button>
+										{:else if card.status === 'disabled'}
+											<Button
+												size="icon-sm"
+												variant="positive-ghost"
+												onclick={() => enableCard(card.id)}
+												disabled={enabling === card.id}
+												aria-label={`Abilita la tessera ${card.uid}`}
+												data-tutorial-title="Abilita tessera"
+												data-tutorial-description="Riabilita questa tessera per consentirne nuovamente l’utilizzo."
+											>
+												<Power size={16} />
+											</Button>
+										{/if}
 										<Button
-											size="sm"
-											variant="ghost"
-											class="text-red-600 hover:text-red-700 hover:bg-red-50"
-											onclick={() => {
-												cardToDisable = card;
-												disableDialogOpen = true;
-											}}
-											title="Disabilita"
+											href={`/cards/${card.id}/erase`}
+											size="icon-sm"
+											variant="destructive-ghost"
+											aria-label={`Cancella la tessera ${card.uid}`}
+											data-tutorial-title="Cancella tessera"
+											data-tutorial-description="Avvia la procedura guidata per cancellare e rimuovere questa tessera."
 										>
-											<Power size={16} />
-										</Button>
-									{:else if card.status === 'disabled'}
-										<Button
-											size="sm"
-											variant="ghost"
-											class="text-green-600 hover:text-green-700 hover:bg-green-50"
-											onclick={() => enableCard(card.id)}
-											disabled={enabling === card.id}
-											title="Abilita"
-										>
-											<Power size={16} />
-										</Button>
-									{/if}
-									<a href="/cards/{card.id}/erase" title="Cancella">
-										<Button size="sm" variant="ghost">
 											<Trash2 size={16} />
 										</Button>
-									</a>
-								</div>
-							{/if}
-						</TableCell>
-					</TableRow>
-				{/each}
-			</TableBody>
-		</Table>
+									</div>
+								{/if}
+							</TableCell>
+						</TableRow>
+					{/each}
+					{#if data.cards.length === 0}
+						<TableRow
+							><TableCell colspan={6} data-empty>Nessuna tessera trovata.</TableCell></TableRow
+						>
+					{/if}
+				</TableBody>
+			</Table>
+			<TablePagination
+				page={data.page}
+				totalPages={data.totalPages}
+				total={data.total}
+				getPageHref={buildListUrl}
+				ariaLabel="Paginazione tessere"
+			/>
+		</TablePanel>
 	{/if}
-
-	<!-- Paginazione -->
-	<div class="flex items-center justify-between text-sm text-gray-600">
-		<span>Pagina {data.page} di {data.totalPages} ({data.total} totali)</span>
-		<div class="flex gap-2">
-			{#if data.page > 1}
-				<a href="?page={data.page - 1}&tab={data.tab}&status={data.status}">
-					<Button variant="outline" size="sm">Precedente</Button>
-				</a>
-			{/if}
-			{#if data.page < data.totalPages}
-				<a href="?page={data.page + 1}&tab={data.tab}&status={data.status}">
-					<Button variant="outline" size="sm">Successiva</Button>
-				</a>
-			{/if}
-		</div>
-	</div>
 </div>
 
 <!-- Dialog conferma disabilitazione -->

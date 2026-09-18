@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import {
 		Card,
 		CardContent,
@@ -7,16 +8,16 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 	import { openSourceLibraryGroups } from '$lib/data/open-source-libraries';
-	import { Copyright, Github, FileText, ExternalLink } from '@lucide/svelte';
+	import { Github, FileText, ExternalLink } from '@lucide/svelte';
 
 	const currentYear = new Date().getFullYear();
 </script>
 
 <div class="mx-auto max-w-3xl space-y-6">
-	<div class="flex items-center gap-3">
-		<Copyright size={28} class="text-slate-600" />
-		<h1 class="text-2xl font-bold">Copyright e licenze</h1>
-	</div>
+	<PageHeader
+		title="Copyright e licenze"
+		description="Informazioni su NZBadge, sull’autore e sui componenti utilizzati."
+	/>
 
 	<Card>
 		<CardHeader>

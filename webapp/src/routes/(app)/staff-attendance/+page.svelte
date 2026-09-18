@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
 	import { History, Pencil, Plus } from '@lucide/svelte';
@@ -10,10 +11,12 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
+		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
 	import StaffManualEntryDialog from '$lib/components/StaffManualEntryDialog.svelte';
@@ -108,13 +111,15 @@
 </script>
 
 <div class="space-y-5">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-2xl font-bold">Ingressi collaboratori</h1>
+	<PageHeader
+		title="Ingressi collaboratori"
+		description="Consulta gli ingressi e le uscite del personale. Usa i filtri per trovare una persona o controllare un periodo."
+	>
 		<div class="flex flex-wrap items-center gap-2">
 			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
 			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
 		</div>
-	</div>
+	</PageHeader>
 
 	<AttendanceExportDialog
 		bind:open={exportDialogOpen}
@@ -127,7 +132,7 @@
 		listId="staff-export-emails"
 	/>
 
-	<form onsubmit={filter} class="flex flex-wrap items-end gap-3">
+	<form onsubmit={filter} class="filter-panel">
 		<div class="space-y-1">
 			<Label for="from">Dal</Label><Input
 				id="from"
@@ -173,36 +178,27 @@
 		<Button type="button" variant="ghost" onclick={() => goto('/staff-attendance')}>Azzera</Button>
 	</form>
 
-	<div class="relative rounded-lg border bg-white">
-		{#if isLoading}<div
-				class="absolute inset-0 z-10 grid place-items-center bg-white/60 text-sm text-muted-foreground"
-			>
-				Caricamento…
-			</div>{/if}
-		<Table>
+	<TablePanel aria-busy={isLoading}>
+		{#if isLoading}<div data-slot="table-loading" role="status">Caricamento…</div>{/if}
+		<Table embedded>
 			<TableHeader
 				><TableRow
 					><TableHead>Data/ora</TableHead>{#if data.canManage}<TableHead>Utente</TableHead
 						>{/if}<TableHead>Evento</TableHead><TableHead>Sorgente</TableHead><TableHead
 						>Dispositivo</TableHead
-					><TableHead>Offline</TableHead>{#if data.canManage}<TableHead class="text-right"
+					><TableHead>Offline</TableHead>{#if data.canManage}<TableHead class="w-px text-right"
 							>Azioni</TableHead
 						>{/if}</TableRow
 				></TableHeader
 			>
 			<TableBody>
 				{#if data.rows.length === 0}<TableRow
-						><TableCell
-							colspan={data.canManage ? 7 : 5}
-							class="h-28 text-center text-muted-foreground">Nessun ingresso trovato.</TableCell
+						><TableCell colspan={data.canManage ? 7 : 5} data-empty
+							>Nessun ingresso trovato.</TableCell
 						></TableRow
 					>{/if}
 				{#each data.rows as row}
-					<TableRow
-						class={row.eventType === 'entry'
-							? 'bg-emerald-50/70 dark:bg-emerald-950/20'
-							: 'bg-rose-50/70 dark:bg-rose-950/20'}
-					>
+					<TableRow>
 						<TableCell
 							><span class="inline-flex items-center gap-1.5 font-mono text-xs"
 								>{formatDateTime(row.readTimestamp)}{#if row.isBackdated}<History
@@ -214,9 +210,7 @@
 							></TableCell
 						>
 						{#if data.canManage}<TableCell
-								><a href="/admin/users/{row.userId}" class="font-medium hover:underline"
-									>{row.userName}</a
-								>
+								><a href="/admin/users/{row.userId}" class="app-link font-medium">{row.userName}</a>
 								<div class="text-xs text-muted-foreground">{row.userEmail}</div></TableCell
 							>{/if}
 						<TableCell
@@ -227,11 +221,13 @@
 						<TableCell>{sourceLabel(row.source)}</TableCell><TableCell
 							class="text-xs text-muted-foreground">{row.deviceId ?? '—'}</TableCell
 						><TableCell>{row.offlineQueued ? '✓' : ''}</TableCell>
-						{#if data.canManage}<TableCell class="text-right"
+						{#if data.canManage}<TableCell class="w-px whitespace-nowrap text-right"
 								><Button
-									size="icon"
+									size="icon-sm"
 									variant="ghost"
-									title="Modifica orario"
+									aria-label="Modifica orario"
+									data-tutorial-title="Modifica orario"
+									data-tutorial-description="Apre il modulo per correggere data e ora di questa strisciata."
 									onclick={() => openEdit(row)}><Pencil size={15} /></Button
 								></TableCell
 							>{/if}
@@ -239,24 +235,15 @@
 				{/each}
 			</TableBody>
 		</Table>
-	</div>
-
-	{#if data.totalPages > 1}<div class="flex items-center justify-between text-sm">
-			<span>Pagina {data.page} di {data.totalPages}</span>
-			<div class="flex gap-2">
-				<Button
-					variant="outline"
-					size="sm"
-					disabled={data.page <= 1}
-					onclick={() => goto(buildUrl(data.page - 1))}>Precedente</Button
-				><Button
-					variant="outline"
-					size="sm"
-					disabled={data.page >= data.totalPages}
-					onclick={() => goto(buildUrl(data.page + 1))}>Successiva</Button
-				>
-			</div>
-		</div>{/if}
+		<TablePagination
+			page={data.page}
+			totalPages={data.totalPages}
+			total={data.total}
+			onPageChange={(page) => goto(buildUrl(page))}
+			disabled={isLoading}
+			ariaLabel="Paginazione ingressi collaboratori"
+		/>
+	</TablePanel>
 </div>
 
 <StaffManualEntryDialog

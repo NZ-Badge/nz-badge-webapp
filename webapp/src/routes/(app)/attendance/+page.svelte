@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
 	import { Pencil, Plus } from '@lucide/svelte';
@@ -18,10 +19,12 @@
 	import { Label } from '$lib/components/ui/label';
 	import {
 		Table,
+		TablePanel,
 		TableBody,
 		TableCell,
 		TableHead,
 		TableHeader,
+		TablePagination,
 		TableRow
 	} from '$lib/components/ui/table';
 
@@ -121,22 +124,6 @@
 		);
 	}
 
-	function getPageNumbers(current: number, total: number): (number | null)[] {
-		if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-		const pages = new Set<number>([1, total]);
-		for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) {
-			pages.add(i);
-		}
-
-		const sorted = [...pages].sort((a, b) => a - b);
-		const result: (number | null)[] = [];
-		for (let i = 0; i < sorted.length; i++) {
-			if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push(null);
-			result.push(sorted[i]);
-		}
-		return result;
-	}
-
 	const isLoading = $derived(!!$navigating);
 
 	// --- Selezione e eliminazione ---
@@ -226,8 +213,10 @@
 </script>
 
 <div class="space-y-5">
-	<div class="flex flex-wrap items-center justify-between gap-3">
-		<h1 class="text-2xl font-bold">Ingressi corsisti</h1>
+	<PageHeader
+		title="Ingressi corsisti"
+		description="Cerca le presenze per persona e periodo. Puoi aggiungere un ingresso o un’uscita mancanti ed esportare l’elenco."
+	>
 		<div class="flex flex-wrap items-center gap-2">
 			{#if selectionCount > 0}
 				<Button variant="destructive" size="sm" disabled={isDeleting} onclick={deleteSelected}>
@@ -237,7 +226,7 @@
 			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
 			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
 		</div>
-	</div>
+	</PageHeader>
 
 	<AttendanceExportDialog
 		bind:open={exportDialogOpen}
@@ -251,7 +240,7 @@
 	/>
 
 	<!-- Filtri -->
-	<form onsubmit={handleSubmit} class="flex flex-wrap items-end gap-3">
+	<form onsubmit={handleSubmit} class="filter-panel">
 		<div class="space-y-1">
 			<Label for="from">Dal</Label>
 			<Input id="from" name="from" type="date" value={data.from} class="w-40" />
@@ -319,15 +308,11 @@
 	{/if}
 
 	<!-- Tabella con overlay loading -->
-	<div class="relative rounded-lg border bg-white">
+	<TablePanel aria-busy={isLoading}>
 		{#if isLoading}
-			<div
-				class="absolute inset-0 z-10 grid place-items-center bg-white/60 text-sm text-muted-foreground"
-			>
-				Caricamento…
-			</div>
+			<div data-slot="table-loading" role="status">Caricamento…</div>
 		{/if}
-		<Table>
+		<Table embedded>
 			<TableHeader>
 				<TableRow>
 					<TableHead class="w-10">
@@ -345,24 +330,18 @@
 					<TableHead>Evento</TableHead>
 					<TableHead>Dispositivo</TableHead>
 					<TableHead>Offline</TableHead>
-					<TableHead class="text-right">Azioni</TableHead>
+					<TableHead class="w-px text-right">Azioni</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
 				{#if data.rows.length === 0}
 					<TableRow>
-						<TableCell colspan={7} class="h-28 text-center text-muted-foreground">
-							Nessuna presenza trovata.
-						</TableCell>
+						<TableCell colspan={7} data-empty>Nessuna presenza trovata.</TableCell>
 					</TableRow>
 				{/if}
 				{#each data.rows as row}
 					<TableRow
-						class={selectedIds.has(row.id) || selectAllFiltered
-							? 'bg-blue-50 dark:bg-blue-950/30'
-							: row.eventType === 'entry'
-								? 'bg-emerald-50/70 dark:bg-emerald-950/20'
-								: 'bg-rose-50/70 dark:bg-rose-950/20'}
+						data-state={selectedIds.has(row.id) || selectAllFiltered ? 'selected' : undefined}
 					>
 						<TableCell>
 							<input
@@ -380,7 +359,7 @@
 						</TableCell>
 						<TableCell>
 							{#if row.subscriberId && row.subscriberName}
-								<a href={`/subscribers/${row.subscriberId}`} class="font-medium hover:underline">
+								<a href={`/subscribers/${row.subscriberId}`} class="app-link font-medium">
 									{`${row.subscriberName} ${row.subscriberSurname}`}
 								</a>
 							{:else}
@@ -394,11 +373,13 @@
 						</TableCell>
 						<TableCell class="text-xs text-muted-foreground">{row.deviceId}</TableCell>
 						<TableCell>{row.offlineQueued ? '✓' : ''}</TableCell>
-						<TableCell class="text-right">
+						<TableCell class="w-px whitespace-nowrap text-right">
 							<Button
-								size="icon"
+								size="icon-sm"
 								variant="ghost"
-								title="Modifica orario"
+								aria-label="Modifica orario"
+								data-tutorial-title="Modifica orario"
+								data-tutorial-description="Apre il modulo per correggere data e ora di questa presenza."
 								onclick={() => openEdit(row)}
 							>
 								<Pencil size={15} />
@@ -408,46 +389,15 @@
 				{/each}
 			</TableBody>
 		</Table>
-	</div>
-
-	<!-- Paginazione -->
-	{#if data.totalPages > 1}
-		<div class="flex items-center justify-between text-sm">
-			<span>Pagina {data.page} di {data.totalPages}</span>
-			<div class="flex items-center gap-2">
-				<Button
-					variant="outline"
-					size="sm"
-					disabled={data.page <= 1 || isLoading}
-					onclick={() => goto(buildUrl(data.page - 1))}
-				>
-					Precedente
-				</Button>
-				{#each getPageNumbers(data.page, data.totalPages) as pageNumber}
-					{#if pageNumber === null}
-						<span class="text-muted-foreground">…</span>
-					{:else}
-						<Button
-							variant={pageNumber === data.page ? 'default' : 'outline'}
-							size="sm"
-							disabled={pageNumber === data.page || isLoading}
-							onclick={() => goto(buildUrl(pageNumber))}
-						>
-							{pageNumber}
-						</Button>
-					{/if}
-				{/each}
-				<Button
-					variant="outline"
-					size="sm"
-					disabled={data.page >= data.totalPages || isLoading}
-					onclick={() => goto(buildUrl(data.page + 1))}
-				>
-					Successiva
-				</Button>
-			</div>
-		</div>
-	{/if}
+		<TablePagination
+			page={data.page}
+			totalPages={data.totalPages}
+			total={data.total}
+			onPageChange={(page) => goto(buildUrl(page))}
+			disabled={isLoading}
+			ariaLabel="Paginazione ingressi corsisti"
+		/>
+	</TablePanel>
 </div>
 
 <SubscriberManualEntryDialog

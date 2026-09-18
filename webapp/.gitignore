@@ -1,6 +1,10 @@
 node_modules
 /build
-/tests
+/tests/*
+!/tests/e2e/
+/tests/e2e/*
+!/tests/e2e/table-styles.spec.ts
+!/tests/e2e/sidebar-spacing.spec.ts
 /.svelte-kit
 /package
 .env
