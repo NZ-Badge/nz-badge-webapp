@@ -6,3 +6,6 @@ enabled = false
 
 [mcp_server.shopify]
 enabled = false
+
+[mcp_server.figma]
+enabled = false
