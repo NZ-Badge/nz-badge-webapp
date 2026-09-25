@@ -62,6 +62,15 @@ Il server deve avere uno dei due client installato (`mariadb-dump` e' incluso ne
 Il file contiene dati riservati: conservarlo in modo sicuro. Se il dump fallisce durante il
 download, il trasferimento viene interrotto e il file non è valido.
 
+La stessa pagina permette di importare un backup `.sql.gz` fidato del database configurato in
+`DATABASE_URL` (massimo 100 MB compressi). L'importazione richiede una conferma esplicita,
+verifica l'integrità gzip e il nome del database, poi elimina e ricrea il database prima di
+ripristinare struttura e dati. **Tutti i dati attuali vengono sostituiti**. Il client MySQL deve
+avere i permessi `DROP DATABASE` e `CREATE DATABASE`. Poiché le operazioni DDL non sono
+transazionali, un errore durante il ripristino può lasciare il database incompleto: scaricare
+prima un backup recente e usare il client MySQL se l'app non è più accessibile. Impostare `BODY_SIZE_LIMIT=104857600` e un limite equivalente nel
+reverse proxy per consentire il caricamento; DDEV è già configurato per 100 MB.
+
 ### 2. Device backend
 
 Endpoint in `src/routes/api/v1/*` usati dai device:

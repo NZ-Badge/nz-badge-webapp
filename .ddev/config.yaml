@@ -12,6 +12,7 @@ database:
   version: "8.0"
 web_environment:
   - DATABASE_URL=mysql://db:db@db/db
+  - BODY_SIZE_LIMIT=104857600
   - NODE_ENV=development
   - SEED_ADMIN_EMAIL=admin@test.com
   - SEED_ADMIN_PASSWORD=password123

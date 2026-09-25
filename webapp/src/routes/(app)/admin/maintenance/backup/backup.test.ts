@@ -60,6 +60,7 @@ describe('database backup download', () => {
 		expect(response.headers.get('Content-Disposition')).toContain('.sql.gz');
 		const [, args, options] = vi.mocked(spawn).mock.calls[0];
 		expect(args).toContain('--single-transaction');
+		expect(args?.[0]).toBe('--no-defaults');
 		expect(args).toContain('--routines');
 		expect(args).toContain('--events');
 		expect(args).toContain('nz_badge');

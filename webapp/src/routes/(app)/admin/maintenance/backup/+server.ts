@@ -28,6 +28,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 
 	const database = decodeURIComponent(databaseUrl.pathname.slice(1));
 	const args = [
+		'--no-defaults',
 		'--single-transaction',
 		'--quick',
 		'--routines',
