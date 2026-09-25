@@ -1,41 +1,33 @@
 import type { PageServerLoad } from './$types';
+import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { attendance, subscribers } from '$lib/db/schema';
-import { TIMEZONE } from '$lib/utils/date';
-import { formatInTimeZone } from 'date-fns-tz';
-import { eq, and, like, gte, lte, count, sql, asc } from 'drizzle-orm';
+import { addDaysToDateKey, isDateKey, romeDateKey } from '$lib/utils/date';
+import { buildSubscriberAttendanceFilterConditions } from '$lib/services/subscriber-attendance-admin';
+import { eq, and, count, sql, asc } from 'drizzle-orm';
 
 const PAGE_SIZE = 50;
 const DEFAULT_LOOKBACK_DAYS = 30;
 
 function dateInputValueDaysAgo(daysAgo: number): string {
-	const date = new Date();
-	date.setDate(date.getDate() - daysAgo);
-	return formatInTimeZone(date, TIMEZONE, 'yyyy-MM-dd');
+	return addDaysToDateKey(romeDateKey(new Date()), -daysAgo);
 }
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	await requirePageStaff(locals);
 	const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
 	const from = url.searchParams.get('from')?.trim() || dateInputValueDaysAgo(DEFAULT_LOOKBACK_DAYS);
 	const to = url.searchParams.get('to')?.trim() || dateInputValueDaysAgo(0);
 	const subscriber = url.searchParams.get('subscriber')?.trim() ?? '';
 	const device = url.searchParams.get('device')?.trim() ?? '';
 
-	const filters = [];
-
-	if (from) filters.push(gte(attendance.readTimestamp, new Date(from)));
-	if (to) {
-		// Includi tutta la giornata 'to' aggiungendo 1 giorno
-		const toDate = new Date(to);
-		toDate.setDate(toDate.getDate() + 1);
-		filters.push(lte(attendance.readTimestamp, toDate));
-	}
-	if (device) filters.push(like(attendance.deviceId, `%${device}%`));
-	if (subscriber) {
-		filters.push(
-			sql`CONCAT(${subscribers.firstName}, ' ', ${subscribers.lastName}, ' ', COALESCE(${subscribers.email}, '')) LIKE ${`%${subscriber}%`}`
-		);
-	}
+	// Stessi filtri (e confini di giorno Europe/Rome) usati dall'eliminazione multipla.
+	const filters = buildSubscriberAttendanceFilterConditions({
+		from: isDateKey(from) ? from : undefined,
+		to: isDateKey(to) ? to : undefined,
+		subscriber: subscriber || undefined,
+		device: device || undefined
+	});
 
 	const whereClause = filters.length > 0 ? and(...filters) : undefined;
 

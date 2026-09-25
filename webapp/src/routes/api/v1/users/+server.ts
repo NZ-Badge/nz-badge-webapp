@@ -57,7 +57,7 @@ function sanitizeUser(user: User) {
  */
 export const GET: RequestHandler = async ({ locals }) => {
 	try {
-		const user = await locals.verifyAdmin();
+		const user = await locals.verifyStaffOrAdmin();
 		requireStaffManager(user);
 
 		const allUsers = await db.select().from(users);
@@ -75,7 +75,7 @@ export const GET: RequestHandler = async ({ locals }) => {
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
-		const user = await locals.verifyAdmin();
+		const user = await locals.verifyStaffOrAdmin();
 		requireAdmin(user);
 
 		const body = await request.json();
@@ -126,7 +126,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
  */
 export const PATCH: RequestHandler = async ({ request, locals }) => {
 	try {
-		const currentUser = await locals.verifyAdmin();
+		const currentUser = await locals.verifyStaffOrAdmin();
 		requireAdmin(currentUser);
 
 		const body = await request.json();
@@ -207,7 +207,7 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
  */
 export const DELETE: RequestHandler = async ({ request, locals }) => {
 	try {
-		const currentUser = await locals.verifyAdmin();
+		const currentUser = await locals.verifyStaffOrAdmin();
 		requireAdmin(currentUser);
 
 		const body = await request.json();

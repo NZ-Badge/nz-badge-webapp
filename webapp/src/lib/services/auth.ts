@@ -5,6 +5,7 @@
  */
 
 import bcrypt from 'bcryptjs';
+import { error, redirect } from '@sveltejs/kit';
 import { jwtVerify, SignJWT } from 'jose';
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/db';
@@ -16,6 +17,40 @@ import { authRateLimiter, hashForAudit } from '$lib/utils/security';
 // Session configuration
 const SESSION_DURATION_HOURS = 8; // 8 hour session for hospital shifts
 const TOKEN_PREFIX = 'Bearer ';
+const JWT_ALGORITHM = 'HS256';
+const JWT_SECRET_MIN_LENGTH = 32;
+
+/** All roles that can hold an application session. */
+export const APP_ROLES = ['admin', 'staff', 'collaborator'] as const;
+/** Roles allowed on the management surface (Amministratore/Operatore). */
+export const STAFF_ROLES = ['admin', 'staff'] as const;
+
+/** Page prefixes a Collaborator may reach inside the (app) group. */
+export const COLLABORATOR_ALLOWED_PREFIXES = [
+	'/dashboard',
+	'/my-attendance',
+	'/copyrights',
+	'/today',
+	'/new-students'
+] as const;
+
+let cachedJwtSecret: { raw: string; key: Uint8Array } | null = null;
+
+/**
+ * Return the JWT signing key, failing fast when JWT_SECRET is missing or too short.
+ * Evaluated lazily (first sign/verify) so that `vite build` does not need the secret.
+ */
+export function getJwtSecretKey(): Uint8Array {
+	const raw = env.JWT_SECRET ?? '';
+	if (cachedJwtSecret?.raw === raw) return cachedJwtSecret.key;
+	if (raw.length < JWT_SECRET_MIN_LENGTH) {
+		throw new Error(
+			`JWT_SECRET mancante o troppo corto: servono almeno ${JWT_SECRET_MIN_LENGTH} caratteri`
+		);
+	}
+	cachedJwtSecret = { raw, key: new TextEncoder().encode(raw) };
+	return cachedJwtSecret.key;
+}
 
 /**
  * Custom auth error with code for proper HTTP response
@@ -124,10 +159,13 @@ async function verifySessionForRoles(
 
 	let userId: number;
 	let payload: SessionPayload;
+	// Outside the try: a missing/weak JWT_SECRET is a server misconfiguration, not a bad session.
+	const secret = getJwtSecretKey();
 
 	try {
-		const secret = new TextEncoder().encode(env.JWT_SECRET);
-		const { payload: verifiedPayload } = await jwtVerify(sessionCookie, secret);
+		const { payload: verifiedPayload } = await jwtVerify(sessionCookie, secret, {
+			algorithms: [JWT_ALGORITHM]
+		});
 
 		payload = verifiedPayload as unknown as SessionPayload;
 		userId = payload.userId;
@@ -169,18 +207,80 @@ async function verifySessionForRoles(
 	return user;
 }
 
-/** Verify an Administrator/Operator session for the pre-existing management surface. */
-export function verifyAdminSession(cookies: {
-	get(name: string): string | undefined;
-}): Promise<User> {
-	return verifySessionForRoles(cookies, ['admin', 'staff']);
-}
-
 /** Verify any active system user, including Collaborators. */
 export function verifyUserSession(cookies: {
 	get(name: string): string | undefined;
 }): Promise<User> {
-	return verifySessionForRoles(cookies, ['admin', 'staff', 'collaborator']);
+	return verifySessionForRoles(cookies, APP_ROLES);
+}
+
+/**
+ * Check that an already verified user holds one of the given roles.
+ * Throws the same FORBIDDEN AuthError as the session verification.
+ */
+export function assertRole(user: User, validRoles: readonly string[]): User {
+	if (!user.role || !validRoles.includes(user.role)) {
+		console.warn('[AUTH] User lacks required role:', user.id, user.role);
+		throw new AuthError('Insufficient permissions', 'FORBIDDEN');
+	}
+	return user;
+}
+
+/** Verify an Administrator/Operator session (roles admin or staff). */
+export async function verifyStaffOrAdminSession(cookies: {
+	get(name: string): string | undefined;
+}): Promise<User> {
+	return assertRole(await verifyUserSession(cookies), STAFF_ROLES);
+}
+
+/** Verify a session that strictly belongs to an Administrator (role admin). */
+export async function verifyAdminOnlySession(cookies: {
+	get(name: string): string | undefined;
+}): Promise<User> {
+	return assertRole(await verifyUserSession(cookies), ['admin']);
+}
+
+/** Whether the given role may open the (app) page at `pathname`. */
+export function canAccessAppPath(role: string | null | undefined, pathname: string): boolean {
+	if (role === 'admin' || role === 'staff') return true;
+	if (role === 'collaborator') {
+		return COLLABORATOR_ALLOWED_PREFIXES.some(
+			(prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+		);
+	}
+	return false;
+}
+
+// ── Page guards (loads and form actions under routes/(app)) ─────────────────
+// Every (app) load/action must call one of these: layout loads do not run for form
+// actions nor for data requests that skip the layout, so they cannot be relied upon.
+
+type SessionLocals = Pick<App.Locals, 'verifyUser'>;
+
+/** Require any active session; redirects to /login otherwise. */
+export async function requirePageUser(locals: SessionLocals): Promise<User> {
+	try {
+		return await locals.verifyUser();
+	} catch (err) {
+		if (err instanceof AuthError) redirect(303, '/login');
+		throw err;
+	}
+}
+
+async function requirePageRoles(locals: SessionLocals, roles: readonly string[]): Promise<User> {
+	const user = await requirePageUser(locals);
+	if (!user.role || !roles.includes(user.role)) error(403, 'Accesso non consentito');
+	return user;
+}
+
+/** Require an Administrator or Operator (admin/staff); 403 for Collaborators. */
+export function requirePageStaff(locals: SessionLocals): Promise<User> {
+	return requirePageRoles(locals, STAFF_ROLES);
+}
+
+/** Require an Administrator (admin only); 403 for everyone else. */
+export function requirePageAdmin(locals: SessionLocals): Promise<User> {
+	return requirePageRoles(locals, ['admin']);
 }
 
 /**
@@ -191,14 +291,14 @@ export async function createAdminSession(user: User): Promise<{ token: string; e
 	const now = Math.floor(Date.now() / 1000);
 	const exp = now + SESSION_DURATION_HOURS * 3600;
 
-	const secret = new TextEncoder().encode(env.JWT_SECRET);
+	const secret = getJwtSecretKey();
 
 	const token = await new SignJWT({
 		userId: user.id,
 		email: user.email,
 		role: user.role
 	})
-		.setProtectedHeader({ alg: 'HS256' })
+		.setProtectedHeader({ alg: JWT_ALGORITHM })
 		.setIssuedAt(now)
 		.setExpirationTime(exp)
 		.sign(secret);
@@ -254,7 +354,7 @@ export async function validateSession(cookies: {
 	get(name: string): string | undefined;
 }): Promise<SessionValidationResult> {
 	try {
-		const user = await verifyAdminSession(cookies);
+		const user = await verifyStaffOrAdminSession(cookies);
 		return { valid: true, user };
 	} catch (err) {
 		return {

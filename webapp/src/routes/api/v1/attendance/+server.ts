@@ -6,20 +6,20 @@ import {
 	badRequest,
 	unauthorized,
 	notFound,
+	forbidden,
 	tooManyRequests,
 	serverError,
 	formatZodError
 } from '$lib/utils/api';
 import { processSingleAttendance } from '$lib/services/attendance';
 import {
+	deleteSubscriberAttendance,
+	deleteSubscriberAttendanceSchema,
 	parseSubscriberAttendanceDateTime,
 	SubscriberAttendanceAdminError,
 	updateSubscriberAttendanceTimestamp
 } from '$lib/services/subscriber-attendance-admin';
 import { AuthError } from '$lib/services/auth';
-import { db } from '$lib/db';
-import { attendance, subscribers } from '$lib/db/schema';
-import { and, gte, inArray, like, lte, sql } from 'drizzle-orm';
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
 const deviceRequestLog = new Map<string, number[]>();
@@ -86,7 +86,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 export async function PATCH(event: RequestEvent): Promise<Response> {
 	let actor;
 	try {
-		actor = await event.locals.verifyAdmin();
+		actor = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}
@@ -120,8 +120,9 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 }
 
 export async function DELETE(event: RequestEvent): Promise<Response> {
+	let actor;
 	try {
-		await event.locals.verifyAdmin();
+		actor = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}
@@ -130,53 +131,20 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
+	const parsed = deleteSubscriberAttendanceSchema.safeParse(body);
+	if (!parsed.success) return badRequest(formatZodError(parsed.error));
+
 	try {
-		if (
-			typeof body === 'object' &&
-			body !== null &&
-			'all' in body &&
-			(body as { all: unknown }).all === true
-		) {
-			// Delete all matching filters
-			const f = (body as { filters?: Record<string, string> }).filters ?? {};
-			const filters = [];
-			if (f.from) filters.push(gte(attendance.readTimestamp, new Date(f.from)));
-			if (f.to) {
-				const toDate = new Date(f.to);
-				toDate.setDate(toDate.getDate() + 1);
-				filters.push(lte(attendance.readTimestamp, toDate));
-			}
-			if (f.device) filters.push(like(attendance.deviceId, `%${f.device}%`));
-			if (f.subscriber) {
-				// Need to join subscribers to filter by name — collect IDs first
-				const matchingSubscribers = await db
-					.select({ id: subscribers.id })
-					.from(subscribers)
-					.where(
-						sql`CONCAT(${subscribers.firstName}, ' ', ${subscribers.lastName}, ' ', COALESCE(${subscribers.email}, '')) LIKE ${`%${f.subscriber}%`}`
-					);
-				const subIds = matchingSubscribers.map((s) => s.id);
-				if (subIds.length === 0) return ok({ deleted: 0 });
-				filters.push(inArray(attendance.subscriberId, subIds));
-			}
-			const whereClause = filters.length > 0 ? and(...filters) : undefined;
-			const result = await db.delete(attendance).where(whereClause);
-			return ok({ deleted: result[0].affectedRows });
-		} else if (typeof body === 'object' && body !== null && 'ids' in body) {
-			const ids = (body as { ids: unknown }).ids;
-			if (!Array.isArray(ids) || ids.length === 0)
-				return badRequest('ids must be a non-empty array');
-			const numericIds = ids.map(Number).filter((n) => !isNaN(n) && n > 0);
-			if (numericIds.length === 0) return badRequest('No valid IDs provided');
-			const result = await db.delete(attendance).where(inArray(attendance.id, numericIds));
-			return ok({ deleted: result[0].affectedRows });
-		} else {
-			return badRequest('Body must contain ids or all:true with filters');
-		}
+		const result = await deleteSubscriberAttendance({ actor, request: parsed.data });
+		return ok(result);
 	} catch (err) {
+		if (err instanceof SubscriberAttendanceAdminError) {
+			return err.code === 'FORBIDDEN' ? forbidden(err.message) : badRequest(err.message);
+		}
+		if (err instanceof AuthError) return forbidden(err.message);
 		console.error('[attendance] DELETE error:', err);
 		return serverError();
 	}

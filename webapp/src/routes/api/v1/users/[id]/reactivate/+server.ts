@@ -15,7 +15,7 @@ function sanitizeUser(user: User) {
 /** POST /api/v1/users/:id/reactivate - Reactivate a disabled user account (admin only). */
 export const POST: RequestHandler = async ({ params, locals }) => {
 	try {
-		const currentUser = await locals.verifyAdmin();
+		const currentUser = await locals.verifyStaffOrAdmin();
 		requireAdmin(currentUser);
 
 		const id = Number(params.id);

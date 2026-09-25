@@ -12,9 +12,8 @@ import {
 	users
 } from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
-import { formatToRomeISO, TIMEZONE, toDatabaseDateTime } from '$lib/utils/date';
+import { formatToRomeISO, romeDateKey, toDatabaseDateTime } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
-import { formatInTimeZone } from 'date-fns-tz';
 import {
 	determineNextStaffEventType,
 	determineNextStaffEventTypeFromPrevious,
@@ -158,7 +157,12 @@ async function isWithinMinInterval(
 }
 
 function getCourseDateKey(timestamp: string): string {
-	return formatInTimeZone(new Date(timestamp), TIMEZONE, 'yyyy-MM-dd');
+	return romeDateKey(timestamp);
+}
+
+/** True se i due istanti cadono nello stesso giorno di calendario Europe/Rome. */
+export function isSameRomeDay(a: Date | string, b: Date | string): boolean {
+	return romeDateKey(a) === romeDateKey(b);
 }
 
 async function isWithinSubscriberCourseRange(
@@ -227,14 +231,6 @@ async function determineNextEventType(
 ): Promise<'entry' | 'exit'> {
 	const dbInstance = tx ?? db;
 
-	// Ottieni la data del timestamp corrente (normalizzata a mezzanotte)
-	const currentDate = new Date(currentTimestamp);
-	const currentDay = new Date(
-		currentDate.getFullYear(),
-		currentDate.getMonth(),
-		currentDate.getDate()
-	);
-
 	// Converte il timestamp per il confronto SQL
 	const dbTimestamp = toDatabaseDateTime(currentTimestamp);
 
@@ -264,16 +260,9 @@ async function determineNextEventType(
 		return 'exit';
 	}
 
-	// Se l'ultimo evento era entry, controlla se è dello stesso giorno
-	const lastEventDate = new Date(lastEvent.readTimestamp);
-	const lastEventDay = new Date(
-		lastEventDate.getFullYear(),
-		lastEventDate.getMonth(),
-		lastEventDate.getDate()
-	);
-
-	// Se è dello stesso giorno, è un exit; altrimenti è un entry (nuova giornata)
-	return lastEventDay.getTime() === currentDay.getTime() ? 'exit' : 'entry';
+	// Se l'ultimo evento era entry dello stesso giorno (Europe/Rome) è un exit,
+	// altrimenti è un entry (nuova giornata)
+	return isSameRomeDay(lastEvent.readTimestamp, currentTimestamp) ? 'exit' : 'entry';
 }
 
 export async function processSingleAttendance(
@@ -550,9 +539,7 @@ export async function processBatchAttendance(
 				}
 				if (previous.eventType === 'exit') return 'entry';
 				if (!attendanceSettings.resetEntryTypeDaily) return 'exit';
-				const previousDay = new Date(previous.readTimestamp).toDateString();
-				const currentDay = new Date(timestampToUse).toDateString();
-				return previousDay === currentDay ? 'exit' : 'entry';
+				return isSameRomeDay(previous.readTimestamp, timestampToUse) ? 'exit' : 'entry';
 			};
 
 			const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60_000;

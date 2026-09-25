@@ -45,7 +45,7 @@ const admin = { id: 1, role: 'admin' };
 function eventFor(id: string) {
 	return {
 		params: { id },
-		locals: { verifyAdmin: vi.fn().mockResolvedValue(admin) }
+		locals: { verifyStaffOrAdmin: vi.fn().mockResolvedValue(admin) }
 	} as unknown as Parameters<typeof POST>[0];
 }
 

@@ -23,12 +23,39 @@ const collaborator = { id: 2, role: 'collaborator' } as User;
 describe('deleteStaffAttendance', () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it('refuses a collaborator before reading or deleting a record', async () => {
+	// Policy (README, canDeleteStaffAttendance, /my-attendance e dashboard): un Collaboratore può
+	// eliminare soltanto le proprie strisciate, quindi il controllo richiede prima la lettura del
+	// record per conoscerne il proprietario.
+	it("refuses a collaborator deleting another user's record without deleting it", async () => {
+		mocks.limit.mockResolvedValueOnce([
+			{
+				id: 7,
+				userId: 3,
+				eventType: 'entry',
+				readTimestamp: new Date('2026-09-25T07:00:00Z'),
+				source: 'card'
+			}
+		]);
 		await expect(
 			deleteStaffAttendance({ actor: collaborator, attendanceId: 7 })
 		).rejects.toMatchObject({ code: 'FORBIDDEN' } satisfies Partial<StaffAttendanceError>);
-		expect(mocks.select).not.toHaveBeenCalled();
 		expect(mocks.remove).not.toHaveBeenCalled();
+		expect(mocks.logAudit).not.toHaveBeenCalled();
+	});
+
+	it('lets a collaborator delete their own record', async () => {
+		mocks.limit.mockResolvedValueOnce([
+			{
+				id: 8,
+				userId: collaborator.id,
+				eventType: 'entry',
+				readTimestamp: new Date('2026-09-25T07:00:00Z'),
+				source: 'card'
+			}
+		]);
+		await deleteStaffAttendance({ actor: collaborator, attendanceId: 8 });
+		expect(mocks.remove).toHaveBeenCalledOnce();
+		expect(mocks.logAudit).toHaveBeenCalledOnce();
 	});
 
 	it('reports a missing event without deleting it', async () => {

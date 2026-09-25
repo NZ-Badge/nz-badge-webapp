@@ -6,7 +6,7 @@ import { AuthError, requireStaffManager } from '$lib/services/auth';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
-		const user = await event.locals.verifyAdmin();
+		const user = await event.locals.verifyStaffOrAdmin();
 		requireStaffManager(user);
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();

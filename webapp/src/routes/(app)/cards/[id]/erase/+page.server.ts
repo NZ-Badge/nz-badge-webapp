@@ -1,11 +1,13 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { cardRfid, subscribers, users } from '$lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { isMifareEnabled } from '$lib/services/mifare-keys';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	await requirePageStaff(locals);
 	const cardId = Number(params.id);
 	if (isNaN(cardId)) error(400, 'Invalid card ID');
 

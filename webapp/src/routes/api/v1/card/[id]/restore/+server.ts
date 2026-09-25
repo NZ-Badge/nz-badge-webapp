@@ -6,7 +6,7 @@ import { restoreCard } from '$lib/services/card-writer';
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
 	try {
-		adminUser = await event.locals.verifyAdmin();
+		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}

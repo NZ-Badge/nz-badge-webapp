@@ -3,11 +3,10 @@ import type { PageServerLoad } from './$types';
 import { and, eq } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { cardRfid, users } from '$lib/db/schema';
-import { requireStaffManager } from '$lib/services/auth';
+import { requirePageStaff } from '$lib/services/auth';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-	const actor = await locals.verifyAdmin();
-	requireStaffManager(actor);
+	await requirePageStaff(locals);
 	const userId = Number(params.id);
 	if (!Number.isInteger(userId) || userId <= 0) error(400, 'ID utente non valido');
 

@@ -1,6 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { getEnrollmentApiConfig } from '$lib/services/enrollments';
-import { ok, unauthorized, serverError } from '$lib/utils/api';
+import { ok, unauthorized, forbidden, serverError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
 
 /**
@@ -9,9 +9,10 @@ import { AuthError } from '$lib/services/auth';
  */
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		if (!(err instanceof AuthError)) return serverError();
+		return err.code === 'FORBIDDEN' ? forbidden(err.message) : unauthorized(err.message);
 	}
 
 	try {

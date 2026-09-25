@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { requirePageUser } from '$lib/services/auth';
 import { db } from '$lib/db';
 import {
 	subscribers,
@@ -22,7 +23,7 @@ import {
 } from '$lib/services/staff-attendance';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const user = await locals.verifyUser();
+	const user = await requirePageUser(locals);
 	const now = nowInRome();
 
 	if (user.role === 'collaborator') {

@@ -2,10 +2,12 @@ import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { z, ZodError } from 'zod';
 import { countNewStudents, getNewStudents, selectedDateRange } from '$lib/services/new-students';
+import { requirePageUser } from '$lib/services/auth';
 
 const PAGE_SIZE = 25;
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	await requirePageUser(locals);
 	let range;
 	try {
 		range = selectedDateRange(url.searchParams.get('from'), url.searchParams.get('to'));

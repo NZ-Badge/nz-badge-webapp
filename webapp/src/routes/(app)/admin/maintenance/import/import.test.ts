@@ -38,7 +38,7 @@ function event(sql: string, role = 'admin', confirmation = 'SOVRASCRIVI') {
 		body: gzipSync(sql)
 	});
 	return {
-		locals: { verifyAdmin: async () => ({ role }) },
+		locals: { verifyStaffOrAdmin: async () => ({ role }) },
 		request,
 		url: new URL(request.url)
 	} as Parameters<typeof POST>[0];
@@ -83,7 +83,7 @@ describe('database import', () => {
 			body: 'not gzip'
 		});
 		const response = await POST({
-			locals: { verifyAdmin: async () => ({ role: 'admin' }) },
+			locals: { verifyStaffOrAdmin: async () => ({ role: 'admin' }) },
 			request,
 			url: new URL(request.url)
 		} as Parameters<typeof POST>[0]);

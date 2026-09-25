@@ -127,26 +127,39 @@ export async function getEnrollmentApiConfig(): Promise<EnrollmentApiConfig> {
 	};
 }
 
-export async function setEnrollmentApiConfig(url: string, key: string): Promise<void> {
-	await db
-		.insert(settings)
-		.values({
-			key: ENROLLMENT_API_URL_KEY,
-			value: url,
-			dataType: 'string',
-			description: 'URL base API esterna iscrizioni'
-		})
-		.onDuplicateKeyUpdate({ set: { value: url } });
+/**
+ * Update the Enrollment API configuration. Only the provided fields are written:
+ * `undefined` leaves the stored value untouched, `null` clears the API key.
+ */
+export async function setEnrollmentApiConfig(update: {
+	url?: string;
+	key?: string | null;
+}): Promise<void> {
+	if (update.url !== undefined) {
+		const url = update.url;
+		await db
+			.insert(settings)
+			.values({
+				key: ENROLLMENT_API_URL_KEY,
+				value: url,
+				dataType: 'string',
+				description: 'URL base API esterna iscrizioni'
+			})
+			.onDuplicateKeyUpdate({ set: { value: url } });
+	}
 
-	await db
-		.insert(settings)
-		.values({
-			key: ENROLLMENT_API_KEY_KEY,
-			value: key,
-			dataType: 'string',
-			description: 'API key per autenticazione API esterna iscrizioni'
-		})
-		.onDuplicateKeyUpdate({ set: { value: key } });
+	if (update.key !== undefined) {
+		const key = update.key ?? '';
+		await db
+			.insert(settings)
+			.values({
+				key: ENROLLMENT_API_KEY_KEY,
+				value: key,
+				dataType: 'string',
+				description: 'API key per autenticazione API esterna iscrizioni'
+			})
+			.onDuplicateKeyUpdate({ set: { value: key } });
+	}
 }
 
 // ── Core sync logic ───────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@ const service = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/services/new-students', () => service);
+vi.mock('$lib/services/auth', () => ({ requirePageUser: vi.fn() }));
 
 import { load } from './+page.server';
 
@@ -19,7 +20,7 @@ describe('new students pagination', () => {
 
 	it('keeps the selected range and loads only the requested page', async () => {
 		const url = new URL('http://localhost/new-students?from=2026-09-01&to=2026-09-30&page=2');
-		const result = await load({ url } as Parameters<typeof load>[0]);
+		const result = await load({ url, locals: {} } as Parameters<typeof load>[0]);
 
 		expect(service.selectedDateRange).toHaveBeenCalledWith('2026-09-01', '2026-09-30');
 		expect(service.countNewStudents).toHaveBeenCalledWith('2026-09-01', '2026-10-01');
@@ -32,7 +33,7 @@ describe('new students pagination', () => {
 
 	it('clamps an out-of-range page to the last available page', async () => {
 		const url = new URL('http://localhost/new-students?page=99');
-		const result = await load({ url } as Parameters<typeof load>[0]);
+		const result = await load({ url, locals: {} } as Parameters<typeof load>[0]);
 
 		expect(service.getNewStudents).toHaveBeenCalledWith('2026-09-01', '2026-10-01', {
 			limit: 25,

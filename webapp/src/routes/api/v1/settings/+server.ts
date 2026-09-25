@@ -1,8 +1,8 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq, count, not } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { settings, cardRfid } from '$lib/db/schema';
-import { ok, badRequest, unauthorized, serverError, conflict } from '$lib/utils/api';
+import { settings } from '$lib/db/schema';
+import { ok, badRequest, unauthorized, forbidden, serverError, conflict } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
 import {
 	getMifareKeyConfig,
@@ -11,6 +11,13 @@ import {
 	isSingleKeyModeEnabled
 } from '$lib/services/mifare-keys';
 import { setEnrollmentApiConfig } from '$lib/services/enrollments';
+import {
+	countActiveCards,
+	getSettingsOverview,
+	maskMifareKeyConfig,
+	maskSettingRows,
+	SECRET_SETTING_KEYS
+} from '$lib/services/settings-view';
 import { z } from 'zod';
 
 // Schema per validare l'aggiornamento dei settings
@@ -22,69 +29,40 @@ const settingUpdateSchema = z.object({
 	use_single_mifare_key: z.boolean().optional(),
 	use_mifare: z.boolean().optional(),
 	regenerate_mifare_keys: z.boolean().optional(),
-	enrollment_api_url: z.string().optional(),
-	enrollment_api_key: z.string().optional()
+	enrollment_api_url: z.string().trim().max(2048).optional(),
+	// Omesso = invariato; null = rimuove la chiave salvata; stringa vuota = invariato.
+	enrollment_api_key: z.string().trim().max(1024).nullable().optional()
 });
 
-// Tipo per i settings con valori tipizzati
-interface SettingsMap {
-	reset_entry_type_daily: boolean;
-	min_swipe_interval_minutes: number;
-	enforce_course_date_range: boolean;
-	weekly_attendance_summary_enabled: boolean;
-	use_single_mifare_key: boolean;
-	use_mifare: boolean;
-}
-
-/**
- * Conta le card RFID attive (non cancellate)
- */
-async function countActiveCards(): Promise<number> {
-	const result = await db
-		.select({ count: count() })
-		.from(cardRfid)
-		.where(not(eq(cardRfid.status, 'deleted')));
-	return result[0]?.count ?? 0;
+function authFailure(err: unknown): Response {
+	if (!(err instanceof AuthError)) return serverError();
+	return err.code === 'FORBIDDEN' ? forbidden(err.message) : unauthorized(err.message);
 }
 
 /**
  * GET /api/v1/settings
- * Restituisce tutti i settings e la configurazione MIFARE
+ * Restituisce i settings (segreti mascherati) e lo stato della configurazione MIFARE.
+ * Solo Amministratori.
  */
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authFailure(err);
 	}
 
 	try {
-		const allSettings = await db.select().from(settings);
-
-		// Converti in oggetto con valori tipizzati
-		const settingsMap: Record<string, boolean | number | string> = {};
-		for (const setting of allSettings) {
-			switch (setting.dataType) {
-				case 'boolean':
-					settingsMap[setting.key] = setting.value === 'true';
-					break;
-				case 'integer':
-					settingsMap[setting.key] = parseInt(setting.value, 10);
-					break;
-				default:
-					settingsMap[setting.key] = setting.value;
-			}
-		}
-
-		// Recupera anche la configurazione MIFARE
-		const mifareConfig = await getMifareKeyConfig();
-		const activeCardsCount = await countActiveCards();
-
+		const overview = await getSettingsOverview();
 		return ok({
-			settings: allSettings,
-			values: settingsMap as unknown as SettingsMap,
-			mifare_keys: mifareConfig,
-			active_cards_count: activeCardsCount
+			settings: overview.settings,
+			values: overview.values,
+			mifare_keys: overview.mifareKeys,
+			active_cards_count: overview.activeCardsCount,
+			enrollment_api: {
+				url: overview.enrollmentApi.url,
+				has_key: overview.enrollmentApi.hasKey
+			},
+			webhook: { has_secret: overview.webhook.hasSecret }
 		});
 	} catch (err) {
 		console.error('[settings] GET error:', err);
@@ -99,9 +77,9 @@ export async function GET(event: RequestEvent): Promise<Response> {
 export async function PATCH(event: RequestEvent): Promise<Response> {
 	let user;
 	try {
-		user = await event.locals.verifyAdmin();
+		user = await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authFailure(err);
 	}
 
 	let body: unknown;
@@ -161,17 +139,17 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 		delete (updates as Record<string, unknown>).use_mifare;
 
 		// Gestisci configurazione Enrollment API
-		if (updates.enrollment_api_url !== undefined || updates.enrollment_api_key !== undefined) {
-			const url = updates.enrollment_api_url ?? '';
-			const key = updates.enrollment_api_key ?? '';
-			await setEnrollmentApiConfig(url, key);
+		// Una stringa vuota non sovrascrive la chiave: l'UI non la riceve mai in chiaro.
+		const apiKey = updates.enrollment_api_key === '' ? undefined : updates.enrollment_api_key;
+		if (updates.enrollment_api_url !== undefined || apiKey !== undefined) {
+			await setEnrollmentApiConfig({ url: updates.enrollment_api_url, key: apiKey });
 		}
 		delete (updates as Record<string, unknown>).enrollment_api_url;
 		delete (updates as Record<string, unknown>).enrollment_api_key;
 
 		// Aggiorna gli altri setting tradizionali
 		for (const [key, value] of Object.entries(updates)) {
-			if (value === undefined) continue;
+			if (value === undefined || SECRET_SETTING_KEYS.includes(key)) continue;
 
 			const stringValue = String(value);
 			await db
@@ -188,8 +166,8 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 		const mifareConfig = await getMifareKeyConfig();
 
 		return ok({
-			settings: allSettings,
-			mifare_keys: mifareConfig
+			settings: maskSettingRows(allSettings),
+			mifare_keys: maskMifareKeyConfig(mifareConfig)
 		});
 	} catch (err) {
 		console.error('[settings] PATCH error:', err);

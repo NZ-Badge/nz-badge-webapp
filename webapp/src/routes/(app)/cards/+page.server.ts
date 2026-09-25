@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { cardRfid, subscribers, users } from '$lib/db/schema';
 import { and, eq, count, isNotNull, ne, or, like, asc, desc, sql } from 'drizzle-orm';
@@ -17,7 +18,8 @@ function parseSortDirection(value: string | null): SortDirection {
 	return value === 'asc' ? 'asc' : 'desc';
 }
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	await requirePageStaff(locals);
 	const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
 	const status = url.searchParams.get('status') ?? '';
 	const tab = url.searchParams.get('tab') ?? 'active';

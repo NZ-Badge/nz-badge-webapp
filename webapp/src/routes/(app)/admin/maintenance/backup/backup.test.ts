@@ -25,7 +25,7 @@ vi.mock('$lib/services/auth', () => {
 
 function event(role: string) {
 	return {
-		locals: { verifyAdmin: async () => ({ role }) },
+		locals: { verifyStaffOrAdmin: async () => ({ role }) },
 		request: new Request('http://localhost/admin/maintenance/backup')
 	} as Parameters<typeof GET>[0];
 }

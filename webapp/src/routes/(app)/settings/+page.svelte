@@ -31,8 +31,8 @@
 	const getInitialValues = () => data.values;
 	const getInitialMifareKeys = () => data.mifareKeys;
 	const getInitialActiveCardsCount = () => data.activeCardsCount ?? 0;
-	const getInitialWebhookSecret = () => data.webhookSecret ?? null;
-	const getInitialEnrollmentApiConfig = () => data.enrollmentApiConfig;
+	const getInitialHasWebhookSecret = () => data.webhook.hasSecret;
+	const getInitialEnrollmentApi = () => data.enrollmentApi;
 
 	// Stato locale dei settings
 	let resetEntryTypeDaily = $state(getInitialValues().reset_entry_type_daily ?? true);
@@ -50,16 +50,21 @@
 	// Stato card attive
 	let activeCardsCount = $state(getInitialActiveCardsCount());
 
-	// Stato webhook
-	let webhookSecret = $state<string | null>(getInitialWebhookSecret());
+	// Stato webhook: il secret non arriva con la pagina, viene letto solo su richiesta
+	let hasWebhookSecret = $state(getInitialHasWebhookSecret());
+	let webhookSecret = $state<string | null>(null);
 	let webhookSecretVisible = $state(false);
+	let loadingSecret = $state(false);
 	let generatingSecret = $state(false);
 	let copiedUrl = $state(false);
 	let copiedSecret = $state(false);
 
 	// Stato Enrollment API
-	let enrollmentApiUrl = $state(getInitialEnrollmentApiConfig().url ?? '');
-	let enrollmentApiKey = $state(getInitialEnrollmentApiConfig().key ?? '');
+	let enrollmentApiUrl = $state(getInitialEnrollmentApi().url ?? '');
+	// La chiave salvata non viene mai inviata al browser: il campo contiene solo una nuova chiave.
+	let enrollmentApiKey = $state('');
+	let enrollmentApiKeySet = $state(getInitialEnrollmentApi().hasKey);
+	let clearEnrollmentApiKey = $state(false);
 	let apiKeyVisible = $state(false);
 	let testingApi = $state(false);
 	let testResult = $state<{ success: boolean; message: string } | null>(null);
@@ -76,12 +81,43 @@
 				throw new Error(result.error || 'Errore nella generazione del secret');
 			}
 			webhookSecret = result.data.secret;
+			hasWebhookSecret = true;
 			webhookSecretVisible = true;
 		} catch (err) {
 			saveError = err instanceof Error ? err.message : 'Errore sconosciuto';
 		} finally {
 			generatingSecret = false;
 		}
+	}
+
+	async function fetchWebhookSecret(): Promise<string | null> {
+		if (webhookSecret) return webhookSecret;
+		loadingSecret = true;
+		saveError = '';
+		try {
+			const response = await fetch('/api/v1/webhooks/enrollments/secret');
+			const result = await response.json();
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || 'Impossibile leggere il secret');
+			}
+			webhookSecret = result.data.secret;
+			return webhookSecret;
+		} catch (err) {
+			saveError = err instanceof Error ? err.message : 'Errore sconosciuto';
+			return null;
+		} finally {
+			loadingSecret = false;
+		}
+	}
+
+	async function toggleWebhookSecretVisible() {
+		if (!webhookSecretVisible && !(await fetchWebhookSecret())) return;
+		webhookSecretVisible = !webhookSecretVisible;
+	}
+
+	async function copyWebhookSecret() {
+		const secret = await fetchWebhookSecret();
+		if (secret) await copyToClipboard(secret, 'secret');
 	}
 
 	async function copyToClipboard(text: string, type: 'url' | 'secret') {
@@ -111,7 +147,8 @@
 			const response = await fetch('/api/v1/settings/enrollment-api/test', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ url: enrollmentApiUrl, key: enrollmentApiKey })
+				// Senza chiave digitata il server usa quella salvata
+				body: JSON.stringify({ url: enrollmentApiUrl, key: enrollmentApiKey || undefined })
 			});
 			const result = await response.json();
 			const data = result.data ?? result;
@@ -128,6 +165,10 @@
 			testingApi = false;
 		}
 	}
+
+	const canTestApi = $derived(
+		enrollmentApiKey.trim() !== '' || (enrollmentApiKeySet && !clearEnrollmentApiKey)
+	);
 
 	// Stato UI
 	let saving = $state(false);
@@ -149,6 +190,13 @@
 			return;
 		}
 
+		const newApiKey = enrollmentApiKey.trim();
+		const apiKeyUpdate = newApiKey
+			? { enrollment_api_key: newApiKey }
+			: clearEnrollmentApiKey
+				? { enrollment_api_key: null }
+				: {};
+
 		try {
 			const response = await fetch('/api/v1/settings', {
 				method: 'PATCH',
@@ -162,9 +210,9 @@
 					weekly_attendance_summary_enabled: weeklyAttendanceSummaryEnabled,
 					// Invia use_single_mifare_key solo se MIFARE è abilitato
 					...(useMifare ? { use_single_mifare_key: useSingleMifareKey } : {}),
-					// Enrollment API config
+					// Enrollment API config: la chiave viene inviata solo se modificata
 					enrollment_api_url: enrollmentApiUrl,
-					enrollment_api_key: enrollmentApiKey
+					...apiKeyUpdate
 				})
 			});
 
@@ -175,9 +223,16 @@
 			}
 
 			// Aggiorna stato chiavi se cambiato
-			if (result.mifare_keys) {
-				mifareKeys = result.mifare_keys;
+			if (result.data?.mifare_keys) {
+				mifareKeys = result.data.mifare_keys;
 			}
+			if (newApiKey) {
+				enrollmentApiKeySet = true;
+				enrollmentApiKey = '';
+			} else if (clearEnrollmentApiKey) {
+				enrollmentApiKeySet = false;
+			}
+			clearEnrollmentApiKey = false;
 
 			saveSuccess = true;
 			setTimeout(() => {
@@ -252,8 +307,8 @@
 				throw new Error(result.error || 'Impossibile rigenerare le chiavi');
 			}
 
-			if (result.mifare_keys) {
-				mifareKeys = result.mifare_keys;
+			if (result.data?.mifare_keys) {
+				mifareKeys = result.data.mifare_keys;
 			}
 
 			saveSuccess = true;
@@ -452,26 +507,13 @@
 				</div>
 
 				<!-- Visualizzazione chiavi correnti (solo se modalità chiave unica) -->
-				{#if useSingleMifareKey && mifareKeys.keys}
+				{#if useSingleMifareKey && mifareKeys.hasKeys}
 					<div class="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
 						<h4 class="font-medium text-amber-900">Chiavi MIFARE Globali</h4>
 						<p class="text-sm text-amber-700">
-							Queste chiavi verranno utilizzate per tutte le nuove card scritte.
+							Le chiavi globali sono configurate e verranno utilizzate per tutte le nuove card
+							scritte. Per sicurezza non vengono mostrate nel pannello.
 						</p>
-						<div class="grid gap-3 sm:grid-cols-2">
-							<div>
-								<Label class="text-xs text-amber-800">Key A</Label>
-								<div class="font-mono text-sm bg-white border rounded px-3 py-2">
-									{mifareKeys.keys.keyA}
-								</div>
-							</div>
-							<div>
-								<Label class="text-xs text-amber-800">Key B</Label>
-								<div class="font-mono text-sm bg-white border rounded px-3 py-2">
-									{mifareKeys.keys.keyB}
-								</div>
-							</div>
-						</div>
 						<div class="pt-2">
 							<Button
 								onclick={regenerateKeys}
@@ -491,7 +533,7 @@
 							</Button>
 						</div>
 					</div>
-				{:else if useSingleMifareKey && !mifareKeys.keys}
+				{:else if useSingleMifareKey && !mifareKeys.hasKeys}
 					<div class="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
 						<p class="text-sm text-yellow-800">
 							Le chiavi globali verranno generate automaticamente al primo utilizzo.
@@ -534,7 +576,9 @@
 					<Input
 						id="enrollment-api-key"
 						type={apiKeyVisible ? 'text' : 'password'}
-						placeholder="sk-..."
+						placeholder={enrollmentApiKeySet && !clearEnrollmentApiKey
+							? 'Chiave salvata: lascia vuoto per non modificarla'
+							: 'sk-...'}
 						bind:value={enrollmentApiKey}
 						class="font-mono"
 					/>
@@ -554,6 +598,26 @@
 					</Button>
 				</div>
 				<p class="text-xs text-gray-500">Chiave di autenticazione Bearer per le chiamate all'API</p>
+				{#if enrollmentApiKeySet}
+					<div class="flex flex-wrap items-center gap-2">
+						<span class="text-xs {clearEnrollmentApiKey ? 'text-red-700' : 'text-green-700'}">
+							{clearEnrollmentApiKey
+								? 'La chiave salvata verrà rimossa al salvataggio'
+								: 'Una chiave è già salvata'}
+						</span>
+						<Button
+							variant="ghost"
+							size="sm"
+							onclick={() => {
+								clearEnrollmentApiKey = !clearEnrollmentApiKey;
+							}}
+							data-tutorial-title="Rimuovi chiave API"
+							data-tutorial-description="Segna la chiave API salvata per la rimozione. La modifica viene applicata solo quando premi Salva impostazioni; premi di nuovo per annullare."
+						>
+							{clearEnrollmentApiKey ? 'Annulla rimozione' : 'Rimuovi chiave salvata'}
+						</Button>
+					</div>
+				{/if}
 			</div>
 
 			<!-- Test connessione -->
@@ -576,7 +640,7 @@
 					variant="outline"
 					size="sm"
 					onclick={testApiConnection}
-					disabled={testingApi || !enrollmentApiUrl || !enrollmentApiKey}
+					disabled={testingApi || !enrollmentApiUrl || !canTestApi}
 				>
 					{#if testingApi}
 						<span
@@ -588,7 +652,7 @@
 						Test connessione
 					{/if}
 				</Button>
-				{#if !enrollmentApiUrl || !enrollmentApiKey}
+				{#if !enrollmentApiUrl || !canTestApi}
 					<span class="text-xs text-amber-600">
 						Inserisci URL e API key per testare la connessione
 					</span>
@@ -643,19 +707,18 @@
 			<!-- Secret -->
 			<div class="space-y-2">
 				<p class="text-sm font-medium text-gray-700">Secret</p>
-				{#if webhookSecret}
+				{#if hasWebhookSecret}
 					<div class="flex items-center gap-2">
 						<code
 							class="flex-1 rounded border bg-gray-50 px-3 py-2 text-sm font-mono text-gray-800 break-all"
 						>
-							{webhookSecretVisible ? webhookSecret : '•'.repeat(20)}
+							{webhookSecretVisible && webhookSecret ? webhookSecret : '•'.repeat(20)}
 						</code>
 						<Button
 							variant="outline"
 							size="icon"
-							onclick={() => {
-								webhookSecretVisible = !webhookSecretVisible;
-							}}
+							onclick={toggleWebhookSecretVisible}
+							disabled={loadingSecret}
 							title={webhookSecretVisible ? 'Nascondi' : 'Mostra'}
 						>
 							{#if webhookSecretVisible}
@@ -667,7 +730,8 @@
 						<Button
 							variant="outline"
 							size="sm"
-							onclick={() => copyToClipboard(webhookSecret!, 'secret')}
+							onclick={copyWebhookSecret}
+							disabled={loadingSecret}
 							class="shrink-0"
 						>
 							{#if copiedSecret}
@@ -685,7 +749,7 @@
 					</p>
 				{/if}
 				<Button
-					variant={webhookSecret ? 'warning' : 'outline'}
+					variant={hasWebhookSecret ? 'warning' : 'outline'}
 					size="sm"
 					onclick={generateWebhookSecret}
 					disabled={generatingSecret}
@@ -697,10 +761,10 @@
 						Generazione...
 					{:else}
 						<RefreshCw size={14} class="mr-2" />
-						{webhookSecret ? 'Rigenera secret' : 'Genera secret'}
+						{hasWebhookSecret ? 'Rigenera secret' : 'Genera secret'}
 					{/if}
 				</Button>
-				{#if webhookSecret}
+				{#if hasWebhookSecret}
 					<p class="text-xs text-amber-700">
 						Attenzione: rigenerare il secret invalida quello precedente. Aggiorna la configurazione
 						del server remoto dopo la rigenerazione.

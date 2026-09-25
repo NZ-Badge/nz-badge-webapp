@@ -13,10 +13,12 @@ declare global {
 		interface Locals {
 			/** Verify device token from request headers */
 			verifyDevice: () => Promise<DeviceReg>;
-			/** Verify admin session from cookies */
-			verifyAdmin: () => Promise<User>;
-			/** Verify any active system-user session, including collaborators */
+			/** Verify any active system-user session, including collaborators (memoized per request) */
 			verifyUser: () => Promise<User>;
+			/** Verify an Administrator or Operator session (role admin or staff) */
+			verifyStaffOrAdmin: () => Promise<User>;
+			/** Verify an Administrator session (role admin only) */
+			verifyAdminOnly: () => Promise<User>;
 			/** CSP nonce for this request */
 			cspNonce: string;
 		}

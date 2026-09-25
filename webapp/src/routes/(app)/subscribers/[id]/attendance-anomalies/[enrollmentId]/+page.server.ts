@@ -9,6 +9,7 @@ import {
 	type CourseAttendanceResolvableIssue
 } from '$lib/services/subscriber-course-attendance';
 import { createAuditLogger } from '$lib/services/audit';
+import { requirePageStaff } from '$lib/services/auth';
 
 const MANUAL_FIX_DEVICE_ID = 'admin_manual_fix';
 const MAX_MANUAL_HOURS = 24;
@@ -126,7 +127,7 @@ async function loadResolutionContext(subscriberId: number, enrollmentId: number)
 }
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-	await locals.verifyAdmin();
+	await requirePageStaff(locals);
 
 	const subscriberId = parseNumericId(params.id);
 	const enrollmentId = parseNumericId(params.enrollmentId);
@@ -147,7 +148,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 export const actions: Actions = {
 	resolve: async (event) => {
-		const user = await event.locals.verifyAdmin();
+		const user = await requirePageStaff(event.locals);
 		const subscriberId = parseNumericId(event.params.id);
 		const enrollmentId = parseNumericId(event.params.enrollmentId);
 		const formData = await event.request.formData();

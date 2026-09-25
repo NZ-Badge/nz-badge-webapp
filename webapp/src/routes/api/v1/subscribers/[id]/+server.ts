@@ -15,7 +15,7 @@ import { AuthError } from '$lib/services/auth';
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}
@@ -33,7 +33,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 export async function PUT(event: RequestEvent): Promise<Response> {
 	let adminUser;
 	try {
-		adminUser = await event.locals.verifyAdmin();
+		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}
@@ -88,7 +88,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 export async function DELETE(event: RequestEvent): Promise<Response> {
 	let adminUser;
 	try {
-		adminUser = await event.locals.verifyAdmin();
+		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}

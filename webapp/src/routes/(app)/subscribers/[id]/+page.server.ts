@@ -1,11 +1,13 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { subscribers, cardRfid, attendance, enrollments } from '$lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { buildSubscriberCourseAttendanceSummaries } from '$lib/services/subscriber-course-attendance';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	await requirePageStaff(locals);
 	const subscriberId = Number(params.id);
 	if (isNaN(subscriberId)) error(400, 'Invalid subscriber ID');
 
@@ -85,7 +87,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-	update: async ({ request, params }) => {
+	update: async ({ request, params, locals }) => {
+		await requirePageStaff(locals);
 		const id = Number(params.id);
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'update' });
 
@@ -111,7 +114,8 @@ export const actions: Actions = {
 		return { success: true, action: 'update' };
 	},
 
-	updateEnrollmentEndDate: async ({ request, params }) => {
+	updateEnrollmentEndDate: async ({ request, params, locals }) => {
+		await requirePageStaff(locals);
 		const subscriberId = Number(params.id);
 		if (!subscriberId) {
 			return fail(400, { error: 'ID iscritto mancante', action: 'updateEnrollmentEndDate' });
@@ -169,7 +173,8 @@ export const actions: Actions = {
 		return { success: true, action: 'updateEnrollmentEndDate', enrollmentId };
 	},
 
-	delete: async ({ params }) => {
+	delete: async ({ params, locals }) => {
+		await requirePageStaff(locals);
 		const id = Number(params.id);
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'delete' });
 

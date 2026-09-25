@@ -1,29 +1,18 @@
 import type { PageServerLoad, Actions } from './$types';
-import { fail, error } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import { db } from '$lib/db';
 import { firmwareReleases } from '$lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
-import { AuthError, requireAdmin } from '$lib/services/auth';
+import { requireAdmin, requirePageAdmin } from '$lib/services/auth';
 
 const FIRMWARE_DIR = join(process.cwd(), 'localfiles', 'firmware', 'reader-station');
 
 export const load: PageServerLoad = async ({ locals }) => {
 	// Only admin can access firmware management
-	try {
-		const user = await locals.verifyAdmin();
-		requireAdmin(user);
-	} catch (err) {
-		if (err instanceof AuthError) {
-			if (err.code === 'FORBIDDEN') {
-				error(403, 'Admin access required');
-			}
-			error(401, 'Unauthorized');
-		}
-		throw err;
-	}
+	await requirePageAdmin(locals);
 
 	const releases = await db
 		.select()
@@ -37,7 +26,7 @@ export const actions: Actions = {
 	upload: async ({ request, locals }) => {
 		// Verify admin
 		try {
-			const user = await locals.verifyAdmin();
+			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
 		} catch {
 			return fail(401, { action: 'upload', error: 'Non autorizzato' });
@@ -93,7 +82,7 @@ export const actions: Actions = {
 	activate: async ({ request, locals }) => {
 		// Verify admin
 		try {
-			const user = await locals.verifyAdmin();
+			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
 		} catch {
 			return fail(401, { action: 'activate', error: 'Non autorizzato' });
@@ -117,7 +106,7 @@ export const actions: Actions = {
 	deactivate: async ({ request, locals }) => {
 		// Verify admin
 		try {
-			const user = await locals.verifyAdmin();
+			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
 		} catch {
 			return fail(401, { action: 'deactivate', error: 'Non autorizzato' });

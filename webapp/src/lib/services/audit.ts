@@ -15,6 +15,7 @@ export type AuditAction =
 	| 'DELETE'
 	| 'READ'
 	| 'LOGIN'
+	| 'LOGIN_FAILED'
 	| 'LOGOUT'
 	| 'EXPORT'
 	| 'CARD_WRITE'

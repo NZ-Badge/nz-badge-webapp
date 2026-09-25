@@ -21,9 +21,13 @@ La configurazione non usa variabili ambiente dedicate. Viene salvata nella tabel
 
 Dal pannello `/settings` e' possibile:
 
-- salvare URL e API key del sistema esterno
-- testare la connessione con `POST /api/v1/settings/enrollment-api/test`
-- leggere o rigenerare il secret webhook
+- salvare URL e API key del sistema esterno (la chiave salvata non viene mai rimostrata: il campo
+  vuoto la lascia invariata, `enrollment_api_key: null` nel PATCH la rimuove)
+- testare la connessione con `POST /api/v1/settings/enrollment-api/test` (senza `key` nel body usa
+  quella salvata)
+- leggere su richiesta o rigenerare il secret webhook
+
+Tutte queste operazioni richiedono ruolo `admin`.
 
 ## Sync pull
 
@@ -133,7 +137,7 @@ Vincoli rilevanti:
 
 ## Gestione secret
 
-Endpoint admin:
+Endpoint riservati al ruolo `admin` (403 per gli Operatori):
 
 ```text
 GET  /api/v1/webhooks/enrollments/secret

@@ -1,6 +1,40 @@
-import { formatInTimeZone, toDate } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime, toDate } from 'date-fns-tz';
 
 export const TIMEZONE = 'Europe/Rome';
+
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Chiave del giorno (yyyy-MM-dd) nel fuso Europe/Rome, indipendente dal fuso del server. */
+export function romeDateKey(value: Date | string | number): string {
+	return formatInTimeZone(new Date(value), TIMEZONE, 'yyyy-MM-dd');
+}
+
+/** Verifica che la stringa sia una data yyyy-MM-dd esistente. */
+export function isDateKey(value: string): boolean {
+	if (!DATE_KEY_PATTERN.test(value)) return false;
+	const date = new Date(`${value}T00:00:00.000Z`);
+	return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+/** Aggiunge (o sottrae) giorni di calendario a una chiave yyyy-MM-dd. */
+export function addDaysToDateKey(dateKey: string, days: number): string {
+	const date = new Date(`${dateKey}T00:00:00.000Z`);
+	date.setUTCDate(date.getUTCDate() + days);
+	return date.toISOString().slice(0, 10);
+}
+
+/** Istante di inizio (00:00 Europe/Rome) del giorno indicato. */
+export function romeDayStart(dateKey: string): Date {
+	return fromZonedTime(`${dateKey}T00:00:00.000`, TIMEZONE);
+}
+
+/**
+ * Intervallo semiaperto [start, end) che copre i giorni da `fromKey` a `toKey` inclusi,
+ * con i confini a mezzanotte Europe/Rome.
+ */
+export function romeDayRange(fromKey: string, toKey: string = fromKey): { start: Date; end: Date } {
+	return { start: romeDayStart(fromKey), end: romeDayStart(addDaysToDateKey(toKey, 1)) };
+}
 
 /**
  * Restituisce la data/ora corrente in timezone Europe/Rome

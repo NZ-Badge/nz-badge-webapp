@@ -28,7 +28,7 @@ function errorResponse(error: unknown): Response {
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
-		const actor = await locals.verifyAdmin();
+		const actor = await locals.verifyStaffOrAdmin();
 		const parsed = manualSchema.safeParse(await request.json());
 		if (!parsed.success) {
 			return json(

@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { subscribers, cardRfid } from '$lib/db/schema';
 import { eq, like, or, and, count } from 'drizzle-orm';
@@ -93,7 +94,8 @@ function sortSubscribers(
 	});
 }
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	await requirePageStaff(locals);
 	const pageParam = Number(url.searchParams.get('page') ?? 1);
 	const requestedPage = Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1;
 	const q = url.searchParams.get('q')?.trim() ?? '';
@@ -144,7 +146,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	create: async ({ request }) => {
+	create: async ({ request, locals }) => {
+		await requirePageStaff(locals);
 		const data = await request.formData();
 		const firstName = data.get('firstName')?.toString().trim();
 		const lastName = data.get('lastName')?.toString().trim();
@@ -171,7 +174,8 @@ export const actions: Actions = {
 		return { success: true, action: 'create' };
 	},
 
-	update: async ({ request }) => {
+	update: async ({ request, locals }) => {
+		await requirePageStaff(locals);
 		const data = await request.formData();
 		const id = Number(data.get('id'));
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'update' });
@@ -196,7 +200,8 @@ export const actions: Actions = {
 		return { success: true, action: 'update' };
 	},
 
-	delete: async ({ request }) => {
+	delete: async ({ request, locals }) => {
+		await requirePageStaff(locals);
 		const data = await request.formData();
 		const id = Number(data.get('id'));
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'delete' });

@@ -17,7 +17,7 @@ const cardEraseSchema = z.object({
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}

@@ -29,7 +29,11 @@ function compactDateKey(value: string): string {
 }
 
 function emailFilenameSuffix(email: string): string {
-	return email.trim().toLowerCase().replace(/[@.]/g, '_').replace(/[^a-z0-9_-]/g, '_');
+	return email
+		.trim()
+		.toLowerCase()
+		.replace(/[@.]/g, '_')
+		.replace(/[^a-z0-9_-]/g, '_');
 }
 
 function buildExportFilename(filters: { from?: string; to?: string; email?: string }): string {
@@ -37,17 +41,11 @@ function buildExportFilename(filters: { from?: string; to?: string; email?: stri
 	return `attendance-${compactDateKey(filters.from!)}-${compactDateKey(filters.to!)}.csv`;
 }
 
-const CSV_HEADERS = [
-	'nome',
-	'email',
-	'corso',
-	'data_inizio',
-	'data_fine',
-	'monte_ore',
-	'anomalie'
-];
+const CSV_HEADERS = ['nome', 'email', 'corso', 'data_inizio', 'data_fine', 'monte_ore', 'anomalie'];
 
-function parseExportFilters(url: URL):
+function parseExportFilters(
+	url: URL
+):
 	| { ok: true; filters: { from?: string; to?: string; email?: string } }
 	| { ok: false; message: string } {
 	const from = url.searchParams.get('from')?.trim() || undefined;
@@ -65,7 +63,8 @@ function parseExportFilters(url: URL):
 	}
 
 	if (hasDateRange) {
-		if (!from || !to) return { ok: false, message: 'Il range richiede sia data inizio sia data fine.' };
+		if (!from || !to)
+			return { ok: false, message: 'Il range richiede sia data inizio sia data fine.' };
 		if (!DATE_PATTERN.test(from) || !DATE_PATTERN.test(to)) {
 			return { ok: false, message: 'Formato data non valido.' };
 		}
@@ -82,7 +81,11 @@ function parseExportFilters(url: URL):
 	return { ok: true, filters: { email } };
 }
 
-function buildEnrollmentWhere(filters: { from?: string; to?: string; email?: string }): SQL | undefined {
+function buildEnrollmentWhere(filters: {
+	from?: string;
+	to?: string;
+	email?: string;
+}): SQL | undefined {
 	const conditions: SQL[] = [];
 
 	if (filters.email) conditions.push(eq(subscribers.email, filters.email));
@@ -94,7 +97,7 @@ function buildEnrollmentWhere(filters: { from?: string; to?: string; email?: str
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
 		return err instanceof AuthError ? unauthorized(err.message) : serverError();
 	}
@@ -138,16 +141,14 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const reportInputsBySubscriber = new Map<number, SubscriberCourseAttendanceReportInput>();
 
 	for (const row of enrollmentRows) {
-		const input =
-			reportInputsBySubscriber.get(row.subscriberId) ??
-			{
-				subscriberId: row.subscriberId,
-				firstName: row.firstName,
-				lastName: row.lastName,
-				email: row.email,
-				enrollments: [],
-				attendanceRows: []
-			};
+		const input = reportInputsBySubscriber.get(row.subscriberId) ?? {
+			subscriberId: row.subscriberId,
+			firstName: row.firstName,
+			lastName: row.lastName,
+			email: row.email,
+			enrollments: [],
+			attendanceRows: []
+		};
 
 		input.enrollments.push({
 			id: row.enrollmentId,

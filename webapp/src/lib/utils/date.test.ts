@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+	addDaysToDateKey,
+	isDateKey,
+	romeDateKey,
+	romeDayRange,
+	romeDayStart,
 	formatDateIT,
 	formatDateTimeIT,
 	formatTimeIT,
@@ -81,5 +86,43 @@ describe('toRomeDateTimeInputValue', () => {
 	it('produce yyyy-MM-ddTHH:mm in Europe/Rome per i form', () => {
 		expect(toRomeDateTimeInputValue(new Date(WINTER_UTC))).toBe('2026-01-15T13:00');
 		expect(toRomeDateTimeInputValue(new Date(SUMMER_UTC))).toBe('2026-07-15T14:00');
+	});
+});
+
+// Il container gira in UTC: tra le 00:00 e le 02:00 di Roma il giorno UTC è ancora il precedente.
+describe('romeDateKey', () => {
+	it('usa il giorno di Roma e non quello UTC tra le 00:00 e le 02:00', () => {
+		expect(romeDateKey(new Date('2026-03-10T23:30:00Z'))).toBe('2026-03-11');
+		expect(romeDateKey('2026-07-15T22:30:00Z')).toBe('2026-07-16');
+		expect(romeDateKey('2026-07-15T21:59:59Z')).toBe('2026-07-15');
+	});
+});
+
+describe('romeDayStart / romeDayRange', () => {
+	it('restituisce la mezzanotte di Roma in UTC, con e senza ora legale', () => {
+		expect(romeDayStart('2026-03-11').toISOString()).toBe('2026-03-10T23:00:00.000Z');
+		expect(romeDayStart('2026-07-16').toISOString()).toBe('2026-07-15T22:00:00.000Z');
+	});
+
+	it('copre i giorni inclusi con un intervallo semiaperto [inizio, giorno dopo)', () => {
+		const range = romeDayRange('2026-03-28', '2026-03-29');
+		expect(range.start.toISOString()).toBe('2026-03-27T23:00:00.000Z');
+		expect(range.end.toISOString()).toBe('2026-03-29T22:00:00.000Z');
+		const swipe = new Date('2026-03-10T23:30:00Z');
+		const day = romeDayRange('2026-03-11');
+		expect(swipe >= day.start && swipe < day.end).toBe(true);
+	});
+});
+
+describe('addDaysToDateKey / isDateKey', () => {
+	it('somma giorni di calendario anche a cavallo di mese e anno', () => {
+		expect(addDaysToDateKey('2026-12-31', 1)).toBe('2027-01-01');
+		expect(addDaysToDateKey('2026-03-01', -1)).toBe('2026-02-28');
+	});
+
+	it('accetta solo date yyyy-MM-dd esistenti', () => {
+		expect(isDateKey('2026-02-28')).toBe(true);
+		expect(isDateKey('2026-02-30')).toBe(false);
+		expect(isDateKey('11/03/2026')).toBe(false);
 	});
 });

@@ -2,10 +2,13 @@ import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
 import { enrollments, subscribers, enrollmentSyncLog } from '$lib/db/schema';
 import { eq, like, or, and, desc, gte, isNull } from 'drizzle-orm';
+import { romeDateKey } from '$lib/utils/date';
+import { requirePageStaff } from '$lib/services/auth';
 
 const MAX_ROWS = 500;
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	await requirePageStaff(locals);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const status = url.searchParams.get('status') ?? '';
 	const showPast = url.searchParams.get('showPast') === '1';
@@ -28,8 +31,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		filters.push(eq(enrollments.status, status as 'PENDING' | 'SUBMITTED' | 'COMPLETED'));
 	}
 	if (!showPast) {
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
+		// Colonna DATE: confronto con la mezzanotte UTC del giorno corrente a Roma.
+		const today = new Date(`${romeDateKey(new Date())}T00:00:00.000Z`);
 		filters.push(or(isNull(enrollments.startDate), gte(enrollments.startDate, today)));
 	}
 

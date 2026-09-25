@@ -8,12 +8,16 @@ Questo documento riassume le misure di sicurezza effettivamente rintracciabili n
 
 - login tramite email/password contro tabella `users`
 - sessione salvata in cookie `session`
-- firma JWT con `JWT_SECRET`
+- firma JWT HS256 con `JWT_SECRET` (obbligatorio, almeno 32 caratteri: altrimenti login e
+  verifica sessione falliscono con errore esplicito); `jwtVerify` accetta solo `HS256`
 - durata sessione: 8 ore
 - cookie `httpOnly`, `sameSite=strict`, `secure` fuori da `dev`
 - ruoli ammessi nell'app: `admin`, `staff`, `collaborator`
 - ogni richiesta ricarica l'utente dal database e rifiuta account con stato diverso da `active`
 - la disattivazione e' un soft delete; invalida anche sessioni gia' emesse al controllo successivo
+- login con rate limit in-memory: 5 tentativi per email e 20 per IP ogni 15 minuti (risposta 429)
+- login riusciti (`LOGIN`) e falliti (`LOGIN_FAILED`, email mascherata) finiscono in `audit_log`;
+  i log applicativi riportano solo l'id utente
 
 Codice rilevante:
 
@@ -37,10 +41,19 @@ Codice rilevante:
 
 ## Autorizzazione
 
-- il layout applicativo usa `locals.verifyUser()` per tutti i ruoli attivi
-- le superfici preesistenti per corsisti/card usano `locals.verifyAdmin()` e restano limitate ad
-  Amministratori e Operatori
-- alcune aree richiedono esplicitamente ruolo `admin` tramite `requireAdmin()`
+- `hooks.server.ts` nega per default ogni route del gruppo `(app)` senza sessione valida
+  (redirect a `/login`) e applica la allowlist dei Collaboratori alle richieste dati e alle form
+  action; il layout mostra la pagina 403 nei rendering completi
+- ogni `load` e form action in `(app)` chiama comunque una guardia esplicita di
+  `src/lib/services/auth.ts`: `requirePageUser`, `requirePageStaff` o `requirePageAdmin`. Il layout
+  non viene eseguito per le action e puo' essere saltato dalle richieste dati, quindi non basta
+- nelle API: `locals.verifyUser()` (tutti i ruoli attivi), `locals.verifyStaffOrAdmin()`
+  (Amministratori e Operatori) e `locals.verifyAdminOnly()` (solo `admin`). `locals.verifyAdmin()`
+  e' un alias deprecato di `verifyStaffOrAdmin`
+- impostazioni (`/api/v1/settings`, test enrollment API) e secret webhook sono solo `admin`;
+  `GET /api/v1/settings` e la pagina impostazioni non restituiscono mai API key, secret webhook o
+  chiavi MIFARE in chiaro (solo flag `has_key`/`has_secret`/`hasKeys`); il secret webhook si legge
+  su richiesta con `GET /api/v1/webhooks/enrollments/secret`
 - i dati staff applicano anche controlli “proprio utente oppure Amministratore/Operatore” lato
   server; nascondere i comandi nella UI non e' considerato un controllo sufficiente
 - i device non possono accedere agli endpoint admin e viceversa
@@ -89,6 +102,7 @@ La copertura non e' uniforme su ogni endpoint del progetto, quindi va considerat
 Il codice contiene rate limiter in-memory per:
 
 - autenticazione device
+- login admin (per IP e per email)
 - endpoint presenze singole
 - endpoint presenze batch
 

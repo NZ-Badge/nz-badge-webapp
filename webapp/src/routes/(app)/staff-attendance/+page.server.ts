@@ -1,10 +1,9 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { and, count, desc, eq, gte, like, lt, sql } from 'drizzle-orm';
 import { fromZonedTime } from 'date-fns-tz';
 import { db } from '$lib/db';
 import { staffAttendance, users } from '$lib/db/schema';
-import { isStaffManager } from '$lib/services/auth';
+import { isStaffManager, requirePageStaff } from '$lib/services/auth';
 import { getCurrentMonthDateRange } from '$lib/services/staff-attendance';
 import { TIMEZONE } from '$lib/utils/date';
 
@@ -18,9 +17,8 @@ function addOneDay(dateKey: string): string {
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	const actor = await locals.verifyUser();
+	const actor = await requirePageStaff(locals);
 	const canManage = isStaffManager(actor);
-	if (!canManage) error(403, 'Accesso non consentito');
 	const exportDefaultRange = getCurrentMonthDateRange();
 	const page = Math.max(1, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
 	const from = DATE_PATTERN.test(url.searchParams.get('from') ?? '')

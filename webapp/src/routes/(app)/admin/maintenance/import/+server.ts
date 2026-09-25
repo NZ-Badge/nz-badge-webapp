@@ -87,7 +87,7 @@ async function verifyDumpDatabase(path: string, database: string) {
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
 	try {
-		requireAdmin(await locals.verifyAdmin());
+		requireAdmin(await locals.verifyStaffOrAdmin());
 	} catch (err) {
 		if (err instanceof AuthError) {
 			return json(

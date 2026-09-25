@@ -1,4 +1,5 @@
 import type { PageServerLoad } from './$types';
+import { requirePageUser } from '$lib/services/auth';
 import { count, desc, eq } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { staffAttendance } from '$lib/db/schema';
@@ -9,7 +10,7 @@ import {
 } from '$lib/services/staff-attendance';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	const user = await locals.verifyUser();
+	const user = await requirePageUser(locals);
 	const monthRange = getCurrentMonthDateRange();
 	const range = normalizeStaffAttendanceRange(
 		url.searchParams.get('from'),

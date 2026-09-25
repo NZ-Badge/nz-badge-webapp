@@ -189,7 +189,7 @@ export function sanitizeSearchQuery(query: string, maxLength = 100): string {
 /**
  * Rate limiting storage with automatic cleanup
  */
-class RateLimiter {
+export class RateLimiter {
 	private requests = new Map<string, number[]>();
 	private readonly windowMs: number;
 	private readonly maxRequests: number;
@@ -246,7 +246,10 @@ class RateLimiter {
 
 // Global rate limiter instances
 export const apiRateLimiter = new RateLimiter(60000, 100); // 100 requests per minute
-export const authRateLimiter = new RateLimiter(300000, 5); // 5 login attempts per 5 minutes
+export const authRateLimiter = new RateLimiter(300000, 5); // 5 device auth attempts per 5 minutes
+// Admin login: per-IP limit is looser because staff may share a NAT/proxy address.
+export const loginIpRateLimiter = new RateLimiter(15 * 60000, 20); // 20 attempts per 15 minutes
+export const loginEmailRateLimiter = new RateLimiter(15 * 60000, 5); // 5 attempts per 15 minutes
 
 /**
  * Hash sensitive data for audit logs (one-way)

@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { ok, unauthorized, serverError } from '$lib/utils/api';
+import { ok, unauthorized, forbidden, serverError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
 import { getWebhookSecret, regenerateWebhookSecret } from '$lib/services/enrollments';
 
@@ -9,9 +9,10 @@ import { getWebhookSecret, regenerateWebhookSecret } from '$lib/services/enrollm
  */
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		if (!(err instanceof AuthError)) return serverError();
+		return err.code === 'FORBIDDEN' ? forbidden(err.message) : unauthorized(err.message);
 	}
 
 	try {
@@ -29,9 +30,10 @@ export async function GET(event: RequestEvent): Promise<Response> {
  */
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
-		await event.locals.verifyAdmin();
+		await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		if (!(err instanceof AuthError)) return serverError();
+		return err.code === 'FORBIDDEN' ? forbidden(err.message) : unauthorized(err.message);
 	}
 
 	try {

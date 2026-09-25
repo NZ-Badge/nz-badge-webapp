@@ -8,7 +8,7 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, request }) => {
 	try {
-		requireAdmin(await locals.verifyAdmin());
+		requireAdmin(await locals.verifyStaffOrAdmin());
 	} catch (err) {
 		if (err instanceof AuthError) {
 			error(err.code === 'FORBIDDEN' ? 403 : 401, 'Accesso non consentito');

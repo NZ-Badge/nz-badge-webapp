@@ -1,46 +1,23 @@
-import { error, redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
-import { AuthError } from '$lib/services/auth';
+import { canAccessAppPath, requirePageUser } from '$lib/services/auth';
 import { version } from '../../../package.json';
 
+// Access is also enforced in hooks.server.ts and in every page load/action: this layout
+// only renders the styled 403 page for full-page loads and exposes the user to the UI.
 export const load: LayoutServerLoad = async ({ locals, url }) => {
-	try {
-		const user = await locals.verifyUser();
-		if (user.role === 'collaborator') {
-			const allowedPrefixes = [
-				'/dashboard',
-				'/my-attendance',
-				'/copyrights',
-				'/today',
-				'/new-students'
-			];
-			if (!allowedPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
-				error(403, 'Accesso non consentito');
-			}
-		}
+	const user = await requirePageUser(locals);
+	if (!canAccessAppPath(user.role, url.pathname)) {
+		error(403, 'Accesso non consentito');
+	}
 
-		// Log per debug
-		console.log('[LAYOUT] User loaded:', {
+	return {
+		user: {
 			id: user.id,
-			name: user.name,
+			name: user.name || '',
 			email: user.email,
 			role: user.role
-		});
-
-		return {
-			user: {
-				id: user.id,
-				name: user.name || '',
-				email: user.email,
-				role: user.role
-			},
-			version
-		};
-	} catch (err) {
-		console.error('[LAYOUT] Error loading user:', err);
-		if (err instanceof AuthError) {
-			redirect(303, '/login');
-		}
-		throw err;
-	}
+		},
+		version
+	};
 };

@@ -1,28 +1,17 @@
 import { db } from '$lib/db';
 import { deviceRegistry } from '$lib/db/schema';
 import { eq, desc, like, or } from 'drizzle-orm';
-import { fail, error } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import type { PageServerLoad, Actions } from './$types';
-import { AuthError, requireAdmin } from '$lib/services/auth';
+import { requireAdmin, requirePageAdmin } from '$lib/services/auth';
 
 const ITEMS_PER_PAGE = 20;
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	// Only admin can access device management
-	try {
-		const user = await locals.verifyAdmin();
-		requireAdmin(user);
-	} catch (err) {
-		if (err instanceof AuthError) {
-			if (err.code === 'FORBIDDEN') {
-				error(403, 'Admin access required');
-			}
-			error(401, 'Unauthorized');
-		}
-		throw err;
-	}
+	await requirePageAdmin(locals);
 
 	const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
 	const q = url.searchParams.get('q')?.trim() ?? '';
@@ -57,7 +46,7 @@ export const actions: Actions = {
 	create: async ({ request, locals }) => {
 		// Verify admin
 		try {
-			const user = await locals.verifyAdmin();
+			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
 		} catch {
 			return fail(401, { action: 'create', error: 'Non autorizzato' });
@@ -129,7 +118,7 @@ export const actions: Actions = {
 	update: async ({ request, locals }) => {
 		// Verify admin
 		try {
-			const user = await locals.verifyAdmin();
+			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
 		} catch {
 			return fail(401, { action: 'update', error: 'Non autorizzato' });
@@ -163,7 +152,7 @@ export const actions: Actions = {
 	delete: async ({ request, locals }) => {
 		// Verify admin
 		try {
-			const user = await locals.verifyAdmin();
+			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
 		} catch {
 			return fail(401, { action: 'delete', error: 'Non autorizzato' });

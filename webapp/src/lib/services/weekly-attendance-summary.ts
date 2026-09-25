@@ -5,7 +5,7 @@ import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { attendance, settings, subscribers, weeklyAttendanceSummaryLog } from '../db/schema';
 import * as schema from '../db/schema';
-import { calculateAttendanceHours, formatAttendanceMinutes } from './attendance-hours';
+import { calculateAttendanceHours } from './attendance-hours';
 import { TIMEZONE } from '../utils/date';
 
 type AppDb = MySql2Database<typeof schema>;

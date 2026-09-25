@@ -80,7 +80,7 @@
 			const response = await fetch('/api/v1/attendance', {
 				method: 'DELETE',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ ids: [deletingId] })
+				body: JSON.stringify({ mode: 'ids', ids: [deletingId] })
 			});
 			const body = await response.json().catch(() => ({}));
 			if (!response.ok) throw new Error(body.error ?? 'Eliminazione non riuscita');
@@ -145,6 +145,9 @@
 	const showSelectAllFilteredBanner = $derived(
 		allPageSelected && !selectAllFiltered && data.total > data.rows.length
 	);
+	// L'eliminazione per filtro è riservata agli Amministratori e richiede almeno un filtro attivo.
+	const hasActiveFilter = $derived(Boolean(data.from || data.to || data.subscriber || data.device));
+	const canDeleteByFilters = $derived(data.user?.role === 'admin' && hasActiveFilter);
 
 	function toggleHeaderCheckbox() {
 		if (allPageSelected) {
@@ -179,8 +182,9 @@
 		try {
 			let body: object;
 			if (selectAllFiltered) {
+				if (!canDeleteByFilters) throw new Error('Eliminazione per filtro non consentita');
 				body = {
-					all: true,
+					mode: 'filters',
 					filters: {
 						from: data.from,
 						to: data.to,
@@ -189,7 +193,7 @@
 					}
 				};
 			} else {
-				body = { ids: [...selectedIds] };
+				body = { mode: 'ids', ids: [...selectedIds] };
 			}
 
 			const res = await fetch('/api/v1/attendance', {
@@ -198,7 +202,10 @@
 				body: JSON.stringify(body)
 			});
 
-			if (!res.ok) throw new Error('Eliminazione non riuscita');
+			if (!res.ok) {
+				const resBody = await res.json().catch(() => ({}));
+				throw new Error(resBody.error ?? 'Eliminazione non riuscita');
+			}
 
 			selectedIds = new Set();
 			selectAllFiltered = false;
@@ -210,8 +217,12 @@
 			} else {
 				await goto(targetUrl);
 			}
-		} catch {
-			alert("Errore durante l'eliminazione. Riprova.");
+		} catch (err) {
+			alert(
+				err instanceof Error
+					? `Errore durante l'eliminazione: ${err.message}`
+					: "Errore durante l'eliminazione. Riprova."
+			);
 		} finally {
 			isDeleting = false;
 		}
@@ -291,12 +302,14 @@
 	{#if showSelectAllFilteredBanner}
 		<div class="flex items-center gap-2 rounded-md bg-blue-50 px-4 py-2 text-sm text-blue-800">
 			<span>Tutti i {data.rows.length} record di questa pagina sono selezionati.</span>
-			<button
-				class="font-medium underline hover:no-underline"
-				onclick={() => (selectAllFiltered = true)}
-			>
-				Seleziona tutti i {data.total} record filtrati
-			</button>
+			{#if canDeleteByFilters}
+				<button
+					class="font-medium underline hover:no-underline"
+					onclick={() => (selectAllFiltered = true)}
+				>
+					Seleziona tutti i {data.total} record filtrati
+				</button>
+			{/if}
 		</div>
 	{:else if selectAllFiltered}
 		<div class="flex items-center gap-2 rounded-md bg-blue-50 px-4 py-2 text-sm text-blue-800">

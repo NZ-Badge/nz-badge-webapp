@@ -1,10 +1,12 @@
 import { redirect, error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { subscribers, cardRfid } from '$lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	await requirePageStaff(locals);
 	const subscriberId = Number(params.id);
 	if (isNaN(subscriberId)) error(400, 'Invalid subscriber ID');
 

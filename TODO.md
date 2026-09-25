@@ -10,21 +10,21 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
 
 ### 🔴 Priorità alta — sicurezza e correttezza
 
-- [ ] **1. Form action senza auth.** In `routes/(app)/subscribers/+page.server.ts:146` e `routes/(app)/subscribers/[id]/+page.server.ts:87` le azioni create/update/delete non chiamano `verifyAdmin()`. Il `load` del layout non viene eseguito per le action, quindi una POST anonima a `?/delete` cancella un iscritto.
+- [x] **1. Form action senza auth.** In `routes/(app)/subscribers/+page.server.ts:146` e `routes/(app)/subscribers/[id]/+page.server.ts:87` le azioni create/update/delete non chiamano `verifyAdmin()`. Il `load` del layout non viene eseguito per le action, quindi una POST anonima a `?/delete` cancella un iscritto.
   - Centralizzare l'auth in `hooks.server.ts` con una mappa route→ruoli che nega tutto per default.
   - Aggiungere comunque un `requireStaff()` esplicito in ogni load e action.
-- [ ] **2. Segreti visibili allo staff.** `GET /api/v1/settings` restituisce in chiaro `enrollment_api_key`, `webhook_secret` e `mifare_keys`. `verifyAdmin` lascia passare anche lo staff (`lib/services/auth.ts:176`); stesso problema per il PATCH e per `webhooks/enrollments/secret`.
+- [x] **2. Segreti visibili allo staff.** `GET /api/v1/settings` restituisce in chiaro `enrollment_api_key`, `webhook_secret` e `mifare_keys`. `verifyAdmin` lascia passare anche lo staff (`lib/services/auth.ts:176`); stesso problema per il PATCH e per `webhooks/enrollments/secret`.
   - Rinominare `verifyAdmin` in `verifyStaffOrAdmin`.
   - Aggiungere un vero `requireAdmin`.
   - Mascherare i segreti nella risposta (es. `hasKey: boolean`).
-- [ ] **3. Cancellazione massiva senza protezioni.** `DELETE /api/v1/attendance` con `{all:true}` esegue un DELETE senza WHERE; lo staff può farlo, manca l'audit e il filtro `to` usa la mezzanotte UTC.
+- [x] **3. Cancellazione massiva senza protezioni.** `DELETE /api/v1/attendance` con `{all:true}` esegue un DELETE senza WHERE; lo staff può farlo, manca l'audit e il filtro `to` usa la mezzanotte UTC.
   - Spostarlo in un service con `z.discriminatedUnion`.
   - Richiedere almeno un filtro, `requireAdmin` e un range di giorni in fuso Roma.
   - Registrarlo con `logAudit`.
-- [ ] **4. Giorno calcolato nel fuso del server.** `lib/services/attendance.ts:231-276` e `:553` usano `getDate()`/`toDateString()`, quindi l'ora UTC del container: le strisciate tra le 00:00 e le 02:00 ora di Roma finiscono sul giorno sbagliato. Stesso problema in `routes/(app)/courses/+page.server.ts:31`.
+- [x] **4. Giorno calcolato nel fuso del server.** `lib/services/attendance.ts:231-276` e `:553` usano `getDate()`/`toDateString()`, quindi l'ora UTC del container: le strisciate tra le 00:00 e le 02:00 ora di Roma finiscono sul giorno sbagliato. Stesso problema in `routes/(app)/courses/+page.server.ts:31`.
   - Usare `formatInTimeZone(x, 'Europe/Rome', 'yyyy-MM-dd')`, come fa già `getCourseDateKey`.
-- [ ] **5. Test rosso.** `deleteStaffAttendance` (`lib/services/staff-attendance.ts:429`) legge il DB prima del controllo permessi, mentre il test si aspetta il contrario. Decidere quale dei due è corretto e allinearli.
-- [ ] **6. Login non protetto.**
+- [x] **5. Test rosso.** Risolto: il test era sbagliato (i collaboratori possono cancellare le proprie strisciate, serve leggere il record prima del controllo).
+- [x] **6. Login non protetto.**
   - Aggiungere un rate limit per IP ed email.
   - Non loggare l'email in chiaro (`routes/login/+page.server.ts:52`).
   - Registrare i login con `logAudit`.
