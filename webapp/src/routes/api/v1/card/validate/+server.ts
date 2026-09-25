@@ -6,10 +6,14 @@ import {
 	serverError,
 	formatZodError,
 	conflict,
+	notFound,
 	authErrorResponse
 } from '$lib/utils/api';
 import { confirmCardWrite, CardWriterError } from '$lib/services/card-writer';
 import { requireStaffManager } from '$lib/services/auth';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/card/validate');
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
@@ -24,7 +28,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	const parsed = cardValidateSchema.safeParse(body);
@@ -49,13 +53,11 @@ export async function POST(event: RequestEvent): Promise<Response> {
 					uid: parsed.data.uid
 				});
 			}
+			if (err.code === 'NOT_FOUND') return notFound(err.message);
+			if (err.code === 'INVALID_STATE') return conflict(err.message);
 		}
 
-		const message = err instanceof Error ? err.message : 'Unknown error';
-		if (message.includes('session') || message.includes('expired') || message.includes('Invalid')) {
-			return badRequest(message);
-		}
-		console.error('[card/validate] error:', err);
-		return serverError(message);
+		log.error('Card write confirmation failed', { err });
+		return serverError();
 	}
 }

@@ -46,11 +46,7 @@ export class StaffAttendanceError extends Error {
 	constructor(
 		message: string,
 		public readonly code:
-			| 'NOT_FOUND'
-			| 'FORBIDDEN'
-			| 'INVALID_STATE'
-			| 'INVALID_TIMESTAMP'
-			| 'TOO_SOON'
+			'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_STATE' | 'INVALID_TIMESTAMP' | 'TOO_SOON'
 	) {
 		super(message);
 		this.name = 'StaffAttendanceError';

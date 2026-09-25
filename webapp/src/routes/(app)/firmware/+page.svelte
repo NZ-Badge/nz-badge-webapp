@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { enhance } from '$app/forms';
+	import { toastEnhance } from '$lib/utils/enhance';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
@@ -16,11 +17,8 @@
 	} from '$lib/components/ui/table';
 	import { formatDateIT } from '$lib/utils/date.js';
 
-	let { data, form } = $props();
+	let { data } = $props();
 
-	let version = $state('');
-	let notes = $state('');
-	let fileInput = $state<HTMLInputElement | null>(null);
 	let uploading = $state(false);
 
 	function formatBytes(bytes: number): string {
@@ -32,14 +30,6 @@
 	function formatDate(d: Date | null | string): string {
 		return formatDateIT(d) || '—';
 	}
-
-	$effect(() => {
-		if (form?.action === 'upload' && form?.success) {
-			version = '';
-			notes = '';
-			if (fileInput) fileInput.value = '';
-		}
-	});
 </script>
 
 <div class="space-y-6">
@@ -56,13 +46,13 @@
 			method="POST"
 			action="?/upload"
 			enctype="multipart/form-data"
-			use:enhance={() => {
-				uploading = true;
-				return ({ update }) => {
-					uploading = false;
-					update();
-				};
-			}}
+			use:enhance={toastEnhance({
+				success: (result) =>
+					`Release v${result?.version} caricata. Premi Attiva per distribuirla ai dispositivi.`,
+				error: 'Caricamento non riuscito',
+				onStart: () => (uploading = true),
+				onDone: () => (uploading = false)
+			})}
 			class="space-y-4"
 		>
 			<div class="grid gap-4 sm:grid-cols-2">
@@ -74,7 +64,6 @@
 						placeholder="es. 0.2.0"
 						pattern="^\d+\.\d+\.\d+$"
 						title="Formato: MAJOR.MINOR.PATCH"
-						bind:value={version}
 						required
 					/>
 					<p class="text-xs text-gray-500">Deve corrispondere a FIRMWARE_VERSION in config.h</p>
@@ -87,7 +76,6 @@
 						name="file"
 						type="file"
 						accept=".bin"
-						bind:this={fileInput}
 						required
 						class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 					/>
@@ -101,22 +89,17 @@
 					id="fw-notes"
 					name="notes"
 					rows={3}
-					bind:value={notes}
 					placeholder="Descrivi le modifiche in questa versione..."
 					class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
 				></textarea>
 			</div>
 
-			{#if form?.action === 'upload' && form?.error}
-				<p class="text-sm text-red-600">{form.error}</p>
-			{/if}
-			{#if form?.action === 'upload' && form?.success}
-				<p class="text-sm text-green-700">
-					Release v{form.version} caricata. Clicca <strong>Attiva</strong> per distribuirla ai device.
-				</p>
-			{/if}
-
-			<Button type="submit" disabled={uploading}>
+			<Button
+				type="submit"
+				disabled={uploading}
+				data-tutorial-title="Carica release"
+				data-tutorial-description="Carica il file .bin come nuova release inattiva. Dopo il caricamento premi Attiva per distribuirla."
+			>
 				{uploading ? 'Caricamento...' : 'Carica'}
 			</Button>
 		</form>
@@ -137,7 +120,7 @@
 				</TableRow>
 			</TableHeader>
 			<TableBody>
-				{#each data.releases as release}
+				{#each data.releases as release (release.id)}
 					<TableRow>
 						<TableCell class="font-mono font-semibold">{release.version}</TableCell>
 						<TableCell class="text-sm text-gray-600">{formatDate(release.createdAt)}</TableCell>
@@ -162,7 +145,14 @@
 						<TableCell class="w-px whitespace-nowrap text-right">
 							<div class="flex items-center justify-end gap-1">
 								{#if !release.isActive}
-									<form method="POST" action="?/activate" use:enhance>
+									<form
+										method="POST"
+										action="?/activate"
+										use:enhance={toastEnhance({
+											success: `Firmware ${release.version} attivato`,
+											error: 'Attivazione non riuscita'
+										})}
+									>
 										<input type="hidden" name="id" value={release.id} />
 										<Button
 											type="submit"
@@ -175,7 +165,14 @@
 										</Button>
 									</form>
 								{:else}
-									<form method="POST" action="?/deactivate" use:enhance>
+									<form
+										method="POST"
+										action="?/deactivate"
+										use:enhance={toastEnhance({
+											success: `Firmware ${release.version} ritirato`,
+											error: 'Operazione non riuscita'
+										})}
+									>
 										<input type="hidden" name="id" value={release.id} />
 										<Button
 											type="submit"

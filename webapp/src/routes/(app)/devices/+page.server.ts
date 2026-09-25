@@ -6,6 +6,9 @@ import crypto from 'crypto';
 import type { PageServerLoad, Actions } from './$types';
 import { hashDeviceToken, requireAdmin, requirePageAdmin } from '$lib/services/auth';
 import { parsePagination } from '$lib/utils/pagination';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('devices');
 
 const ITEMS_PER_PAGE = 20;
 
@@ -106,10 +109,10 @@ export const actions: Actions = {
 				success: true,
 				deviceId,
 				token,
-				message: 'Device registered successfully. Copy the token now - it will not be shown again!'
+				message: 'Dispositivo registrato. Copia ora il token: non verrà più mostrato.'
 			};
 		} catch (err) {
-			console.error('Failed to create device:', err);
+			log.error('Failed to create device', { err });
 			return fail(500, { action: 'create', error: 'Impossibile registrare il dispositivo' });
 		}
 	},
@@ -143,7 +146,7 @@ export const actions: Actions = {
 
 			return { action: 'update', success: true };
 		} catch (err) {
-			console.error('Failed to update device:', err);
+			log.error('Failed to update device', { err });
 			return fail(500, { action: 'update', error: 'Impossibile aggiornare il dispositivo' });
 		}
 	},
@@ -168,7 +171,7 @@ export const actions: Actions = {
 			await db.delete(deviceRegistry).where(eq(deviceRegistry.id, id));
 			return { action: 'delete', success: true };
 		} catch (err) {
-			console.error('Failed to delete device:', err);
+			log.error('Failed to delete device', { err });
 			return fail(500, { action: 'delete', error: 'Impossibile eliminare il dispositivo' });
 		}
 	}

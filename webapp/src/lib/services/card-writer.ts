@@ -167,7 +167,7 @@ export async function authorizeCardWrite(subscriberId: number): Promise<{
 	// Validate subscriber ID
 	const validId = sanitizeId(subscriberId);
 	if (!validId) {
-		throw new CardWriterError('Invalid subscriber ID', 'VALIDATION_ERROR');
+		throw new CardWriterError('ID iscritto non valido', 'VALIDATION_ERROR');
 	}
 
 	// Verify subscriber exists and is active
@@ -178,12 +178,12 @@ export async function authorizeCardWrite(subscriberId: number): Promise<{
 		.limit(1);
 
 	if (!subscriber) {
-		throw new CardWriterError(`Subscriber ${validId} not found`, 'NOT_FOUND');
+		throw new CardWriterError(`Iscritto ${validId} non trovato`, 'NOT_FOUND');
 	}
 
 	if (subscriber.status !== 'active') {
 		throw new CardWriterError(
-			`Subscriber ${validId} is not active (status: ${subscriber.status})`,
+			`Iscritto ${validId} non attivo (stato: ${subscriber.status})`,
 			'INVALID_STATE'
 		);
 	}
@@ -196,7 +196,7 @@ export async function authorizeCardWrite(subscriberId: number): Promise<{
 		.limit(1);
 
 	if (existingCard?.status === 'active') {
-		throw new CardWriterError('Subscriber already has an active card', 'INVALID_STATE');
+		throw new CardWriterError('L’iscritto ha già una card attiva', 'INVALID_STATE');
 	}
 
 	return createCardWriteSession({ type: 'subscriber', id: validId });
@@ -213,12 +213,12 @@ export async function authorizeUserCardWrite(userId: number): Promise<{
 	use_mifare: boolean;
 }> {
 	const validId = sanitizeId(userId);
-	if (!validId) throw new CardWriterError('Invalid user ID', 'VALIDATION_ERROR');
+	if (!validId) throw new CardWriterError('ID utente non valido', 'VALIDATION_ERROR');
 
 	const [user] = await db.select().from(users).where(eq(users.id, validId)).limit(1);
-	if (!user) throw new CardWriterError(`User ${validId} not found`, 'NOT_FOUND');
+	if (!user) throw new CardWriterError(`Utente ${validId} non trovato`, 'NOT_FOUND');
 	if (user.status !== 'active') {
-		throw new CardWriterError(`User ${validId} is not active`, 'INVALID_STATE');
+		throw new CardWriterError(`Utente ${validId} non attivo`, 'INVALID_STATE');
 	}
 
 	const [existingCard] = await db
@@ -229,7 +229,7 @@ export async function authorizeUserCardWrite(userId: number): Promise<{
 		)
 		.limit(1);
 	if (existingCard) {
-		throw new CardWriterError('User already has an active RFID card', 'INVALID_STATE');
+		throw new CardWriterError('L’utente ha già una card RFID attiva', 'INVALID_STATE');
 	}
 
 	return createCardWriteSession({ type: 'user', id: validId });
@@ -301,7 +301,7 @@ export async function confirmCardWrite(
 ): Promise<{ id: number; uid: string }> {
 	// Validate UID format
 	if (!validateCardUid(uid)) {
-		throw new CardWriterError('Invalid card UID format', 'VALIDATION_ERROR');
+		throw new CardWriterError('Formato UID della card non valido', 'VALIDATION_ERROR');
 	}
 
 	// Normalize UID to uppercase
@@ -310,7 +310,7 @@ export async function confirmCardWrite(
 	// Retrieve session. It is consumed only on success or permanent failure.
 	const session = writeSessions.get(sessionToken);
 	if (!session) {
-		throw new CardWriterError('Invalid or expired session token', 'SESSION_EXPIRED');
+		throw new CardWriterError('Sessione di scrittura non valida o scaduta', 'SESSION_EXPIRED');
 	}
 	const ownerValues =
 		session.owner.type === 'subscriber'
@@ -333,7 +333,7 @@ export async function confirmCardWrite(
 					.limit(1)
 					.for('update');
 				if (!targetUser || targetUser.status !== 'active') {
-					throw new CardWriterError('User is no longer active', 'INVALID_STATE');
+					throw new CardWriterError('L’utente non è più attivo', 'INVALID_STATE');
 				}
 				const [activeCard] = await tx
 					.select({ id: cardRfid.id })
@@ -348,7 +348,7 @@ export async function confirmCardWrite(
 					.limit(1)
 					.for('update');
 				if (activeCard) {
-					throw new CardWriterError('User already has an active RFID card', 'INVALID_STATE');
+					throw new CardWriterError('L’utente ha già una card RFID attiva', 'INVALID_STATE');
 				}
 			}
 
@@ -363,13 +363,13 @@ export async function confirmCardWrite(
 			if (existingCard) {
 				if (existingCard.status !== 'deleted') {
 					throw new CardWriterError(
-						`Card with UID ${normalizedUid} is already assigned`,
+						`La card con UID ${normalizedUid} è già assegnata`,
 						'UID_ALREADY_EXISTS'
 					);
 				}
 				if (!allowReuseDeleted) {
 					throw new CardWriterError(
-						`Card with UID ${normalizedUid} is present in deleted history`,
+						`La card con UID ${normalizedUid} è presente nello storico delle card eliminate`,
 						'UID_IN_DELETED_HISTORY'
 					);
 				}
@@ -436,7 +436,7 @@ export async function confirmCardWrite(
 			});
 
 			if (!created.insertId) {
-				throw new CardWriterError('Failed to create card record', 'VALIDATION_ERROR');
+				throw new CardWriterError('Impossibile registrare la card', 'VALIDATION_ERROR');
 			}
 
 			const cardId = Number(created.insertId);
@@ -472,7 +472,7 @@ export async function confirmCardWrite(
 		if (isDuplicateEntryError(err)) {
 			writeSessions.delete(sessionToken);
 			throw new CardWriterError(
-				`Card with UID ${normalizedUid} is already assigned`,
+				`La card con UID ${normalizedUid} è già assegnata`,
 				'UID_ALREADY_EXISTS'
 			);
 		}
@@ -510,24 +510,27 @@ export async function authorizeCardErase(
 	// Validate card ID
 	const validId = sanitizeId(cardId);
 	if (!validId) {
-		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
+		throw new CardWriterError('ID card non valido', 'VALIDATION_ERROR');
 	}
 
 	// Fetch card
 	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
-		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+		throw new CardWriterError(`Card ${validId} non trovata`, 'NOT_FOUND');
 	}
 
 	if (!['active', 'disabled', 'deleted'].includes(card.status ?? '')) {
-		throw new CardWriterError(`Card cannot be erased (status: ${card.status})`, 'INVALID_STATE');
+		throw new CardWriterError(
+			`La card non può essere cancellata (stato: ${card.status})`,
+			'INVALID_STATE'
+		);
 	}
 
 	const useMifare = await isMifareEnabled();
 
 	if (useMifare && !card.keyA) {
-		throw new CardWriterError('Card key not available in database', 'INVALID_STATE');
+		throw new CardWriterError('Chiave della card non disponibile nel database', 'INVALID_STATE');
 	}
 
 	const keyA: string | null = useMifare ? (card.keyA ?? null) : null;
@@ -566,7 +569,7 @@ export async function confirmCardErase(
 	eraseSessions.delete(sessionToken);
 
 	if (!session) {
-		throw new CardWriterError('Invalid or expired session token', 'SESSION_EXPIRED');
+		throw new CardWriterError('Sessione di scrittura non valida o scaduta', 'SESSION_EXPIRED');
 	}
 
 	// Fetch current card state for audit
@@ -618,21 +621,18 @@ export async function restoreCard(cardId: number, adminUser: User): Promise<void
 	// Validate card ID
 	const validId = sanitizeId(cardId);
 	if (!validId) {
-		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
+		throw new CardWriterError('ID card non valido', 'VALIDATION_ERROR');
 	}
 
 	// Fetch card
 	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
-		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+		throw new CardWriterError(`Card ${validId} non trovata`, 'NOT_FOUND');
 	}
 
 	if (card.status !== 'deleted') {
-		throw new CardWriterError(
-			`Card is not in deleted state (status: ${card.status})`,
-			'INVALID_STATE'
-		);
+		throw new CardWriterError(`La card non è eliminata (stato: ${card.status})`, 'INVALID_STATE');
 	}
 
 	// Restore to disabled state
@@ -662,18 +662,21 @@ export async function softDeleteCard(
 	// Validate card ID
 	const validId = sanitizeId(cardId);
 	if (!validId) {
-		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
+		throw new CardWriterError('ID card non valido', 'VALIDATION_ERROR');
 	}
 
 	// Fetch card
 	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
 
 	if (!card) {
-		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+		throw new CardWriterError(`Card ${validId} non trovata`, 'NOT_FOUND');
 	}
 
 	if (!['active', 'disabled'].includes(card.status ?? '')) {
-		throw new CardWriterError(`Card cannot be deleted (status: ${card.status})`, 'INVALID_STATE');
+		throw new CardWriterError(
+			`La card non può essere eliminata (stato: ${card.status})`,
+			'INVALID_STATE'
+		);
 	}
 
 	// Soft delete
@@ -705,7 +708,7 @@ export async function softDeleteCard(
 export async function enableCard(cardId: number, adminUser: User): Promise<CardRfid> {
 	const validId = sanitizeId(cardId);
 	if (!validId) {
-		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
+		throw new CardWriterError('ID card non valido', 'VALIDATION_ERROR');
 	}
 
 	return db.transaction(async (tx) => {
@@ -717,11 +720,14 @@ export async function enableCard(cardId: number, adminUser: User): Promise<CardR
 			.for('update');
 
 		if (!card) {
-			throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+			throw new CardWriterError(`Card ${validId} non trovata`, 'NOT_FOUND');
 		}
 
 		if (card.status !== 'disabled') {
-			throw new CardWriterError(`Card non è disabilitata (stato: ${card.status})`, 'INVALID_STATE');
+			throw new CardWriterError(
+				`La card non è disabilitata (stato: ${card.status})`,
+				'INVALID_STATE'
+			);
 		}
 
 		if (card.userId) {
@@ -780,7 +786,7 @@ export async function enableCard(cardId: number, adminUser: User): Promise<CardR
 export async function disableCard(cardId: number, adminUser: User): Promise<CardRfid> {
 	const validId = sanitizeId(cardId);
 	if (!validId) {
-		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
+		throw new CardWriterError('ID card non valido', 'VALIDATION_ERROR');
 	}
 
 	return db.transaction(async (tx) => {
@@ -792,11 +798,11 @@ export async function disableCard(cardId: number, adminUser: User): Promise<Card
 			.for('update');
 
 		if (!card) {
-			throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+			throw new CardWriterError(`Card ${validId} non trovata`, 'NOT_FOUND');
 		}
 
 		if (card.status !== 'active') {
-			throw new CardWriterError(`Card non è attiva (stato: ${card.status})`, 'INVALID_STATE');
+			throw new CardWriterError(`La card non è attiva (stato: ${card.status})`, 'INVALID_STATE');
 		}
 
 		await tx.update(cardRfid).set({ status: 'disabled' }).where(eq(cardRfid.id, validId));

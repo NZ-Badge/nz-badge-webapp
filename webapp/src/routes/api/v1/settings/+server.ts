@@ -17,6 +17,9 @@ import {
 	SECRET_SETTING_KEYS
 } from '$lib/services/settings-view';
 import { z } from 'zod';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/settings');
 
 // Schema per validare l'aggiornamento dei settings
 const settingUpdateSchema = z.object({
@@ -58,7 +61,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			webhook: { has_secret: overview.webhook.hasSecret }
 		});
 	} catch (err) {
-		console.error('[settings] GET error:', err);
+		log.error('GET failed', { err });
 		return serverError();
 	}
 }
@@ -79,12 +82,12 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	const parsed = settingUpdateSchema.safeParse(body);
 	if (!parsed.success) {
-		return badRequest('Invalid settings data', parsed.error.issues);
+		return badRequest('Impostazioni non valide', parsed.error.issues);
 	}
 
 	const {
@@ -136,7 +139,7 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 			mifare_keys: maskMifareKeyConfig(mifareConfig)
 		});
 	} catch (err) {
-		console.error('[settings] PATCH error:', err);
+		log.error('PATCH failed', { err });
 		return serverError();
 	}
 }

@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq, and, gte, lte, inArray, asc, SQL } from 'drizzle-orm';
+import { eq, and, gte, lt, lte, inArray, asc, SQL } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { attendance, enrollments, subscribers } from '$lib/db/schema';
 import { badRequest, authErrorResponse } from '$lib/utils/api';
@@ -7,7 +7,9 @@ import { toCsv } from '$lib/utils/csv';
 import { isDateKey, romeDateKey } from '$lib/utils/date';
 import {
 	buildSubscriberCourseAttendanceReportRows,
-	type SubscriberCourseAttendanceReportInput
+	getEnrollmentAttendancePeriod,
+	type SubscriberCourseAttendanceReportInput,
+	type SubscriberEnrollmentRow
 } from '$lib/services/subscriber-course-attendance';
 
 function dateKey(value: Date | string | null): string {
@@ -73,6 +75,22 @@ function parseExportFilters(
 	return { ok: true, filters: { email } };
 }
 
+/**
+ * Smallest time window covering every course period in the export. The report only counts
+ * swipes inside each course period, so loading the rest of the history would be wasted work.
+ */
+function attendanceWindow(rows: SubscriberEnrollmentRow[]): { start: Date; end: Date } | null {
+	let start = Infinity;
+	let end = -Infinity;
+	for (const row of rows) {
+		const period = getEnrollmentAttendancePeriod(row);
+		if (!period) continue;
+		start = Math.min(start, period.start);
+		end = Math.max(end, period.end);
+	}
+	return end > start ? { start: new Date(start), end: new Date(end) } : null;
+}
+
 function buildEnrollmentWhere(filters: {
 	from?: string;
 	to?: string;
@@ -116,8 +134,11 @@ export async function GET(event: RequestEvent): Promise<Response> {
 		.orderBy(asc(subscribers.lastName), asc(subscribers.firstName), asc(enrollments.startDate));
 
 	const subscriberIds = [...new Set(enrollmentRows.map((row) => row.subscriberId))];
+	const timeWindow = attendanceWindow(
+		enrollmentRows.map((row) => ({ ...row, id: row.enrollmentId }))
+	);
 	const attendanceRows =
-		subscriberIds.length > 0
+		subscriberIds.length > 0 && timeWindow
 			? await db
 					.select({
 						id: attendance.id,
@@ -126,7 +147,13 @@ export async function GET(event: RequestEvent): Promise<Response> {
 						readTimestamp: attendance.readTimestamp
 					})
 					.from(attendance)
-					.where(inArray(attendance.subscriberId, subscriberIds))
+					.where(
+						and(
+							inArray(attendance.subscriberId, subscriberIds),
+							gte(attendance.readTimestamp, timeWindow.start),
+							lt(attendance.readTimestamp, timeWindow.end)
+						)
+					)
 					.orderBy(asc(attendance.readTimestamp), asc(attendance.id))
 			: [];
 

@@ -4,6 +4,7 @@
  */
 
 import { browser } from '$app/environment';
+import { getControlSignals, SERIAL_BAUD_RATE, SERIAL_USB_FILTERS } from '$lib/utils/webserial';
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Types & Constants
@@ -23,35 +24,7 @@ export interface SerialConnection {
 	};
 }
 
-// Supported USB vendor IDs for ESP32-based devices
-const USB_FILTERS: USBDeviceFilter[] = [
-	{ usbVendorId: 0x303a }, // ESP32-S3 native USB (Espressif)
-	{ usbVendorId: 0x10c4 }, // CP210x (Silicon Labs)
-	{ usbVendorId: 0x1a86 }, // CH340 / CH341 / CH9102 (QinHeng)
-	{ usbVendorId: 0x0403 } // FT232x (FTDI)
-];
-
-const BAUD_RATE = 115200;
 const CONNECTION_TIMEOUT_MS = 10000;
-
-function getControlSignals(port: SerialPort): SerialOutputSignals {
-	const info = port.getInfo();
-
-	// TinyUSB CDC on native ESP32-S3 USB requires the host to assert line state
-	// for device->host TX to be considered connected. USB-UART bridges instead
-	// should keep DTR/RTS low to avoid auto-reset circuitry side effects.
-	if (info.usbVendorId === 0x303a) {
-		return {
-			dataTerminalReady: true,
-			requestToSend: true
-		};
-	}
-
-	return {
-		dataTerminalReady: false,
-		requestToSend: false
-	};
-}
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Global State (Svelte 5 runes)
@@ -148,7 +121,7 @@ export async function connect(): Promise<void> {
 
 	try {
 		// Request port from user
-		const port = await navigator.serial.requestPort({ filters: USB_FILTERS });
+		const port = await navigator.serial.requestPort({ filters: SERIAL_USB_FILTERS });
 
 		// Check if already connected to avoid re-opening
 		if (port.readable || port.writable) {
@@ -168,7 +141,7 @@ export async function connect(): Promise<void> {
 		}
 
 		// Open port with timeout
-		const openPromise = port.open({ baudRate: BAUD_RATE });
+		const openPromise = port.open({ baudRate: SERIAL_BAUD_RATE });
 		const timeoutPromise = new Promise<never>((_, reject) =>
 			setTimeout(() => reject(new Error('Timeout di connessione')), CONNECTION_TIMEOUT_MS)
 		);

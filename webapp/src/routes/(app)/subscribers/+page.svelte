@@ -22,6 +22,7 @@
 	} from '$lib/components/ui/dialog';
 	import SubscriberFormDialog from '$lib/components/SubscriberFormDialog.svelte';
 	import { formatDateTimeIT } from '$lib/utils/date.js';
+	import { subscriberStatus } from '$lib/labels';
 	import { enhance } from '$app/forms';
 	import {
 		Pencil,
@@ -56,8 +57,7 @@
 
 	function subscriberHasLinkedCard(
 		sub:
-			| ((typeof data.subscribers)[0] & { hasActiveCard?: boolean; hasNfcPairing?: boolean })
-			| null
+			((typeof data.subscribers)[0] & { hasActiveCard?: boolean; hasNfcPairing?: boolean }) | null
 	) {
 		return Boolean(sub?.hasActiveCard || sub?.hasNfcPairing);
 	}
@@ -88,27 +88,26 @@
 		if (data.sort !== column) return 'asc' as const;
 		return data.dir === 'asc' ? ('desc' as const) : ('asc' as const);
 	}
-
-	const statusVariant = (status: string) =>
-		status === 'active'
-			? 'positive'
-			: status === 'completed'
-				? 'secondary'
-				: status === 'suspended'
-					? 'warning'
-					: 'destructive';
-
-	const statusLabel = (status: string) =>
-		status === 'active'
-			? 'Attivo'
-			: status === 'completed'
-				? 'Completato'
-				: status === 'suspended'
-					? 'Sospeso'
-					: status === 'cancelled'
-						? 'Annullato'
-						: status;
 </script>
+
+{#snippet sortHeader(column: SortField, label: string, center = false)}
+	<a
+		href={buildListUrl({ sort: column, dir: getNextSortDirection(column) })}
+		class="inline-flex items-center gap-1 hover:underline {center ? 'justify-center' : ''}"
+		data-tutorial="list.sort"
+	>
+		{label}
+		{#if data.sort === column}
+			{#if data.dir === 'asc'}
+				<ArrowUp size={14} aria-hidden="true" />
+			{:else}
+				<ArrowDown size={14} aria-hidden="true" />
+			{/if}
+		{:else}
+			<ArrowUpDown size={14} aria-hidden="true" />
+		{/if}
+	</a>
+{/snippet}
 
 <div class="space-y-6">
 	<PageHeader
@@ -124,13 +123,13 @@
 		</Button>
 		{#snippet summary()}
 			<span
-				class="rounded-full border border-blue-200 bg-white/80 px-3 py-1.5 font-medium text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200"
+				class="rounded-full border border-blue-200 bg-card/80 px-3 py-1.5 font-medium text-blue-900"
 			>
 				{data.total}
 				{data.total === 1 ? 'iscritto totale' : 'iscritti totali'}
 			</span>
 			<span
-				class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+				class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-900"
 			>
 				{linkedCardsOnPage} con tessera in questa pagina
 			</span>
@@ -138,7 +137,7 @@
 	</PageHeader>
 
 	<!-- Filtri -->
-	<form method="GET" class="filter-panel">
+	<form method="GET" class="filter-panel" data-sveltekit-keepfocus>
 		<label class="grid w-full min-w-0 flex-1 gap-1.5 text-sm font-medium sm:min-w-64">
 			Cerca iscritti
 			<span class="relative">
@@ -147,12 +146,18 @@
 					size={16}
 					aria-hidden="true"
 				/>
-				<Input name="q" placeholder="Nome, cognome o email..." value={data.q} class="w-full pl-9" />
+				<Input
+					type="search"
+					name="q"
+					placeholder="Nome, cognome o email..."
+					value={data.q}
+					class="w-full pl-9"
+				/>
 			</span>
 		</label>
 		<input type="hidden" name="sort" value={data.sort} />
 		<input type="hidden" name="dir" value={data.dir} />
-		<Button type="submit" variant="outline">Filtra</Button>
+		<Button type="submit" variant="outline" data-tutorial="filter.apply">Filtra</Button>
 		{#if data.q}
 			<Button
 				href="/subscribers"
@@ -184,101 +189,26 @@
 			<TableHeader>
 				<TableRow>
 					<TableHead>
-						<a
-							href={buildListUrl({ sort: 'name', dir: getNextSortDirection('name') })}
-							class="inline-flex items-center gap-1 hover:underline"
-						>
-							Nome
-							{#if data.sort === 'name'}
-								{#if data.dir === 'asc'}
-									<ArrowUp size={14} />
-								{:else}
-									<ArrowDown size={14} />
-								{/if}
-							{:else}
-								<ArrowUpDown size={14} />
-							{/if}
-						</a>
+						{@render sortHeader('name', 'Nome')}
 					</TableHead>
 					<TableHead>
-						<a
-							href={buildListUrl({ sort: 'email', dir: getNextSortDirection('email') })}
-							class="inline-flex items-center gap-1 hover:underline"
-						>
-							Email
-							{#if data.sort === 'email'}
-								{#if data.dir === 'asc'}
-									<ArrowUp size={14} />
-								{:else}
-									<ArrowDown size={14} />
-								{/if}
-							{:else}
-								<ArrowUpDown size={14} />
-							{/if}
-						</a>
+						{@render sortHeader('email', 'Email')}
 					</TableHead>
 					<TableHead class="w-36">
-						<a
-							href={buildListUrl({
-								sort: 'latestCourseAttendance',
-								dir: getNextSortDirection('latestCourseAttendance')
-							})}
-							class="inline-flex items-center gap-1 hover:underline"
-						>
-							Ore ultimo corso
-							{#if data.sort === 'latestCourseAttendance'}
-								{#if data.dir === 'asc'}
-									<ArrowUp size={14} />
-								{:else}
-									<ArrowDown size={14} />
-								{/if}
-							{:else}
-								<ArrowUpDown size={14} />
-							{/if}
-						</a>
+						{@render sortHeader('latestCourseAttendance', 'Ore ultimo corso')}
 					</TableHead>
 					<TableHead class="w-40">
-						<a
-							href={buildListUrl({
-								sort: 'lastEntryAt',
-								dir: getNextSortDirection('lastEntryAt')
-							})}
-							class="inline-flex items-center gap-1 hover:underline"
-						>
-							Ultimo ingresso
-							{#if data.sort === 'lastEntryAt'}
-								{#if data.dir === 'asc'}
-									<ArrowUp size={14} />
-								{:else}
-									<ArrowDown size={14} />
-								{/if}
-							{:else}
-								<ArrowUpDown size={14} />
-							{/if}
-						</a>
+						{@render sortHeader('lastEntryAt', 'Ultimo ingresso')}
 					</TableHead>
 					<TableHead class="w-48 text-center">
-						<a
-							href={buildListUrl({ sort: 'card', dir: getNextSortDirection('card') })}
-							class="inline-flex items-center justify-center gap-1 hover:underline"
-						>
-							Tessera
-							{#if data.sort === 'card'}
-								{#if data.dir === 'asc'}
-									<ArrowUp size={14} />
-								{:else}
-									<ArrowDown size={14} />
-								{/if}
-							{:else}
-								<ArrowUpDown size={14} />
-							{/if}
-						</a>
+						{@render sortHeader('card', 'Tessera', true)}
 					</TableHead>
 					<TableHead class="w-px text-right">Azioni</TableHead>
 				</TableRow>
 			</TableHeader>
 			<TableBody>
-				{#each data.subscribers as sub}
+				{#each data.subscribers as sub (sub.id)}
+					{@const status = subscriberStatus(sub.status)}
 					<TableRow>
 						<TableCell>
 							<div class="flex items-center gap-2">
@@ -286,9 +216,7 @@
 									{sub.firstName}
 									{sub.lastName}
 								</a>
-								<Badge variant={statusVariant(sub.status ?? '')}>
-									{statusLabel(sub.status ?? '')}
-								</Badge>
+								<Badge variant={status.variant}>{status.label}</Badge>
 							</div>
 						</TableCell>
 						<TableCell>
@@ -296,7 +224,7 @@
 						</TableCell>
 						<TableCell>
 							<span
-								class="inline-flex min-w-14 justify-center rounded-md bg-blue-100 px-2 py-1 text-sm font-semibold text-blue-900 dark:bg-blue-950/60 dark:text-blue-200"
+								class="inline-flex min-w-14 justify-center rounded-md bg-blue-100 px-2 py-1 text-sm font-semibold text-blue-900"
 							>
 								{sub.latestCourseAttendance}
 							</span>
@@ -308,7 +236,7 @@
 							<div class="flex items-center justify-center gap-1.5">
 								{#if sub.hasActiveCard}
 									<span
-										class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200"
+										class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-900"
 									>
 										<CreditCard size={13} aria-hidden="true" /> RFID
 									</span>
@@ -318,7 +246,7 @@
 										href={`/subscribers/${sub.id}/write-card`}
 										size="sm"
 										variant="ghost"
-										class="h-7 px-2 text-xs text-blue-700 dark:text-blue-300"
+										class="h-7 px-2 text-xs text-blue-700"
 										data-tutorial-title={`Crea tessera per ${sub.firstName} ${sub.lastName}`}
 										data-tutorial-description="Avvia la procedura guidata per scrivere e associare una card RFID a questo iscritto."
 									>
@@ -327,7 +255,7 @@
 								{/if}
 								{#if sub.hasNfcPairing}
 									<span
-										class="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-1 text-xs font-medium text-cyan-900 dark:bg-cyan-950/60 dark:text-cyan-200"
+										class="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-1 text-xs font-medium text-cyan-900"
 									>
 										<Smartphone size={13} aria-hidden="true" /> NFC
 									</span>
@@ -412,9 +340,7 @@
 				<p class="text-muted-foreground">
 					Prima rimuovi la tessera dalla pagina tessere, poi riprova a cancellare l'iscritto.
 				</p>
-				<a href="/cards">
-					<Button variant="outline">Vai a Tessere</Button>
-				</a>
+				<Button href="/cards" variant="outline">Vai a Tessere</Button>
 			</div>
 		{:else}
 			<p>
@@ -428,22 +354,26 @@
 			</p>
 		{/if}
 		{#if form?.error && form?.action === 'delete'}
-			<p class="text-sm text-red-600">{form.error}</p>
+			<p class="text-sm text-red-600" role="alert">{form.error}</p>
 		{/if}
 		<DialogFooter>
-			<Button variant="outline" onclick={() => (deleteDialogOpen = false)}>Annulla</Button>
+			<Button
+				variant="outline"
+				onclick={() => (deleteDialogOpen = false)}
+				data-tutorial="dialog.cancel">Annulla</Button
+			>
 			{#if !subscriberHasLinkedCard(deleteSubscriber)}
 				<form
 					method="POST"
 					action="?/delete"
 					use:enhance={() =>
-						({ update }) => {
-							update();
-							deleteDialogOpen = false;
+						async ({ result, update }) => {
+							await update();
+							if (result.type === 'success') deleteDialogOpen = false;
 						}}
 				>
 					<input type="hidden" name="id" value={deleteSubscriber?.id} />
-					<Button type="submit" variant="destructive">Elimina</Button>
+					<Button type="submit" variant="destructive" data-tutorial="item.delete">Elimina</Button>
 				</form>
 			{/if}
 		</DialogFooter>

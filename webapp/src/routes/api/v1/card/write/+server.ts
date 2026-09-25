@@ -3,6 +3,10 @@ import { cardWriteSchema } from '$lib/utils/validation';
 import { ok, badRequest, serverError, formatZodError, authErrorResponse } from '$lib/utils/api';
 import { authorizeCardWrite, authorizeUserCardWrite } from '$lib/services/card-writer';
 import { requireStaffManager } from '$lib/services/auth';
+import { cardWriterErrorResponse } from '$lib/server/card-errors';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/card/write');
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
@@ -16,7 +20,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	const parsed = cardWriteSchema.safeParse(body);
@@ -28,7 +32,9 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			: await authorizeCardWrite(parsed.data.subscriber_id!);
 		return ok(result);
 	} catch (err) {
-		console.error('[card/write] error:', err);
-		return serverError(err instanceof Error ? err.message : undefined);
+		const response = cardWriterErrorResponse(err);
+		if (response) return response;
+		log.error('Card write authorization failed', { err });
+		return serverError();
 	}
 }

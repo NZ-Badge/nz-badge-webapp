@@ -1,6 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { ok, serverError, authErrorResponse } from '$lib/utils/api';
 import { getWebhookSecret, regenerateWebhookSecret } from '$lib/services/enrollments';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/webhooks/enrollments/secret');
 
 /**
  * GET /api/v1/webhooks/enrollments/secret
@@ -17,7 +20,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 		const secret = await getWebhookSecret();
 		return ok({ secret });
 	} catch (err) {
-		console.error('[webhook/secret] GET error:', err);
+		log.error('GET failed', { err });
 		return serverError();
 	}
 }
@@ -37,7 +40,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		const secret = await regenerateWebhookSecret();
 		return ok({ secret });
 	} catch (err) {
-		console.error('[webhook/secret] POST error:', err);
+		log.error('POST failed', { err });
 		return serverError();
 	}
 }

@@ -11,6 +11,9 @@ import {
 import type { DbTransaction } from '$lib/db/types';
 import { getSetting, getSettings, setSettings } from './settings';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('enrollments');
 
 // ── API types ─────────────────────────────────────────────────────────────────
 
@@ -147,7 +150,7 @@ async function withEnrollmentSyncLock<T>(fn: () => Promise<T>): Promise<T> {
 			} finally {
 				await connection
 					.query("SELECT RELEASE_LOCK(CONCAT(DATABASE(), ':enrollment_sync'))")
-					.catch((err) => console.error('[enrollments] failed to release sync lock', err));
+					.catch((err) => log.error('Failed to release sync lock', { err }));
 			}
 		} finally {
 			connection.release();
@@ -236,7 +239,7 @@ async function runEnrollmentSync(
 				try {
 					await processEnrollment(item, result);
 				} catch (err) {
-					console.error('[enrollments] failed to process enrollment', item.id, err);
+					log.error('Failed to process enrollment', { enrollmentId: item.id, err });
 					result.errors++;
 				}
 			}
@@ -281,7 +284,7 @@ export async function processWebhookEnrollment(item: ApiEnrollment): Promise<Syn
 	// Ignora solo gli enrollment ancora PENDING.
 	// I webhook SUBMITTED devono essere persistiti per mostrare subito il corso associato.
 	if (item.status === 'PENDING') {
-		console.log(`[webhook] Ignorato enrollment ${item.id} - stato: ${item.status}`);
+		log.info('Enrollment ignored', { enrollmentId: item.id, status: item.status });
 		return {
 			enrollmentsFound: 1,
 			enrollmentsCreated: 0,

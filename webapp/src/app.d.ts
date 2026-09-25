@@ -21,6 +21,8 @@ declare global {
 			verifyAdminOnly: () => Promise<User>;
 			/** CSP nonce for this request */
 			cspNonce: string;
+			/** Request identifier, included in every structured log line and in `X-Request-ID` */
+			requestId: string;
 		}
 
 		// interface PageData {}

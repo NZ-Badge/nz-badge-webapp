@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { browser } from '$app/environment';
+	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		LayoutDashboard,
 		Users,
@@ -24,6 +26,7 @@
 		CircleHelp
 	} from '@lucide/svelte';
 	import TutorialGuide from '$lib/components/TutorialGuide.svelte';
+	import { PAGE_DESCRIPTIONS, type TutorialId } from '$lib/tutorial/copy';
 	import {
 		connection,
 		connect,
@@ -32,74 +35,149 @@
 		getConnectionStatusFromState,
 		getDeviceName
 	} from '$lib/stores/webserial.svelte';
-	import { onMount } from 'svelte';
 
-	// Props with Svelte 5 runes
 	let { data, children } = $props();
 
-	// Local state
-	let sidebarOpen = $state(false);
-	let isMobile = $state(false);
-	let adminSubmenuOpen = $state(false);
-	let attendanceSubmenuOpen = $state(false);
-	let tutorialEnabled = $state(false);
+	// ─── Configurazione del menu ────────────────────────────────────────────────
 
-	// Navigation links with icons
+	type NavLink = {
+		href: string;
+		label: string;
+		icon: typeof Users;
+		/** Spiegazione mostrata dalla guida Tutorial. */
+		tutorial: string;
+	};
+
+	type NavGroup = {
+		id: string;
+		label: string;
+		icon: NavLink['icon'];
+		tone: 'operations' | 'administration';
+		tutorialId: TutorialId;
+		links: NavLink[];
+	};
+
+	type NavEntry = ({ kind: 'link' } & NavLink) | ({ kind: 'group' } & NavGroup);
+
+	const TUTORIAL_STORAGE_KEY = 'nzbadge-tutorial-enabled';
+
+	const link = (href: string, label: string, icon: NavLink['icon'], tutorial?: string) =>
+		({
+			kind: 'link',
+			href,
+			label,
+			icon,
+			tutorial: tutorial ?? PAGE_DESCRIPTIONS[href] ?? `Apre la sezione ${label.toLowerCase()}.`
+		}) satisfies NavEntry;
+
 	const isCollaborator = $derived(data.user.role === 'collaborator');
 	const isStaffManager = $derived(data.user.role === 'admin' || data.user.role === 'staff');
 	const isUserAdmin = $derived(data.user.role === 'admin');
 
-	const navLinks = $derived([
-		{ href: '/dashboard', label: 'Panoramica', icon: LayoutDashboard },
-		...(!isCollaborator
-			? [
-					{ href: '/subscribers', label: 'Iscritti', icon: Users },
-					{ href: '/cards', label: 'Tessere', icon: CreditCard }
-				]
-			: [])
-	]);
-
-	const attendanceLinks = $derived([
-		{ href: '/today', label: 'Attesi oggi', icon: Users },
-		{ href: '/new-students', label: 'Nuovi corsisti', icon: Users },
-		...(isStaffManager
-			? [
-					{ href: '/attendance', label: 'Corsisti', icon: ClipboardList },
-					{ href: '/staff-attendance', label: 'Collaboratori', icon: LogIn }
-				]
-			: [])
-	]);
-
-	// Admin submenu links (only visible to admin users)
-	const adminLinks = $derived([
-		{ href: '/admin/users', label: 'Staff e accessi', icon: UserCog },
-		...(isUserAdmin
-			? [
-					{ href: '/card-diagnostics', label: 'Verifica tessera', icon: ScanLine },
-					{ href: '/devices', label: 'Dispositivi', icon: Cpu },
-					{ href: '/firmware', label: 'Aggiornamenti', icon: Microchip },
-					{ href: '/settings', label: 'Impostazioni', icon: Settings },
-					{ href: '/admin/maintenance', label: 'Manutenzione', icon: DatabaseBackup }
-				]
-			: [])
-	]);
-
-	// Check if any admin link is active
-	const isAdminActive = $derived(
-		adminLinks.some((link) => $page.url.pathname.startsWith(link.href))
-	);
-	const isAttendanceActive = $derived(
-		attendanceLinks.some((link) => $page.url.pathname.startsWith(link.href))
-	);
-
-	$effect(() => {
-		const pathname = $page.url.pathname;
-		adminSubmenuOpen = adminLinks.some((link) => pathname.startsWith(link.href));
-		attendanceSubmenuOpen = attendanceLinks.some((link) => pathname.startsWith(link.href));
+	const attendanceGroup = $derived<NavGroup>({
+		id: 'attendance',
+		label: 'Ingressi',
+		icon: LogIn,
+		tone: 'operations',
+		tutorialId: 'nav.toggle-attendance',
+		links: [
+			link('/today', 'Attesi oggi', Users),
+			link(
+				'/new-students',
+				'Nuovi corsisti',
+				Users,
+				'Mostra chi deve iniziare un corso nell’intervallo di date selezionato, con esportazione CSV.'
+			),
+			...(isStaffManager
+				? [
+						link('/attendance', 'Corsisti', ClipboardList),
+						link('/staff-attendance', 'Collaboratori', LogIn)
+					]
+				: [])
+		]
 	});
 
-	// Derived state
-	const isActiveLink = $derived((href: string) => $page.url.pathname.startsWith(href));
+	const adminGroup = $derived<NavGroup>({
+		id: 'admin',
+		label: 'Amministrazione',
+		icon: Shield,
+		tone: 'administration',
+		tutorialId: 'nav.toggle-admin',
+		links: [
+			link(
+				'/admin/users',
+				'Staff e accessi',
+				UserCog,
+				'Apre la gestione dello staff, dei ruoli e degli accessi.'
+			),
+			...(isUserAdmin
+				? [
+						link('/card-diagnostics', 'Verifica tessera', ScanLine),
+						link('/devices', 'Dispositivi', Cpu),
+						link('/firmware', 'Aggiornamenti', Microchip),
+						link('/settings', 'Impostazioni', Settings),
+						link('/admin/maintenance', 'Manutenzione', DatabaseBackup)
+					]
+				: [])
+		]
+	});
+
+	const navEntries = $derived<NavEntry[]>([
+		link('/dashboard', 'Panoramica', LayoutDashboard),
+		...(!isCollaborator
+			? [link('/subscribers', 'Iscritti', Users), link('/cards', 'Tessere', CreditCard)]
+			: []),
+		{ kind: 'group', ...attendanceGroup },
+		link('/my-attendance', 'I miei ingressi', Clock3),
+		...(isStaffManager ? [{ kind: 'group', ...adminGroup } satisfies NavEntry] : [])
+	]);
+
+	// ─── Stato ──────────────────────────────────────────────────────────────────
+
+	const pathname = $derived(page.url.pathname);
+	const isActiveLink = (href: string) => pathname.startsWith(href);
+	const isGroupActive = (group: NavGroup) => group.links.some((l) => isActiveLink(l.href));
+	const isAdminActive = $derived(isGroupActive(adminGroup));
+
+	// I gruppi si aprono sulla sezione corrente; l'utente può poi chiuderli o aprirli a mano
+	// finché non cambia pagina.
+	let openGroups = $derived<Record<string, boolean>>({
+		attendance: isGroupActive(attendanceGroup),
+		admin: isGroupActive(adminGroup)
+	});
+
+	function toggleGroup(id: string) {
+		openGroups = { ...openGroups, [id]: !openGroups[id] };
+	}
+
+	const desktop = new MediaQuery('min-width: 768px');
+	// Il menu mobile si chiude cambiando pagina o passando alla vista desktop.
+	let sidebarOpen = $derived.by(() => {
+		void desktop.current;
+		void pathname;
+		return false;
+	});
+
+	let tutorialEnabled = $state(false);
+
+	// Letta dopo l'idratazione: il server non conosce la preferenza salvata nel browser.
+	onMount(() => {
+		try {
+			tutorialEnabled = window.localStorage.getItem(TUTORIAL_STORAGE_KEY) === 'true';
+		} catch {
+			tutorialEnabled = false;
+		}
+	});
+
+	function setTutorialEnabled(enabled: boolean) {
+		tutorialEnabled = enabled;
+		try {
+			window.localStorage.setItem(TUTORIAL_STORAGE_KEY, String(enabled));
+		} catch {
+			// Preferenza non persistente (es. storage disabilitato): resta valida per la sessione.
+		}
+	}
+
 	const connectionStatus = $derived(
 		getConnectionStatusFromState(connection.state, connection.error)
 	);
@@ -107,57 +185,78 @@
 		connection.deviceInfo ? getDeviceName(connection.deviceInfo.vendorId) : null
 	);
 
-	// Check for mobile viewport
-	onMount(() => {
-		tutorialEnabled = window.localStorage.getItem('nzbadge-tutorial-enabled') === 'true';
-
-		const checkMobile = () => {
-			isMobile = window.innerWidth < 768;
-			if (!isMobile) sidebarOpen = false;
-		};
-
-		checkMobile();
-		window.addEventListener('resize', checkMobile);
-
-		return () => window.removeEventListener('resize', checkMobile);
-	});
-
-	function setTutorialEnabled(enabled: boolean) {
-		tutorialEnabled = enabled;
-		window.localStorage.setItem('nzbadge-tutorial-enabled', String(enabled));
-	}
-
-	// Close sidebar handler
 	function closeSidebar() {
 		sidebarOpen = false;
 	}
 
-	// Toggle admin submenu
-	function toggleAdminSubmenu() {
-		adminSubmenuOpen = !adminSubmenuOpen;
-	}
-
-	function toggleAttendanceSubmenu() {
-		attendanceSubmenuOpen = !attendanceSubmenuOpen;
-	}
-
-	// Toggle sidebar handler
-	function toggleSidebar() {
-		sidebarOpen = !sidebarOpen;
-	}
-
-	// Handle connection with error recovery
-	async function handleConnect() {
-		await connect();
-	}
-
-	// Keyboard shortcut handler for ESC to close sidebar
 	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && sidebarOpen) {
-			closeSidebar();
-		}
+		if (event.key === 'Escape' && sidebarOpen) closeSidebar();
 	}
+
+	const navItemBase =
+		'group flex items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all';
+	const toneActive = {
+		operations: { top: 'bg-blue-600 text-white', sub: 'bg-blue-600/50 text-white' },
+		administration: { top: 'bg-violet-700 text-white', sub: 'bg-violet-700/50 text-white' }
+	} as const;
 </script>
+
+{#snippet navItem(item: NavLink, tone: NavGroup['tone'], nested: boolean)}
+	{@const active = isActiveLink(item.href)}
+	<li>
+		<a
+			href={item.href}
+			aria-current={active ? 'page' : undefined}
+			data-tutorial-title={item.label}
+			data-tutorial-description={item.tutorial}
+			class="{navItemBase} {nested ? 'py-2' : 'py-2.5'} {active
+				? toneActive[tone][nested ? 'sub' : 'top']
+				: nested
+					? 'text-slate-400 hover:bg-slate-800 hover:text-white'
+					: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
+			onclick={closeSidebar}
+		>
+			<item.icon
+				size={nested ? 16 : 18}
+				class="transition-transform group-hover:scale-110"
+				aria-hidden="true"
+			/>
+			<span>{item.label}</span>
+		</a>
+	</li>
+{/snippet}
+
+{#snippet navGroup(group: NavGroup)}
+	{@const open = openGroups[group.id] ?? false}
+	{@const listId = `nav-group-${group.id}`}
+	<li>
+		<button
+			type="button"
+			aria-expanded={open}
+			aria-controls={open ? listId : undefined}
+			data-tutorial={group.tutorialId}
+			class="{navItemBase} w-full py-2.5 {isGroupActive(group)
+				? toneActive[group.tone].top
+				: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
+			onclick={() => toggleGroup(group.id)}
+		>
+			<group.icon size={18} class="transition-transform group-hover:scale-110" aria-hidden="true" />
+			<span class="flex-1 text-left">{group.label}</span>
+			<ChevronDown
+				size={16}
+				class="transition-transform duration-200 {open ? 'rotate-180' : ''}"
+				aria-hidden="true"
+			/>
+		</button>
+		{#if open}
+			<ul id={listId} class="sidebar-nav-list sidebar-nav-sublist">
+				{#each group.links as item (item.href)}
+					{@render navItem(item, group.tone, true)}
+				{/each}
+			</ul>
+		{/if}
+	</li>
+{/snippet}
 
 <svelte:window onkeydown={handleKeydown} />
 
@@ -165,7 +264,7 @@
 	<!-- Mobile Backdrop -->
 	{#if sidebarOpen}
 		<div
-			class="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm md:hidden transition-opacity"
+			class="fixed inset-0 z-20 bg-black/50 backdrop-blur-sm transition-opacity md:hidden"
 			onclick={closeSidebar}
 			role="presentation"
 			aria-hidden="true"
@@ -175,18 +274,14 @@
 	<!-- Sidebar (fissa, non scrolla) -->
 	<aside
 		id="sidebar"
-		class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-slate-900 text-white
-		       transform transition-transform duration-300 ease-out
-		       md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 md:overflow-hidden
+		class="fixed inset-y-0 left-0 z-30 flex w-64 transform flex-col bg-slate-900 text-white transition-transform duration-300 ease-out md:sticky md:top-0 md:z-auto md:h-screen md:translate-x-0 md:overflow-hidden
 		       {sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}"
-		role="navigation"
-		aria-label="Navigazione principale"
 	>
 		<!-- Logo / Header -->
 		<div class="flex h-16 items-center border-b border-slate-700 px-4">
 			<div class="flex items-center gap-3">
 				<div class="flex h-8 w-8 items-center justify-center rounded bg-blue-600">
-					<CreditCard size={18} class="text-white" />
+					<CreditCard size={18} class="text-white" aria-hidden="true" />
 				</div>
 				<div class="flex flex-col">
 					<span class="text-sm font-semibold text-white">NZBadge</span>
@@ -196,150 +291,18 @@
 		</div>
 
 		<!-- Navigation -->
-		<nav class="flex-1 overflow-y-auto px-3 py-4">
-			<p class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+		<nav class="flex-1 overflow-y-auto px-3 py-4" aria-label="Navigazione principale">
+			<p class="mb-3 px-3 text-xs font-semibold tracking-wider text-slate-400 uppercase">
 				Gestione quotidiana
 			</p>
-			<ul class="sidebar-nav-list" role="menubar">
-				{#each navLinks as link}
-					{@const isActive = isActiveLink(link.href)}
-					<li role="none">
-						<a
-							href={link.href}
-							role="menuitem"
-							aria-current={isActive ? 'page' : undefined}
-							class="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
-							       {isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
-							onclick={closeSidebar}
-						>
-							<link.icon size={18} class="transition-transform group-hover:scale-110" />
-							<span>{link.label}</span>
-							{#if isActive}
-								<span class="sr-only">(pagina corrente)</span>
-							{/if}
-						</a>
-					</li>
+			<ul class="sidebar-nav-list">
+				{#each navEntries as entry (entry.kind === 'link' ? entry.href : entry.id)}
+					{#if entry.kind === 'link'}
+						{@render navItem(entry, 'operations', false)}
+					{:else if entry.links.length > 0}
+						{@render navGroup(entry)}
+					{/if}
 				{/each}
-
-				{#if attendanceLinks.length > 0}
-					<li role="none">
-						<button
-							type="button"
-							role="menuitem"
-							aria-expanded={attendanceSubmenuOpen}
-							class="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
-						{isAttendanceActive
-								? 'bg-blue-600 text-white'
-								: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
-							onclick={toggleAttendanceSubmenu}
-						>
-							<LogIn size={18} />
-							<span class="flex-1 text-left">Ingressi</span>
-							<ChevronDown
-								size={16}
-								class="transition-transform {attendanceSubmenuOpen ? 'rotate-180' : ''}"
-							/>
-						</button>
-						{#if attendanceSubmenuOpen}
-							<ul class="sidebar-nav-list sidebar-nav-sublist" role="menu">
-								{#each attendanceLinks as link}
-									{@const isActive = isActiveLink(link.href)}
-									<li>
-										<a
-											href={link.href}
-											data-tutorial-title={link.href === '/today'
-												? 'Corsisti attesi oggi'
-												: link.href === '/new-students'
-													? 'Nuovi corsisti'
-													: undefined}
-											data-tutorial-description={link.href === '/today'
-												? 'Mostra i corsisti con un corso in programma oggi e distingue chi ha già timbrato da chi non ha ancora registrato ingressi o uscite.'
-												: link.href === '/new-students'
-													? 'Mostra chi deve iniziare un corso nell’intervallo di date selezionato, con esportazione CSV.'
-													: undefined}
-											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
-												? 'bg-blue-600/50 text-white'
-												: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
-											onclick={closeSidebar}><link.icon size={16} /><span>{link.label}</span></a
-										>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</li>
-				{/if}
-
-				<li role="none">
-					<a
-						href="/my-attendance"
-						role="menuitem"
-						aria-current={isActiveLink('/my-attendance') ? 'page' : undefined}
-						class="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all {isActiveLink(
-							'/my-attendance'
-						)
-							? 'bg-blue-600 text-white'
-							: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
-						onclick={closeSidebar}
-					>
-						<Clock3 size={18} /><span>I miei ingressi</span>
-					</a>
-				</li>
-
-				<!-- Admin submenu: full for admins, Staff only for operators. -->
-				{#if isStaffManager}
-					<li role="none">
-						<button
-							type="button"
-							role="menuitem"
-							aria-expanded={adminSubmenuOpen}
-							aria-haspopup="true"
-							class="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all
-						       {isAdminActive
-								? 'bg-violet-700 text-white'
-								: 'text-slate-300 hover:bg-slate-800 hover:text-white'}"
-							onclick={toggleAdminSubmenu}
-						>
-							<Shield size={18} class="transition-transform group-hover:scale-110" />
-							<span class="flex-1 text-left">Amministrazione</span>
-							<ChevronDown
-								size={16}
-								class="transition-transform duration-200 {adminSubmenuOpen ? 'rotate-180' : ''}"
-							/>
-						</button>
-
-						{#if adminSubmenuOpen}
-							<ul class="sidebar-nav-list sidebar-nav-sublist" role="menu">
-								{#each adminLinks as link}
-									{@const isActive = isActiveLink(link.href)}
-									<li role="none">
-										<a
-											href={link.href}
-											role="menuitem"
-											aria-current={isActive ? 'page' : undefined}
-											data-tutorial-title={link.label}
-											data-tutorial-description={link.href === '/admin/maintenance'
-												? 'Apre gli strumenti di manutenzione per scaricare un backup completo del database.'
-												: link.href === '/admin/users'
-													? 'Apre la gestione dello staff, dei ruoli e degli accessi.'
-													: `Apre la sezione ${link.label.toLowerCase()} dell'amministrazione.`}
-											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all
-										       {isActive
-												? 'bg-violet-700/50 text-white'
-												: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
-											onclick={closeSidebar}
-										>
-											<link.icon size={16} class="transition-transform group-hover:scale-110" />
-											<span>{link.label}</span>
-											{#if isActive}
-												<span class="sr-only">(pagina corrente)</span>
-											{/if}
-										</a>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</li>
-				{/if}
 			</ul>
 		</nav>
 
@@ -356,7 +319,7 @@
 			>
 				<CircleHelp size={18} aria-hidden="true" />
 				<span class="flex-1 text-left">Tutorial</span>
-				<span class="text-[10px] font-semibold uppercase tracking-wide">
+				<span class="text-[10px] font-semibold tracking-wide uppercase">
 					{tutorialEnabled ? 'Attivo' : 'Avvia'}
 				</span>
 			</button>
@@ -385,17 +348,18 @@
 	<div class="flex min-w-0 flex-1 flex-col">
 		<!-- Header -->
 		<header
-			class="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-white/95 backdrop-blur px-4 shadow-sm"
+			class="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/95 px-4 shadow-sm backdrop-blur"
 		>
 			<div class="flex h-full items-center">
 				<!-- Mobile Menu Button -->
 				<button
 					type="button"
-					class="-ml-4 inline-flex h-full items-center justify-center px-4 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 md:hidden"
-					onclick={toggleSidebar}
+					class="-ml-4 inline-flex h-full items-center justify-center px-4 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:ring-2 focus:ring-blue-500 focus:outline-none focus:ring-inset md:hidden"
+					onclick={() => (sidebarOpen = !sidebarOpen)}
 					aria-expanded={sidebarOpen}
 					aria-controls="sidebar"
 					aria-label={sidebarOpen ? 'Chiudi menu di navigazione' : 'Apri menu di navigazione'}
+					data-tutorial={sidebarOpen ? 'nav.close-menu' : 'nav.open-menu'}
 				>
 					{#if sidebarOpen}
 						<X size={24} aria-hidden="true" />
@@ -405,14 +369,14 @@
 				</button>
 
 				<!-- Page Title (mobile only) -->
-				<span class="mr-4 hidden text-sm font-semibold text-slate-900 sm:block md:hidden"
+				<span class="mr-4 hidden text-sm font-semibold text-foreground sm:block md:hidden"
 					>NZBadge</span
 				>
 
 				<!-- WebSerial Connection Section (integrato come sezione della toolbar) -->
 				{#if !isCollaborator && browser && isWebSerialSupported()}
 					<div
-						class="flex h-full items-center border-slate-200 bg-slate-50/50 px-4 md:-ml-4 {connection.state ===
+						class="flex h-full items-center bg-muted/50 px-4 md:-ml-4 {connection.state ===
 						'connected'
 							? 'border-l'
 							: 'border-x'}"
@@ -438,11 +402,11 @@
 								{/if}
 							</span>
 							<div class="flex flex-col">
-								<span class="text-xs font-medium text-slate-700">
+								<span class="text-xs font-medium text-foreground">
 									{connectionStatus.label}
 								</span>
 								{#if deviceDisplayName}
-									<span class="hidden text-[10px] text-slate-400 lg:block">
+									<span class="hidden text-[10px] text-muted-foreground lg:block">
 										{deviceDisplayName}
 									</span>
 								{/if}
@@ -453,21 +417,23 @@
 						{#if connectionStatus.canConnect}
 							<button
 								type="button"
-								class="ml-3 -mr-4 flex h-full items-center gap-2 border-l border-slate-200 px-4 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-500"
-								onclick={handleConnect}
+								class="-mr-4 ml-3 flex h-full items-center gap-2 border-l px-4 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-500"
+								onclick={connect}
 								aria-label="Connetti dispositivo USB"
+								data-tutorial="serial.connect"
 							>
-								<Plug size={16} />
+								<Plug size={16} aria-hidden="true" />
 								<span class="hidden sm:inline">Connetti</span>
 							</button>
 						{:else if connectionStatus.canDisconnect}
 							<button
 								type="button"
-								class="ml-3 -mr-4 flex h-full items-center gap-2 border-l border-r border-slate-200 px-4 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 hover:text-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
+								class="-mr-4 ml-3 flex h-full items-center gap-2 border-r border-l px-4 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 hover:text-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-inset"
 								onclick={disconnect}
 								aria-label="Disconnetti dispositivo USB"
+								data-tutorial="serial.disconnect"
 							>
-								<Usb size={16} />
+								<Usb size={16} aria-hidden="true" />
 								<span class="hidden sm:inline">Disconnetti</span>
 							</button>
 						{/if}
@@ -477,22 +443,21 @@
 
 			<!-- User Section (integrato come sezione della toolbar) -->
 			<div class="-mr-4 flex h-full items-center">
-				<!-- User Info Section -->
 				<div
-					class="hidden h-full max-w-64 flex-col justify-center border-l border-slate-200 bg-slate-50/50 px-4 lg:flex"
+					class="hidden h-full max-w-64 flex-col justify-center border-l bg-muted/50 px-4 lg:flex"
 				>
-					<p class="truncate text-sm font-medium text-slate-900">{data.user.email}</p>
+					<p class="truncate text-sm font-medium text-foreground">{data.user.email}</p>
 				</div>
 
-				<!-- Logout Section -->
 				<form method="POST" action="/login?/logout" class="m-0 flex h-full">
 					<button
 						type="submit"
-						class="flex h-full items-center gap-2 border-l border-slate-200 px-4 text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+						class="flex h-full items-center gap-2 border-l px-4 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset"
 						aria-label="Esci"
 						title="Esci"
+						data-tutorial="session.logout"
 					>
-						<LogOut size={18} />
+						<LogOut size={18} aria-hidden="true" />
 					</button>
 				</form>
 			</div>
@@ -521,7 +486,7 @@
 <!-- Error Toast -->
 {#if connection.error && connection.state === 'error'}
 	<div
-		class="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg bg-red-50 p-4 shadow-lg ring-1 ring-red-200"
+		class="fixed right-4 bottom-4 z-50 max-w-sm rounded-lg bg-red-50 p-4 shadow-lg ring-1 ring-red-200"
 		role="alert"
 		aria-live="polite"
 	>
@@ -549,8 +514,9 @@
 				class="flex-shrink-0 text-red-400 hover:text-red-600"
 				onclick={() => (connection.error = null)}
 				aria-label="Chiudi errore"
+				data-tutorial="serial.dismiss-error"
 			>
-				<X size={16} />
+				<X size={16} aria-hidden="true" />
 			</button>
 		</div>
 	</div>

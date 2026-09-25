@@ -67,37 +67,37 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
 
 ### 🟡 Frontend
 
-- [ ] **17. Client HTTP e notifiche condivisi.**
+- [x] **17. Client HTTP e notifiche condivisi.**
   - `lib/utils/http.ts` con `apiFetch<T>()` e `ApiError`: oggi ci sono 35 `fetch()` scritte a mano.
   - Toast con `svelte-sonner`.
   - `ConfirmDialog.svelte` al posto di `confirm()`/`alert()` (attendance, settings) e dei dialog di conferma duplicati.
-- [ ] **18. Form action con `use:enhance` al posto delle fetch verso `/api`.**
+- [x] **18. Form action con `use:enhance` al posto delle fetch verso `/api`.**
   - `admin/users`: oggi carica la lista in `onMount`; va caricata nel `load`.
   - `settings`: 4 PATCH quasi identiche.
   - `cards`, `attendance`, `courses`.
-- [ ] **19. Componenti troppo grandi da spezzare.**
+- [x] **19. Componenti troppo grandi da spezzare.**
   - `settings` (727 righe): 5 card da estrarre.
   - `admin/users` (686): unificare i dialog di creazione e modifica in `UserFormDialog`.
   - `subscribers/[id]` (686) e `devices` (633, con 5 dialog).
   - `+layout.svelte`: estrarre NavGroup/NavItem e togliere i ruoli ARIA menubar/menu/menuitem.
   - `TutorialGuide` (632): circa 480 righe servono a riconoscere i testi italiani nel DOM. Sostituirle con gli attributi `data-tutorial-*` e togliere l'accoppiamento dal date-picker.
-- [ ] **20. Logica duplicata tra pagine.**
+- [x] **20. Logica duplicata tra pagine.**
   - Il flusso di cancellazione card (`cards/[id]/erase` e `subscribers/[id]/write-card`) è duplicato e le copie sono già diverse.
   - `webserial.ts`: estrarre `sendAndAwait()` e `readJsonLines()` (5 copie, più diagnostic e provisioner).
   - Etichette e badge di stato card e ingresso/uscita in `lib/labels.ts`, più un componente `CardStatusBadge`.
   - Estrarre un componente `CopyButton`.
   - Filtri con `<form method="GET">` al posto dei `goto()` scritti a mano.
   - `AttendanceEditDialog` condiviso tra attendance e staff-attendance.
-- [ ] **21. Svelte 5 idiomatico.**
+- [x] **21. Svelte 5 idiomatico.**
   - Sostituire `$app/stores` con `$app/state` (layout, attendance, staff-attendance).
   - Convertire in `$derived` scrivibili gli `$effect` che copiano valori (layout, devices, firmware, new-students).
   - Usare `MediaQuery` al posto del listener su resize e `SvelteSet` al posto dei Set copiati a ogni modifica.
   - Aggiungere le chiavi ai blocchi `{#each}`.
   - Aggiungere il cleanup dell'`$effect` in `CardQuickReader`.
-- [ ] **22. Settings: hydration e valori iniziali.**
+- [x] **22. Settings: hydration e valori iniziali.**
   - Hydration mismatch in `settings/+page.svelte:66`: il valore letto da `window.location.origin` diverso tra server e client; usare `page.url.origin`.
   - I valori iniziali di confronto non vengono mai aggiornati dopo un salvataggio.
-- [ ] **23. UI kit.**
+- [ ] **23. UI kit.** _(fatto su layout, devices, cards, subscribers; restano settings, admin/users, attendance, staff-attendance, courses, firmware, dashboard)_
   - Aggiungere Select e Checkbox, oggi elementi nativi con stili scritti a mano.
   - Usare i token del tema al posto di `bg-white`/`text-gray-*`.
   - Decidere se tenere o eliminare il dark mode (definito ma mai attivato).
@@ -105,24 +105,24 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
 
 ### 🟢 Bassa priorità e pulizia
 
-- [ ] **24. Codice morto.**
+- [x] **24. Codice morto.**
   - Schemi non usati in `utils/validation.ts`.
   - Sanitizer e `apiRateLimiter` in `security.ts`.
   - `validateSession`, `requireRole` e `generateDeviceToken` in `auth.ts`.
   - `auditContext` e `queryAuditLogs` in `audit.ts`.
   - `serviceUnavailable` in `api.ts`.
   - La dipendenza `lucide-svelte`.
-- [ ] **25. Logging.** Circa 60 `console.*`, alcuni con dati personali. Passare a un logger strutturato con redazione dei campi (pino) e a un requestId in `locals`.
-- [ ] **26. Endpoint di salute duplicati.** Esistono `/status` e `/api/v1/health`. Tenerne uno solo, che restituisca solo lo stato: `/status` oggi è pubblico ed espone l'errore del DB.
-- [ ] **27. Policy password.** L'API accetta 8 caratteri, `validatePasswordStrength` ne richiede 12. Sceglierne una.
-- [ ] **28. Riepilogo settimanale.** Rischio di doppio invio: riservare prima la riga nel log (stato `pending`), poi inviare la mail. Separare anche il template dalla logica del job.
-- [ ] **29. Infrastruttura.**
+- [x] **25. Logging.** Circa 60 `console.*`, alcuni con dati personali. Passare a un logger strutturato con redazione dei campi (pino) e a un requestId in `locals`.
+- [x] **26. Endpoint di salute duplicati.** Esistono `/status` e `/api/v1/health`. Tenerne uno solo, che restituisca solo lo stato: `/status` oggi è pubblico ed espone l'errore del DB.
+- [x] **27. Policy password.** L'API accetta 8 caratteri, `validatePasswordStrength` ne richiede 12. Sceglierne una.
+- [x] **28. Riepilogo settimanale.** Rischio di doppio invio: riservare prima la riga nel log (stato `pending`), poi inviare la mail. Separare anche il template dalla logica del job.
+- [x] **29. Infrastruttura.**
   - Node 20 è fuori supporto: passare a 22 o 24 in `.nvmrc` e nel `Dockerfile`.
   - Nel `Dockerfile`, eseguire `npm prune --omit=dev` prima di copiare `node_modules`.
   - Due migrazioni hanno lo stesso numero `0011_*`.
   - Aggiornamenti major arretrati: `eslint-plugin-svelte` 3, `@sveltejs/vite-plugin-svelte`, `jose` 6.
   - Validare gli header proxy per l'IP del client (`XFF_DEPTH`/`ADDRESS_HEADER`) invece di fidarsi di `x-forwarded-for`.
-- [ ] **30. Coerenza dei testi.**
+- [x] **30. Coerenza dei testi.**
   - Parole inglesi nella UI in italiano (es. "release", "Save", "secret").
   - Maiuscole miste nei titoli.
   - Messaggi d'errore del server in inglese mostrati all'utente.

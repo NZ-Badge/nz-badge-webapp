@@ -1,7 +1,7 @@
 # ============================================
 # Build Stage
 # ============================================
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -13,10 +13,14 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+# Keep only runtime dependencies. tsx, drizzle-orm, mysql2 and nodemailer are regular
+# dependencies because scripts/migrate.ts and the weekly summary job run from this image.
+RUN npm prune --omit=dev
+
 # ============================================
 # Production Stage
 # ============================================
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 WORKDIR /app
 

@@ -281,7 +281,7 @@ export const weeklyAttendanceSummaryLog = mysqlTable(
 		weekEndDate: date('week_end_date').notNull(),
 		subscriberId: int('subscriber_id').references(() => subscribers.id, { onDelete: 'set null' }),
 		recipientEmail: varchar('recipient_email', { length: 255 }).notNull(),
-		status: mysqlEnum('status', ['sent', 'skipped', 'error']).notNull().default('sent'),
+		status: mysqlEnum('status', ['pending', 'sent', 'skipped', 'error']).notNull().default('sent'),
 		sentAt: timestamp('sent_at'),
 		errorMsg: text('error_msg'),
 		createdAt: timestamp('created_at').defaultNow(),

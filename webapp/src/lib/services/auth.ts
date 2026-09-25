@@ -14,6 +14,9 @@ import { deviceRegistry, users } from '$lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import type { DeviceReg, User } from '$lib/db/schema';
 import { authRateLimiter, hashForAudit } from '$lib/utils/security';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('auth');
 
 // Session configuration
 const SESSION_DURATION_HOURS = 8; // 8 hour session for hospital shifts
@@ -141,19 +144,19 @@ export async function verifyDeviceToken(request: Request): Promise<DeviceReg> {
 
 	if (!device) {
 		// Log failed attempt (hashed device ID for privacy)
-		console.warn('[AUTH] Device not found:', await hashForAudit(deviceId));
+		log.warn('Device not found', { deviceIdHash: await hashForAudit(deviceId) });
 		throw new AuthError('Device not found', 'UNAUTHORIZED');
 	}
 
 	if (!device.active) {
-		console.warn('[AUTH] Disabled device attempted connection:', deviceId);
+		log.warn('Disabled device attempted connection', { deviceId });
 		throw new AuthError('Device is disabled', 'UNAUTHORIZED');
 	}
 
 	// Verify token against stored hash (SHA-256, or legacy bcrypt)
 	const { valid, needsRehash } = await verifyDeviceTokenHash(token, device.tokenHash);
 	if (!valid) {
-		console.warn('[AUTH] Invalid token for device:', deviceId);
+		log.warn('Invalid token for device', { deviceId });
 		throw new AuthError('Invalid token', 'UNAUTHORIZED');
 	}
 
@@ -164,7 +167,7 @@ export async function verifyDeviceToken(request: Request): Promise<DeviceReg> {
 			.set({ tokenHash: hashDeviceToken(token) })
 			.where(and(eq(deviceRegistry.deviceId, deviceId), eq(deviceRegistry.tokenHash, legacyHash)))
 			.catch((err: unknown) => {
-				console.error('[AUTH] Device token rehash failed:', deviceId, err);
+				log.error('Device token rehash failed', { deviceId, err });
 			});
 	}
 
@@ -204,7 +207,7 @@ async function verifySessionForRoles(
 	const sessionCookie = cookies.get('session');
 
 	if (!sessionCookie) {
-		throw new AuthError('No session cookie', 'UNAUTHORIZED');
+		throw new AuthError('Sessione non valida o scaduta', 'UNAUTHORIZED');
 	}
 
 	let userId: number;
@@ -231,27 +234,27 @@ async function verifySessionForRoles(
 		}
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : 'Invalid token';
-		console.warn('[AUTH] Session verification failed:', errorMessage);
-		throw new AuthError('Invalid or expired session', 'UNAUTHORIZED');
+		log.warn('Session verification failed', { reason: errorMessage });
+		throw new AuthError('Sessione non valida o scaduta', 'UNAUTHORIZED');
 	}
 
 	// Fetch user from database
 	const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
 
 	if (!user) {
-		console.warn('[AUTH] User from token not found:', userId);
-		throw new AuthError('User not found', 'FORBIDDEN');
+		log.warn('User from token not found', { userId });
+		throw new AuthError('Utente non trovato', 'FORBIDDEN');
 	}
 
 	// Verify user is active and still has one of the application roles.
 	if (user.status !== 'active') {
-		console.warn('[AUTH] Disabled user attempted access:', userId);
-		throw new AuthError('User account is disabled', 'FORBIDDEN');
+		log.warn('Disabled user attempted access', { userId });
+		throw new AuthError('Account utente disattivato', 'FORBIDDEN');
 	}
 
 	if (!user.role || !validRoles.includes(user.role)) {
-		console.warn('[AUTH] User lacks required role:', userId, user.role);
-		throw new AuthError('Insufficient permissions', 'FORBIDDEN');
+		log.warn('User lacks required role', { userId, role: user.role });
+		throw new AuthError('Permessi insufficienti', 'FORBIDDEN');
 	}
 
 	return user;
@@ -270,24 +273,10 @@ export function verifyUserSession(cookies: {
  */
 export function assertRole(user: User, validRoles: readonly string[]): User {
 	if (!user.role || !validRoles.includes(user.role)) {
-		console.warn('[AUTH] User lacks required role:', user.id, user.role);
-		throw new AuthError('Insufficient permissions', 'FORBIDDEN');
+		log.warn('User lacks required role', { userId: user.id, role: user.role });
+		throw new AuthError('Permessi insufficienti', 'FORBIDDEN');
 	}
 	return user;
-}
-
-/** Verify an Administrator/Operator session (roles admin or staff). */
-export async function verifyStaffOrAdminSession(cookies: {
-	get(name: string): string | undefined;
-}): Promise<User> {
-	return assertRole(await verifyUserSession(cookies), STAFF_ROLES);
-}
-
-/** Verify a session that strictly belongs to an Administrator (role admin). */
-export async function verifyAdminOnlySession(cookies: {
-	get(name: string): string | undefined;
-}): Promise<User> {
-	return assertRole(await verifyUserSession(cookies), ['admin']);
 }
 
 /** Whether the given role may open the (app) page at `pathname`. */
@@ -359,13 +348,6 @@ export async function createAdminSession(user: User): Promise<{ token: string; e
 }
 
 /**
- * Verify password against hash
- */
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-	return bcrypt.compare(password, hash);
-}
-
-/**
  * Hash password for storage
  */
 export async function hashPassword(password: string): Promise<string> {
@@ -373,84 +355,26 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /**
- * Generate secure device token
- * Returns the plaintext token (to be shown once) and its hash
- */
-export async function generateDeviceToken(): Promise<{ token: string; hash: string }> {
-	// Generate 32-byte random token
-	const array = new Uint8Array(32);
-	crypto.getRandomValues(array);
-	const token = Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
-
-	const hash = hashDeviceToken(token);
-
-	return { token, hash };
-}
-
-/**
- * Session validation result
- */
-export interface SessionValidationResult {
-	valid: boolean;
-	user?: User;
-	error?: string;
-}
-
-/**
- * Validate session without throwing
- * Useful for optional auth checks
- */
-export async function validateSession(cookies: {
-	get(name: string): string | undefined;
-}): Promise<SessionValidationResult> {
-	try {
-		const user = await verifyStaffOrAdminSession(cookies);
-		return { valid: true, user };
-	} catch (err) {
-		return {
-			valid: false,
-			error: err instanceof AuthError ? err.message : 'Invalid session'
-		};
-	}
-}
-
-/**
  * Middleware helper: Require admin role
  */
 export function requireAdmin(user: User): void {
 	if (user.role !== 'admin') {
-		throw new AuthError('Admin access required', 'FORBIDDEN');
+		throw new AuthError('Operazione riservata agli amministratori', 'FORBIDDEN');
 	}
 }
 
 /** Require a role allowed to manage staff cards and attendance. */
 export function requireStaffManager(user: User): void {
 	if (user.role !== 'admin' && user.role !== 'staff') {
-		throw new AuthError('Staff manager access required', 'FORBIDDEN');
+		throw new AuthError('Operazione riservata ad amministratori e operatori', 'FORBIDDEN');
 	}
 }
 
 /** Require access to the target user's attendance. */
 export function requireSelfOrStaffManager(user: User, targetUserId: number): void {
 	if (user.id !== targetUserId && user.role !== 'admin' && user.role !== 'staff') {
-		throw new AuthError('Access to another user is forbidden', 'FORBIDDEN');
+		throw new AuthError('Non puoi accedere ai dati di un altro utente', 'FORBIDDEN');
 	}
-}
-
-/**
- * Middleware helper: Require specific role
- */
-export function requireRole(user: User, ...allowedRoles: string[]): void {
-	if (!user.role || !allowedRoles.includes(user.role)) {
-		throw new AuthError(`Required role: ${allowedRoles.join(' or ')}`, 'FORBIDDEN');
-	}
-}
-
-/**
- * Check if user has admin role
- */
-export function isAdmin(user: User): boolean {
-	return user.role === 'admin';
 }
 
 export function isStaffManager(user: User): boolean {

@@ -13,6 +13,7 @@
 		Users
 	} from '@lucide/svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import CardQuickReader from '$lib/components/CardQuickReader.svelte';
 	import StaffManualEntryDialog from '$lib/components/StaffManualEntryDialog.svelte';
 	import StaffAttendanceDeleteButton from '$lib/components/StaffAttendanceDeleteButton.svelte';
@@ -28,6 +29,7 @@
 	} from '$lib/components/ui/table';
 	import { Button } from '$lib/components/ui/button';
 	import { formatDateIT, formatDateTimeIT } from '$lib/utils/date.js';
+	import { apiFetch, errorMessage } from '$lib/utils/http';
 
 	let { data } = $props();
 
@@ -47,8 +49,6 @@
 	const activeCourses = $derived(data.mode === 'management' ? (data.activeCourses ?? []) : []);
 	let manualOpen = $state(false);
 	let simulateBusy = $state(false);
-	let simulateMessage = $state('');
-	let simulateError = $state(false);
 
 	function sourceLabel(source: string): string {
 		return source === 'card' ? 'Card RFID' : source === 'manual' ? 'Manuale' : 'Pulsante Home';
@@ -56,17 +56,15 @@
 
 	async function simulateSwipe() {
 		simulateBusy = true;
-		simulateMessage = '';
-		simulateError = false;
 		try {
-			const response = await fetch('/api/v1/staff-attendance/simulate', { method: 'POST' });
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Registrazione non riuscita');
-			simulateMessage = `${body.data?.nextType === 'entry' ? 'Ingresso' : 'Uscita'} registrato correttamente.`;
+			const result = await apiFetch<{ nextType?: 'entry' | 'exit' }>(
+				'/api/v1/staff-attendance/simulate',
+				{ method: 'POST' }
+			);
+			toast.success(result?.nextType === 'entry' ? 'Ingresso registrato' : 'Uscita registrata');
 			await invalidateAll();
 		} catch (err) {
-			simulateError = true;
-			simulateMessage = err instanceof Error ? err.message : 'Registrazione non riuscita';
+			toast.error(errorMessage(err, 'Registrazione non riuscita'));
 		} finally {
 			simulateBusy = false;
 		}
@@ -98,9 +96,6 @@
 						? 'Registrazione…'
 						: `Registra ${data.nextEventType === 'entry' ? 'ingresso' : 'uscita'}`}</Button
 				>
-				{#if simulateMessage}<p class="text-sm {simulateError ? 'text-red-600' : 'text-green-700'}">
-						{simulateMessage}
-					</p>{/if}
 			</CardContent>
 		</Card>
 		<Card>
@@ -137,7 +132,7 @@
 						><TableHead class="w-px text-right">Azioni</TableHead></TableRow
 					></TableHeader
 				><TableBody
-					>{#each data.recentStaffAttendance as row}<TableRow
+					>{#each data.recentStaffAttendance as row (row.id)}<TableRow
 							><TableCell
 								><span class="inline-flex items-center gap-1.5"
 									>{formatDateTimeIT(row.readTimestamp, { seconds: true }) ||
@@ -212,7 +207,7 @@
 
 	<div class="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-stretch">
 		<div class="grid gap-3 lg:h-full lg:grid-rows-4">
-			{#each kpis as kpi}
+			{#each kpis as kpi (kpi.title)}
 				<Card class="h-full">
 					<CardContent class="grid h-full grid-cols-[1fr_56px] items-center gap-3 px-4 py-1.5">
 						<div class="truncate text-sm font-medium text-gray-700">{kpi.title}</div>
@@ -245,7 +240,7 @@
 			</Card>
 		{:else}
 			<div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-				{#each activeCourses as course}
+				{#each activeCourses as course (course.key)}
 					<Card class="gap-3 py-5">
 						<CardContent class="space-y-2 px-5">
 							<div>
@@ -299,7 +294,7 @@
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{#each currentMonthSubscribers as sub}
+					{#each currentMonthSubscribers as sub (sub.id)}
 						<TableRow>
 							<TableCell>
 								<a href="/subscribers/{sub.id}" class="app-link font-medium">

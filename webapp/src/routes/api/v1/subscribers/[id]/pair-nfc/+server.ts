@@ -3,6 +3,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { subscribers, cardRfid } from '$lib/db/schema';
 import { ok, badRequest, notFound, conflict, serverError, authErrorResponse } from '$lib/utils/api';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/subscribers/[id]/pair-nfc');
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
@@ -12,13 +15,13 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 
 	const id = parseInt(event.params.id ?? '');
-	if (isNaN(id)) return badRequest('invalid id');
+	if (isNaN(id)) return badRequest('ID non valido');
 
 	let body: { uid?: string };
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	const uid = body.uid?.trim().toUpperCase();
@@ -33,7 +36,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			.where(eq(subscribers.id, id))
 			.limit(1);
 
-		if (!subscriber) return notFound('subscriber not found');
+		if (!subscriber) return notFound('Iscritto non trovato');
 
 		// Controlla se l'UID è già registrato
 		const [existing] = await db
@@ -60,7 +63,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 		return ok({ uid, paired: true });
 	} catch (err) {
-		console.error('[pair-nfc] POST error:', err);
+		log.error('POST failed', { err });
 		return serverError();
 	}
 }

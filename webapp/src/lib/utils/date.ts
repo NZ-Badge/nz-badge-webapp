@@ -50,14 +50,6 @@ export function formatToRomeISO(date: Date = new Date()): string {
 	return formatInTimeZone(date, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss.SSSxxx");
 }
 
-/**
- * @deprecated No-op: i Date vanno passati al database cosi' come sono (UTC).
- * Resta solo finche' `services/attendance.ts` non viene aggiornato; non usarla nel nuovo codice.
- */
-export function toDatabaseDateTime(date: Date | string | number): Date {
-	return date instanceof Date ? date : new Date(date as string | number);
-}
-
 export type DisplayDateValue = Date | string | number | null | undefined;
 
 function toValidDate(value: Exclude<DisplayDateValue, null | undefined>): Date | null {

@@ -71,6 +71,14 @@ transazionali, un errore durante il ripristino può lasciare il database incompl
 prima un backup recente e usare il client MySQL se l'app non è più accessibile. Impostare `BODY_SIZE_LIMIT=104857600` e un limite equivalente nel
 reverse proxy per consentire il caricamento; DDEV è già configurato per 100 MB.
 
+Prima del `DROP DATABASE` l'import salva automaticamente un **dump di sicurezza** del database
+attuale (`nz-badge-pre-import-<timestamp>.sql.gz`) nella directory `DB_BACKUP_DIR` (assoluta o
+relativa alla directory di lavoro; default `localfiles/backups`, permessi `0700`/`0600`). Se il dump
+non riesce, l'import si ferma senza modificare nulla. Vengono conservati solo gli ultimi
+`DB_BACKUP_KEEP` dump (default `10`): i più vecchi vengono eliminati dopo ogni nuovo dump. In
+produzione montare `DB_BACKUP_DIR` su un volume persistente. Il nome del file è registrato
+nell'`audit_log` (azione `DB_IMPORT`).
+
 ### 2. Device backend
 
 Endpoint in `src/routes/api/v1/*` usati dai device:
@@ -104,7 +112,7 @@ Dettagli in [WEBHOOK.md](./docs/WEBHOOK.md).
 
 ## Requisiti
 
-- Node.js 20+
+- Node.js 22 LTS (`.nvmrc`; `engines` in `package.json` richiede `>=22.12`)
 - npm 10+
 - MySQL 8+ raggiungibile via `DATABASE_URL`
 
@@ -118,28 +126,35 @@ cp .env.example .env
 
 ### Variabili ambiente
 
-| Variabile             | Obbligatoria | Uso                                                                        |
-| --------------------- | ------------ | -------------------------------------------------------------------------- |
-| `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script                           |
-| `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin                                    |
-| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy                    |
-| `LEGACY_APP_HOSTS`    | no           | Lista host legacy separati da virgola da reindirizzare all'origin canonica |
-| `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`                              |
-| `SMTP_HOST`           | no           | Host SMTP per il job riepilogo settimanale presenze                        |
-| `SMTP_PORT`           | no           | Porta SMTP, default `587`                                                  |
-| `SMTP_SECURE`         | no           | Usa TLS diretto SMTP, tipicamente `true` con porta `465`                   |
-| `SMTP_USER`           | no           | Utente SMTP                                                                |
-| `SMTP_PASS`           | no           | Password SMTP                                                              |
-| `MAIL_FROM`           | no           | Mittente delle email automatiche                                           |
-| `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                                             |
-| `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                                             |
-| `SEED_ADMIN_NAME`     | no           | Nome admin seed, default `Administrator`                                   |
+| Variabile             | Obbligatoria | Uso                                                                                          |
+| --------------------- | ------------ | -------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | si           | Connessione MySQL usata da app, Drizzle e script                                             |
+| `JWT_SECRET`          | si           | Firma/verifica cookie di sessione admin                                                      |
+| `PRIMARY_APP_ORIGIN`  | no           | Origin canonica browser, usata per redirect host legacy                                      |
+| `LEGACY_APP_HOSTS`    | no           | Lista host legacy separati da virgola da reindirizzare all'origin canonica                   |
+| `BODY_SIZE_LIMIT`     | no           | Limite body upload; utile per firmware `.bin`                                                |
+| `SMTP_HOST`           | no           | Host SMTP per il job riepilogo settimanale presenze                                          |
+| `SMTP_PORT`           | no           | Porta SMTP, default `587`                                                                    |
+| `SMTP_SECURE`         | no           | Usa TLS diretto SMTP, tipicamente `true` con porta `465`                                     |
+| `SMTP_USER`           | no           | Utente SMTP                                                                                  |
+| `SMTP_PASS`           | no           | Password SMTP                                                                                |
+| `MAIL_FROM`           | no           | Mittente delle email automatiche                                                             |
+| `SEED_ADMIN_EMAIL`    | no           | Richiesta da `npm run db:seed`                                                               |
+| `SEED_ADMIN_PASSWORD` | no           | Richiesta da `npm run db:seed`                                                               |
+| `SEED_ADMIN_NAME`     | no           | Nome admin seed, default `Administrator`                                                     |
+| `DB_BACKUP_DIR`       | no           | Directory dei dump di sicurezza pre-import, default `localfiles/backups`                     |
+| `DB_BACKUP_KEEP`      | no           | Numero di dump di sicurezza pre-import conservati, default `10`                              |
+| `LOG_LEVEL`           | no           | Livello minimo dei log JSON (`debug`, `info`, `warn`, `error`), default `info`               |
+| `ADDRESS_HEADER`      | no           | adapter-node: header da cui leggere l'IP client dietro proxy (es. `X-Forwarded-For`)         |
+| `XFF_DEPTH`           | no           | adapter-node: numero di proxy fidati davanti all'app quando `ADDRESS_HEADER=X-Forwarded-For` |
 
 Note:
 
 - configurazione enrollment API e secret webhook non stanno in `.env`: vengono salvati nella tabella `settings`
 - senza `JWT_SECRET` il login admin e la validazione sessione non funzionano
 - con `PRIMARY_APP_ORIGIN` e `LEGACY_APP_HOSTS` puoi mantenere attivi host secondari, ma forzare il browser a usare il dominio principale
+- IP client (audit log, rate limit del login): l'app usa `event.getClientAddress()` di adapter-node e non legge direttamente `X-Forwarded-For`. Senza `ADDRESS_HEADER` viene usato l'indirizzo della connessione (dietro un proxy, quello del proxy). Dietro un reverse proxy impostare `ADDRESS_HEADER=X-Forwarded-For` e `XFF_DEPTH` pari al numero di proxy fidati (per esempio `1` con un solo ingress): adapter-node prende l'indirizzo in quella posizione contando da destra, quindi un valore falsificato inserito dal client viene ignorato. In alternativa usare un header impostato solo dal proxy (per esempio `ADDRESS_HEADER=X-Real-IP`)
+- i log del server sono righe JSON (`level`, `time`, `scope`, `requestId`, `message`) su stdout/stderr; email, token e campi sensibili vengono redatti. Il `requestId` è restituito anche nell'header `X-Request-ID`
 
 ## Setup locale
 
@@ -212,6 +227,13 @@ npm run dev
 ### Job riepilogo settimanale presenze
 
 Il job puo' essere eseguito ogni giorno: invia email solo il sabato, per la settimana lunedi-venerdi appena conclusa, e salta gli iscritti gia' registrati come inviati in `weekly_attendance_summary_log`.
+
+Prima di ogni invio il job riserva la riga dell'iscritto in `weekly_attendance_summary_log` con
+stato `pending` (vincolo univoco iscritto/settimana) e la aggiorna a `sent` o `error` dopo il
+tentativo: due esecuzioni sovrapposte non inviano due volte lo stesso riepilogo. Le righe in
+`error` vengono ritentate alle esecuzioni successive; una riga rimasta `pending` (processo
+interrotto durante l'invio) non viene ritentata automaticamente, perché la mail potrebbe essere
+già partita: verificarla e, se serve, impostarla a `error` per forzare un nuovo invio.
 
 Esempio crontab:
 
@@ -322,7 +344,13 @@ Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manua
 l'esportazione CSV per intervallo di date o persona. Da entrambe le tabelle si può eliminare
 un singolo ingresso o una singola uscita dopo conferma; `/attendance` mantiene anche
 l'eliminazione multipla. Gli endpoint sono `DELETE /api/v1/attendance` con
-`{ "ids": [id] }` e `DELETE /api/v1/staff-attendance` con `{ "id": id }`.
+`{ "ids": [id] }` (equivalente a `{ "mode": "ids", "ids": [...] }`, massimo 1000 ID) e
+`DELETE /api/v1/staff-attendance` con `{ "id": id }`. Solo gli Amministratori possono inoltre
+eliminare in blocco le presenze corsisti che corrispondono ai filtri della pagina con
+`DELETE /api/v1/attendance` e
+`{ "mode": "filters", "filters": { "from": "AAAA-MM-GG", "to": "AAAA-MM-GG", "subscriber": "...", "device": "..." } }`:
+serve almeno un filtro (la tabella non viene mai svuotata senza condizioni), le date sono giorni
+civili `Europe/Rome` inclusivi e la risposta è `{ "deleted": n }`. Operatori ricevono `403`.
 La pagina `/staff-attendance` e il relativo
 export sono riservati ad Amministratori e Operatori; i Collaboratori consultano le proprie
 presenze da `/my-attendance`. La dashboard mostra le ultime 10 strisciate del Collaboratore;
@@ -388,7 +416,8 @@ Le directory `tests/unit` e `tests/e2e` esistono ma al momento contengono solo p
 
 ## Note operative
 
-- `/status` e `/api/v1/health` eseguono health check con ping DB
+- `/api/v1/health` è l'health check (usato dall'`HEALTHCHECK` del Dockerfile): esegue `SELECT 1` e risponde solo `{ "status": "ok" }` (`200`) o `{ "status": "error" }` (`503`), senza dettagli dell'errore. `/status` resta come alias con la stessa risposta per le probe esistenti
+- migration: `0011_enrollments.sql` e `0011_flowery_korvac.sql` condividono il numero `0011`. Sono già applicate negli ambienti esistenti e non vanno rinominate: Drizzle le distingue tramite il `tag` e l'ordine in `meta/_journal.json`, non dal prefisso numerico. Le nuove migration proseguono la numerazione dopo l'ultima presente
 - le protezioni HTTP (header/CSP) vengono applicate in `src/hooks.server.ts`
 - l'applicazione va eseguita con **una sola replica** (`replicas: 1`): rate limiter, sessioni di scrittura/cancellazione card (`card-writer.ts`), sessioni di pairing NFC (`nfc-pairing.ts`) e cache delle impostazioni sono in memoria di processo. Con piu' repliche una scrittura card o un pairing avviati su un pod fallirebbero se confermati su un altro; per scalare vanno spostati su DB (tabella con TTL) o Redis
 - questo repository non include oggi una configurazione `ddev`; la documentazione operativa e' pensata per esecuzione Node/MySQL standard

@@ -21,149 +21,63 @@
 		DialogTitle
 	} from '$lib/components/ui/dialog';
 	import { enhance } from '$app/forms';
-	import { Pencil, Trash2, Plus, Copy, Check, Usb } from '@lucide/svelte';
+	import { page } from '$app/state';
 	import { browser } from '$app/environment';
-	import { onDestroy } from 'svelte';
-	import { Label } from '$lib/components/ui/label';
+	import { Pencil, Trash2, Plus } from '@lucide/svelte';
 	import { connection, disconnect } from '$lib/stores/webserial.svelte';
-	import { WebSerialProvisioner } from '$lib/utils/webserial-provisioner';
-	import type { ProvisionLogEntry, ProvisionState } from '$lib/utils/webserial-provisioner';
 	import { formatDateTimeIT } from '$lib/utils/date.js';
+	import { DEVICE_TYPE } from '$lib/labels';
+	import DeviceFormDialog from './DeviceFormDialog.svelte';
+	import DeviceTokenDialog from './DeviceTokenDialog.svelte';
+	import DeviceProvisionerDialog from './DeviceProvisionerDialog.svelte';
 
 	let { data, form } = $props();
 
-	// State dialogs
-	let createDialogOpen = $state(false);
-	let editDevice = $state<(typeof data.devices)[0] | null>(null);
-	let editDialogOpen = $state(false);
-	let deleteDevice = $state<(typeof data.devices)[0] | null>(null);
-	let deleteDialogOpen = $state(false);
-	let showTokenDialog = $state(false);
-	let copiedToken = $state(false);
+	type Device = (typeof data.devices)[number];
 
-	// Form data
-	let newDeviceId = $state('');
-	let newDeviceType = $state<'reader' | 'writer'>('reader');
-	let newLocation = $state('');
-
-	// Provisioner
 	const serialSupported = browser && 'serial' in navigator;
-	let showProvisionerDialog = $state(false);
-	let provisioner: WebSerialProvisioner | null = null;
-	let provisionState = $state<ProvisionState>('idle');
-	let provisionLogs = $state<ProvisionLogEntry[]>([]);
-	let provisionLogContainer = $state<HTMLElement | null>(null);
-	// Salviamo i dati del device al momento della creazione (form sparisce alla chiusura dialog)
-	let provisionDeviceId = $state('');
-	let provisionToken = $state('');
-	let copiedDeviceId = $state(false);
-	let copiedApiUrl = $state(false);
+	const apiUrl = $derived(page.url.origin);
 
-	$effect(() => {
-		if (provisionLogs.length > 0 && provisionLogContainer) {
-			provisionLogContainer.scrollTop = provisionLogContainer.scrollHeight;
-		}
-	});
+	let createDialogOpen = $state(false);
+	let editDevice = $state<Device | null>(null);
+	let editDialogOpen = $state(false);
+	let deleteDevice = $state<Device | null>(null);
+	let deleteDialogOpen = $state(false);
+	let provisionerOpen = $state(false);
 
-	// Show token dialog when device is created
-	$effect(() => {
-		if (form?.action === 'create' && form?.success && form?.token) {
-			createDialogOpen = false;
-			showTokenDialog = true;
-			provisionDeviceId = form.deviceId ?? '';
-			provisionToken = form.token;
-			// Reset form
-			newDeviceId = '';
-			newLocation = '';
-		}
-	});
+	// Il token viene restituito una sola volta dall'azione `create`: il dialog si apre a ogni
+	// nuova registrazione riuscita e l'utente può chiuderlo.
+	const created = $derived(
+		form?.action === 'create' && form.success && form.token
+			? { deviceId: form.deviceId ?? '', token: form.token }
+			: null
+	);
+	let tokenDialogOpen = $derived(created !== null);
 
-	function copyToken() {
-		if (browser && provisionToken) {
-			navigator.clipboard.writeText(provisionToken);
-			copiedToken = true;
-			setTimeout(() => (copiedToken = false), 2000);
-		}
-	}
-
-	function copyDeviceId() {
-		if (browser && provisionDeviceId) {
-			navigator.clipboard.writeText(provisionDeviceId);
-			copiedDeviceId = true;
-			setTimeout(() => (copiedDeviceId = false), 2000);
-		}
-	}
-
-	function copyApiUrl() {
-		if (browser) {
-			navigator.clipboard.writeText(window.location.origin);
-			copiedApiUrl = true;
-			setTimeout(() => (copiedApiUrl = false), 2000);
-		}
-	}
-
-	function copyProvisionCommand() {
-		if (browser && provisionDeviceId && provisionToken) {
-			const cmd = `PROVISION:${provisionDeviceId},${provisionToken},${window.location.origin}`;
-			navigator.clipboard.writeText(cmd);
-			copiedToken = true;
-			setTimeout(() => (copiedToken = false), 2000);
-		}
-	}
+	const actionError = (action: string) =>
+		form && 'error' in form && form.action === action ? (form.error ?? null) : null;
 
 	async function openProvisioner() {
-		showTokenDialog = false;
-		provisionLogs = [];
-		provisionState = 'idle';
-
-		// Il provisioner apre la propria connessione dedicata.
-		// Se lo store globale ha la porta aperta dobbiamo chiuderla prima
-		// perché Web Serial non consente due connessioni simultanee alla stessa porta.
-		if (connection.state === 'connected') {
-			await disconnect();
-		}
-
-		showProvisionerDialog = true;
-
-		provisioner = new WebSerialProvisioner();
-		provisioner.onState((s) => {
-			provisionState = s;
-		});
-		provisioner.onLog((entry) => {
-			provisionLogs = [...provisionLogs.slice(-999), entry];
-		});
-
-		const origin = browser ? window.location.origin : '';
-		await provisioner.start(provisionDeviceId, provisionToken, origin);
+		tokenDialogOpen = false;
+		// Web Serial non consente due connessioni alla stessa porta: il provisioner apre la
+		// propria, quindi chiudiamo prima quella della toolbar.
+		if (connection.state === 'connected') await disconnect();
+		provisionerOpen = true;
 	}
-
-	async function sendProvisionNow() {
-		await provisioner?.sendNow();
-	}
-
-	async function closeProvisioner() {
-		await provisioner?.cancel();
-		provisioner = null;
-		showProvisionerDialog = false;
-	}
-
-	onDestroy(() => {
-		provisioner?.cancel();
-	});
 
 	function formatDate(date: Date | null) {
 		if (!date) return 'Mai';
 		return formatDateTimeIT(date, { seconds: true });
 	}
 
-	function openEdit(device: (typeof data.devices)[0]) {
+	function openEdit(device: Device) {
 		editDevice = device;
 		editDialogOpen = true;
 	}
 
-	function buildListUrl(page: number): string {
+	function buildListUrl(pageNumber: number): string {
 		const params = new URLSearchParams();
-		if (page > 1) params.set('page', String(page));
+		if (pageNumber > 1) params.set('page', String(pageNumber));
 		if (data.q) params.set('q', data.q);
 		return params.size ? `?${params}` : '?';
 	}
@@ -174,26 +88,28 @@
 		title="Dispositivi"
 		description="Gestisci i lettori delle presenze e i dispositivi per scrivere le tessere. Controlla lo stato e autorizza nuovi dispositivi."
 	>
-		<Button onclick={() => (createDialogOpen = true)}
-			><Plus size={16} class="mr-2" /> Registra dispositivo</Button
+		<Button onclick={() => (createDialogOpen = true)} data-tutorial="device.create"
+			><Plus size={16} aria-hidden="true" /> Registra dispositivo</Button
 		>
 	</PageHeader>
 
-	<!-- Filters -->
-	<form method="GET" class="filter-panel">
+	<form method="GET" class="filter-panel" data-sveltekit-keepfocus>
 		<label class="grid min-w-0 flex-1 gap-1.5 text-sm font-medium">
 			Cerca dispositivi
 			<Input
+				type="search"
 				name="q"
 				placeholder="Cerca ID dispositivo o posizione..."
 				value={data.q}
 				class="w-full"
 			/>
 		</label>
-		<Button type="submit" variant="outline">Filtra</Button>
+		<Button type="submit" variant="outline" data-tutorial="filter.apply">Filtra</Button>
+		{#if data.q}
+			<Button href="/devices" variant="ghost" data-tutorial="filter.reset">Azzera</Button>
+		{/if}
 	</form>
 
-	<!-- Table -->
 	<TablePanel>
 		<Table embedded>
 			<TableHeader>
@@ -208,31 +124,32 @@
 				</TableRow>
 			</TableHeader>
 			<TableBody>
-				{#each data.devices as device}
+				{#each data.devices as device (device.id)}
+					{@const type = DEVICE_TYPE[device.deviceType]}
 					<TableRow>
 						<TableCell class="font-mono text-sm">{device.deviceId}</TableCell>
 						<TableCell>
-							<Badge variant={device.deviceType === 'reader' ? 'default' : 'secondary'}>
-								{device.deviceType}
-							</Badge>
+							<Badge variant={type?.variant ?? 'outline'}>{type?.label ?? device.deviceType}</Badge>
 						</TableCell>
 						<TableCell>{device.location || '—'}</TableCell>
 						<TableCell>
-							{#if device.active}
-								<span class="inline-flex items-center gap-1.5">
-									<span class="h-2 w-2 rounded-full bg-green-500"></span>
-									<span class="text-sm text-green-700">Attivo</span>
-								</span>
-							{:else}
-								<span class="inline-flex items-center gap-1.5">
-									<span class="h-2 w-2 rounded-full bg-gray-400"></span>
-									<span class="text-sm text-gray-600">Disabilitato</span>
-								</span>
-							{/if}
+							<span class="inline-flex items-center gap-1.5">
+								<span
+									class="h-2 w-2 rounded-full {device.active ? 'bg-green-500' : 'bg-slate-400'}"
+									aria-hidden="true"
+								></span>
+								<span class="text-sm {device.active ? 'text-green-700' : 'text-muted-foreground'}"
+									>{device.active ? 'Attivo' : 'Disabilitato'}</span
+								>
+							</span>
 						</TableCell>
-						<TableCell class="text-sm text-gray-600">{formatDate(device.lastPing)}</TableCell>
-						<TableCell class="text-sm text-gray-600">{device.firmwareVersion || '—'}</TableCell>
-						<TableCell class="w-px whitespace-nowrap text-right">
+						<TableCell class="text-sm text-muted-foreground"
+							>{formatDate(device.lastPing)}</TableCell
+						>
+						<TableCell class="text-sm text-muted-foreground"
+							>{device.firmwareVersion || '—'}</TableCell
+						>
+						<TableCell class="w-px text-right whitespace-nowrap">
 							<div class="flex items-center justify-end gap-1">
 								<Button
 									size="icon-sm"
@@ -240,9 +157,9 @@
 									onclick={() => openEdit(device)}
 									aria-label={`Modifica ${device.deviceId}`}
 									data-tutorial-title={`Modifica ${device.deviceId}`}
-									data-tutorial-description="Apre il modulo per aggiornare tipo, posizione e stato del dispositivo."
+									data-tutorial-description="Apre il modulo per cambiare la posizione o lo stato operativo di questo dispositivo."
 								>
-									<Pencil size={16} />
+									<Pencil size={16} aria-hidden="true" />
 								</Button>
 								<Button
 									size="icon-sm"
@@ -255,7 +172,7 @@
 									data-tutorial-title={`Elimina ${device.deviceId}`}
 									data-tutorial-description="Apre la conferma per eliminare questo dispositivo e revocarne l’accesso."
 								>
-									<Trash2 size={16} />
+									<Trash2 size={16} aria-hidden="true" />
 								</Button>
 							</div>
 						</TableCell>
@@ -264,7 +181,11 @@
 					<TableRow>
 						<TableCell colspan={7} data-empty>
 							Nessun dispositivo registrato.
-							<Button variant="link" onclick={() => (createDialogOpen = true)}
+							<Button
+								variant="link"
+								onclick={() => (createDialogOpen = true)}
+								data-tutorial-title="Registrane uno ora"
+								data-tutorial-description="Apre il modulo per autorizzare il primo dispositivo e generare le sue credenziali."
 								>Registrane uno ora</Button
 							>
 						</TableCell>
@@ -283,322 +204,34 @@
 	</TablePanel>
 </div>
 
-<!-- Create Dialog -->
-<Dialog bind:open={createDialogOpen}>
-	<DialogContent class="sm:max-w-md">
-		<DialogHeader>
-			<DialogTitle>Registra nuovo dispositivo</DialogTitle>
-		</DialogHeader>
-		<form method="POST" action="?/create" use:enhance class="space-y-4">
-			<div class="space-y-2">
-				<Label for="create-device-id" class="text-sm font-medium">ID dispositivo</Label>
-				<Input
-					id="create-device-id"
-					name="deviceId"
-					placeholder="e.g., reader_entrata"
-					bind:value={newDeviceId}
-					required
-					pattern="[a-zA-Z0-9_-]+"
-					title="Sono consentiti solo lettere, numeri, underscore e trattini"
-				/>
-				<p class="text-xs text-gray-500">
-					Identificatore univoco. Usa solo lettere, numeri, underscore e trattini.
-				</p>
-			</div>
+<DeviceFormDialog bind:open={createDialogOpen} error={actionError('create')} />
 
-			<div class="space-y-2">
-				<Label for="create-device-type" class="text-sm font-medium">Tipo dispositivo</Label>
-				<select
-					id="create-device-type"
-					name="deviceType"
-					bind:value={newDeviceType}
-					class="w-full rounded border px-3 py-2 text-sm"
-				>
-					<option value="reader">Reader (rilevazione presenze)</option>
-					<option value="writer">Writer (programmazione card)</option>
-				</select>
-			</div>
+{#if editDevice}
+	{#key editDevice.id}
+		<DeviceFormDialog
+			bind:open={editDialogOpen}
+			device={editDevice}
+			error={actionError('update')}
+		/>
+	{/key}
+{/if}
 
-			<div class="space-y-2">
-				<Label for="create-device-location" class="text-sm font-medium">
-					Posizione (opzionale)
-				</Label>
-				<Input
-					id="create-device-location"
-					name="location"
-					placeholder="e.g., Ingresso principale"
-					bind:value={newLocation}
-				/>
-			</div>
+<DeviceTokenDialog
+	bind:open={tokenDialogOpen}
+	deviceId={created?.deviceId ?? ''}
+	token={created?.token ?? ''}
+	{apiUrl}
+	{serialSupported}
+	onProvision={openProvisioner}
+/>
 
-			{#if form?.error && form?.action === 'create'}
-				<p class="text-sm text-red-600">{form.error}</p>
-			{/if}
+<DeviceProvisionerDialog
+	bind:open={provisionerOpen}
+	deviceId={created?.deviceId ?? ''}
+	token={created?.token ?? ''}
+	{apiUrl}
+/>
 
-			<DialogFooter>
-				<Button type="button" variant="outline" onclick={() => (createDialogOpen = false)}
-					>Annulla</Button
-				>
-				<Button type="submit">Registra dispositivo</Button>
-			</DialogFooter>
-		</form>
-	</DialogContent>
-</Dialog>
-
-<!-- Show Token Dialog (one-time only!) -->
-<Dialog bind:open={showTokenDialog}>
-	<DialogContent class="sm:max-w-lg">
-		<DialogHeader>
-			<DialogTitle>Dispositivo registrato</DialogTitle>
-		</DialogHeader>
-		<div class="space-y-4">
-			<div class="rounded-md border border-amber-200 bg-amber-50 p-4">
-				<p class="text-sm font-medium text-amber-800">
-					Copia il token ora — non verrà mostrato di nuovo.
-				</p>
-			</div>
-
-			{#if provisionToken}
-				<div class="space-y-2">
-					<p class="text-sm font-medium">Token dispositivo (JWT)</p>
-					<div class="flex gap-2">
-						<code class="flex-1 overflow-x-auto rounded bg-gray-100 px-3 py-2 text-xs break-all">
-							{provisionToken}
-						</code>
-						<Button variant="outline" size="sm" onclick={copyToken}>
-							{#if copiedToken}
-								<Check size={16} />
-							{:else}
-								<Copy size={16} />
-							{/if}
-						</Button>
-					</div>
-				</div>
-
-				<!-- Primary: captive portal provisioning -->
-				<div class="rounded-md border border-green-200 bg-green-50 p-4 space-y-3">
-					<p class="text-sm font-semibold text-green-900">
-						Configura il dispositivo via captive portal
-					</p>
-					<ol class="text-sm text-green-800 list-decimal list-inside space-y-1">
-						<li>Accendi il dispositivo (premi RESET o collega l’alimentazione)</li>
-						<li>
-							Sul telefono o PC connettiti al WiFi <code class="rounded bg-white/70 px-1 text-xs"
-								>reader-XXXXXX</code
-							> visibile nelle reti disponibili
-						</li>
-						<li>
-							Si apre il browser — oppure vai a <code class="rounded bg-white/70 px-1 text-xs"
-								>192.168.4.1</code
-							>
-						</li>
-						<li>Inserisci le credenziali WiFi e i campi sottostanti, poi clicca <em>Save</em></li>
-					</ol>
-					<div class="rounded bg-white/70 p-2 space-y-2">
-						<div class="flex items-center gap-2">
-							<span class="w-24 shrink-0 text-xs text-green-700">ID dispositivo:</span>
-							<code class="flex-1 break-all text-xs">{provisionDeviceId}</code>
-							<Button variant="ghost" size="sm" class="h-6 w-6 p-0" onclick={copyDeviceId}>
-								{#if copiedDeviceId}<Check size={12} />{:else}<Copy size={12} />{/if}
-							</Button>
-						</div>
-						<div class="flex items-center gap-2">
-							<span class="w-24 shrink-0 text-xs text-green-700">JWT Token:</span>
-							<span class="flex-1 text-xs italic text-gray-500">← copia dal campo sopra</span>
-						</div>
-						<div class="flex items-center gap-2">
-							<span class="w-24 shrink-0 text-xs text-green-700">API Base URL:</span>
-							<code class="flex-1 break-all text-xs">{browser ? window.location.origin : ''}</code>
-							<Button variant="ghost" size="sm" class="h-6 w-6 p-0" onclick={copyApiUrl}>
-								{#if copiedApiUrl}<Check size={12} />{:else}<Copy size={12} />{/if}
-							</Button>
-						</div>
-					</div>
-				</div>
-
-				<!-- Secondary: USB / serial provisioning (advanced) -->
-				<details class="rounded-md border border-gray-200 text-sm">
-					<summary class="cursor-pointer select-none px-3 py-2 text-gray-500"
-						>Configurazione via USB / seriale (avanzata)</summary
-					>
-					<div class="space-y-2 border-t border-gray-100 px-3 pb-3 pt-2">
-						{#if serialSupported}
-							<p class="text-xs text-gray-600">
-								Collega il dispositivo via USB e clicca il bottone, poi resetta:
-							</p>
-							<Button size="sm" onclick={openProvisioner}>
-								<Usb size={14} class="mr-1" /> Configurazione automatica via USB
-							</Button>
-						{:else}
-							<p class="text-xs text-gray-600">
-								Connetti via seriale (115200 baud), resetta e incolla entro 3 s:
-							</p>
-						{/if}
-						<div class="flex gap-2">
-							<code class="flex-1 overflow-x-auto rounded bg-gray-100 px-2 py-1.5 text-xs break-all"
-								>PROVISION:{provisionDeviceId},{provisionToken},{browser
-									? window.location.origin
-									: ''}</code
-							>
-							<Button variant="outline" size="sm" onclick={copyProvisionCommand}>
-								{#if copiedToken}<Check size={14} />{:else}<Copy size={14} />{/if}
-							</Button>
-						</div>
-					</div>
-				</details>
-			{/if}
-
-			<DialogFooter>
-				<Button onclick={() => (showTokenDialog = false)}>Chiudi</Button>
-			</DialogFooter>
-		</div>
-	</DialogContent>
-</Dialog>
-
-<!-- Provisioner Dialog -->
-<Dialog bind:open={showProvisionerDialog}>
-	<DialogContent class="sm:max-w-xl">
-		<DialogHeader>
-			<DialogTitle>Configurazione via USB — {provisionDeviceId}</DialogTitle>
-		</DialogHeader>
-		<div class="space-y-4">
-			<!-- Stato connessione -->
-			{#if provisionState === 'connecting'}
-				<div
-					class="flex items-center gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-4 py-3"
-				>
-					<span class="inline-block h-2 w-2 animate-pulse rounded-full bg-yellow-400"></span>
-					<span class="text-sm text-yellow-800">Seleziona la porta nel picker del browser...</span>
-				</div>
-			{:else if provisionState === 'success'}
-				<div
-					class="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800"
-				>
-					Configurazione completata. Il dispositivo si sta riavviando e si connetterà al WiFi.
-				</div>
-			{:else if provisionState === 'error'}
-				<div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-					<p class="font-medium">Errore o timeout durante il provisioning.</p>
-					<p class="mt-1">
-						Controlla il log seriale. Se il reader mostra l'AP WiFi (<code
-							>reader-{provisionDeviceId}</code
-						>) o "OFFLINE" sul display, il provisioning è andato a buon fine — connettiti all'AP e
-						configura il WiFi tramite il captive portal.
-					</p>
-				</div>
-			{:else if provisionState === 'listening'}
-				<div class="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
-					<span class="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-400"></span>
-					<span class="text-sm text-blue-800">
-						In ascolto... <strong>Resetta il dispositivo</strong> premendo il tasto RESET sull'ESP.
-					</span>
-				</div>
-			{:else if provisionState === 'sending'}
-				<div class="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
-					<span class="inline-block h-2 w-2 animate-pulse rounded-full bg-blue-600"></span>
-					<span class="text-sm text-blue-800">Comando inviato, in attesa di conferma...</span>
-				</div>
-			{/if}
-
-			<!-- Log terminale -->
-			<div class="space-y-1">
-				<div class="flex items-center justify-between">
-					<span class="text-xs font-medium text-gray-600">Log seriale</span>
-					{#if provisionState === 'listening' || provisionState === 'sending'}
-						<Button
-							size="sm"
-							variant="outline"
-							onclick={sendProvisionNow}
-							disabled={provisionState === 'sending'}
-						>
-							Invia ora
-						</Button>
-					{/if}
-				</div>
-				<div
-					bind:this={provisionLogContainer}
-					class="h-60 overflow-y-auto rounded bg-gray-900 p-3 font-mono text-xs"
-				>
-					{#if provisionLogs.length === 0}
-						<span class="text-gray-500 italic">In attesa di output dal dispositivo...</span>
-					{:else}
-						{#each provisionLogs as entry (entry.time + entry.text)}
-							<div
-								class={entry.type === 'tx'
-									? 'text-yellow-400'
-									: entry.type === 'success'
-										? 'text-green-400 font-semibold'
-										: entry.type === 'error'
-											? 'text-red-400'
-											: entry.type === 'info'
-												? 'text-blue-300'
-												: 'text-green-400'}
-							>
-								<span class="text-gray-500">{entry.time}</span>
-								{' '}{entry.text}
-							</div>
-						{/each}
-					{/if}
-				</div>
-			</div>
-		</div>
-		<DialogFooter>
-			<Button variant="outline" onclick={closeProvisioner}>
-				{provisionState === 'success' ? 'Fatto' : 'Annulla'}
-			</Button>
-		</DialogFooter>
-	</DialogContent>
-</Dialog>
-
-<!-- Edit Dialog -->
-<Dialog bind:open={editDialogOpen}>
-	<DialogContent class="sm:max-w-md">
-		<DialogHeader>
-			<DialogTitle>Modifica dispositivo</DialogTitle>
-		</DialogHeader>
-		{#if editDevice}
-			<form method="POST" action="?/update" use:enhance class="space-y-4">
-				<input type="hidden" name="id" value={editDevice.id} />
-
-				<div class="space-y-2">
-					<Label for="edit-device-id" class="text-sm font-medium">ID dispositivo</Label>
-					<Input id="edit-device-id" value={editDevice.deviceId} disabled class="bg-gray-100" />
-					<p class="text-xs text-gray-500">L’ID dispositivo non può essere modificato.</p>
-				</div>
-
-				<div class="space-y-2">
-					<Label for="edit-device-location" class="text-sm font-medium">Posizione</Label>
-					<Input id="edit-device-location" name="location" value={editDevice.location || ''} />
-				</div>
-
-				<div class="space-y-2">
-					<Label for="edit-device-active" class="text-sm font-medium">Stato</Label>
-					<select
-						id="edit-device-active"
-						name="active"
-						class="w-full rounded border px-3 py-2 text-sm"
-					>
-						<option value="true" selected={editDevice.active}>Attivo</option>
-						<option value="false" selected={!editDevice.active}>Disabilitato</option>
-					</select>
-				</div>
-
-				{#if form?.error && form?.action === 'update'}
-					<p class="text-sm text-red-600">{form.error}</p>
-				{/if}
-
-				<DialogFooter>
-					<Button type="button" variant="outline" onclick={() => (editDialogOpen = false)}
-						>Annulla</Button
-					>
-					<Button type="submit">Salva modifiche</Button>
-				</DialogFooter>
-			</form>
-		{/if}
-	</DialogContent>
-</Dialog>
-
-<!-- Delete Dialog -->
 <Dialog bind:open={deleteDialogOpen}>
 	<DialogContent>
 		<DialogHeader>
@@ -607,26 +240,30 @@
 		<p>
 			Sei sicuro di voler eliminare il dispositivo <strong>{deleteDevice?.deviceId}</strong>?
 		</p>
-		<p class="text-sm text-gray-600">
+		<p class="text-sm text-muted-foreground">
 			L’accesso del dispositivo verrà revocato in modo permanente. Per tornare operativo dovrà
 			essere registrato di nuovo.
 		</p>
-		{#if form?.error && form?.action === 'delete'}
-			<p class="text-sm text-red-600">{form.error}</p>
+		{#if actionError('delete')}
+			<p class="text-sm text-red-600" role="alert">{actionError('delete')}</p>
 		{/if}
 		<DialogFooter>
-			<Button variant="outline" onclick={() => (deleteDialogOpen = false)}>Annulla</Button>
+			<Button
+				variant="outline"
+				onclick={() => (deleteDialogOpen = false)}
+				data-tutorial="dialog.cancel">Annulla</Button
+			>
 			<form
 				method="POST"
 				action="?/delete"
 				use:enhance={() =>
-					({ update }) => {
-						update();
-						deleteDialogOpen = false;
+					async ({ result, update }) => {
+						await update();
+						if (result.type === 'success') deleteDialogOpen = false;
 					}}
 			>
 				<input type="hidden" name="id" value={deleteDevice?.id} />
-				<Button type="submit" variant="destructive">Elimina</Button>
+				<Button type="submit" variant="destructive" data-tutorial="item.delete">Elimina</Button>
 			</form>
 		</DialogFooter>
 	</DialogContent>

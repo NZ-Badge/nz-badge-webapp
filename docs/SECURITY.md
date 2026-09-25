@@ -106,6 +106,23 @@ un'azione di dominio in `UPPER_SNAKE` (`CARD_ENABLE`, `CARD_DISABLE`, `CARD_REST
 (`subscriber`, `card`, `attendance`, `user`, `setting`, …). Le righe storiche possono ancora
 contenere i vecchi valori `subscriber_create`/`subscribers`, `card_enable`/`card_rfid`.
 
+`audit_log` non ha una colonna dedicata ai metadati: il campo `metadata` di `logAudit` viene
+salvato in `data_after.metadata`, con la stessa sanificazione (campi sensibili `[REDACTED]`,
+email e UID mascherati). L'indirizzo IP e' quello restituito da `event.getClientAddress()`
+(adapter-node): dietro un reverse proxy configurare `ADDRESS_HEADER`/`XFF_DEPTH` (vedi README),
+altrimenti viene registrato l'indirizzo del proxy; `X-Forwarded-For` non viene mai letto
+direttamente.
+
+## Log applicativi
+
+I log del server sono righe JSON prodotte da `src/lib/server/logger.ts` (`level`, `time`,
+`scope`, `requestId`, `message` e campi aggiuntivi). Prima della scrittura i campi con nomi
+sensibili (password, token, secret, cookie, authorization, chiavi) diventano `[REDACTED]`, i
+campi email vengono sostituiti da `[EMAIL]` ed email, bearer token, JWT e stringhe esadecimali
+lunghe nel testo libero vengono mascherati; gli errori sono ridotti a nome, messaggio e stack
+sanificati. I payload delle richieste non vengono registrati. Il `requestId`, generato per ogni
+richiesta in `hooks.server.ts`, e' restituito anche nell'header `X-Request-ID`.
+
 La copertura non e' uniforme su ogni endpoint del progetto, quindi va considerata parziale e orientata ai flussi piu' critici.
 
 ## Rate limiting
@@ -139,6 +156,6 @@ Questo consente rotazione via UI, ma implica che la protezione del database e de
 ## Limiti da conoscere
 
 - il documento non rivendica conformita' HIPAA/GDPR o certificazioni analoghe
-- le policy password lato API utenti sono minime: lunghezza 8 caratteri
+- la policy password degli utenti di sistema e' minima: 8-100 caratteri, definita una sola volta in `passwordSchema` (`src/lib/utils/validation.ts`) e usata dalle API utenti; il form admin applica lo stesso minimo
 - il rate limiting non e' centralizzato
 - la sicurezza operativa dipende anche da reverse proxy, TLS, backup e gestione segreti esterni al repository

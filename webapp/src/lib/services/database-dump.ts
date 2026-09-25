@@ -9,7 +9,7 @@
 
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -17,6 +17,10 @@ import { createGzip, type Gzip } from 'node:zlib';
 
 /** Directory di default dei dump di sicurezza: `localfiles/` e' gia' scrivibile (firmware). */
 export const DEFAULT_BACKUP_DIR = join('localfiles', 'backups');
+/** Numero di dump di sicurezza conservati se `DB_BACKUP_KEEP` non e' impostata. */
+export const DEFAULT_BACKUP_KEEP = 10;
+/** Prefisso dei dump di sicurezza creati prima di un import. */
+export const PRE_IMPORT_DUMP_PREFIX = 'nz-badge-pre-import';
 
 export class DatabaseDumpError extends Error {
 	constructor(message: string) {
@@ -129,7 +133,7 @@ export function resolveBackupDir(configured: string | undefined): string {
 export async function saveDatabaseDump(
 	config: DatabaseConnectionConfig,
 	directory: string,
-	prefix = 'nz-badge-pre-import'
+	prefix = PRE_IMPORT_DUMP_PREFIX
 ): Promise<string> {
 	await mkdir(directory, { recursive: true, mode: 0o700 });
 	const path = join(directory, `${prefix}-${dumpTimestamp()}.sql.gz`);
@@ -142,4 +146,30 @@ export async function saveDatabaseDump(
 		await rm(path, { force: true });
 		throw err;
 	}
+}
+
+/** `DB_BACKUP_KEEP` come intero positivo; valori assenti o non validi usano il default. */
+export function resolveBackupKeep(configured: string | undefined): number {
+	const value = Number(configured?.trim());
+	return Number.isInteger(value) && value >= 1 ? value : DEFAULT_BACKUP_KEEP;
+}
+
+/**
+ * Conserva solo gli ultimi `keep` dump con il prefisso indicato in `directory` e rimuove
+ * i piu' vecchi. Il timestamp ISO nel nome rende l'ordinamento lessicografico cronologico.
+ * Restituisce i nomi dei file rimossi.
+ */
+export async function pruneDatabaseDumps(
+	directory: string,
+	keep: number,
+	prefix = PRE_IMPORT_DUMP_PREFIX
+): Promise<string[]> {
+	const dumps = (await readdir(directory))
+		.filter((name) => name.startsWith(`${prefix}-`) && name.endsWith('.sql.gz'))
+		.sort();
+	const stale = dumps.slice(0, Math.max(0, dumps.length - Math.max(1, keep)));
+	for (const name of stale) {
+		await rm(join(directory, name), { force: true });
+	}
+	return stale;
 }

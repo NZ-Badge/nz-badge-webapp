@@ -8,12 +8,30 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { createGunzip } from 'node:zlib';
 import { env } from '$env/dynamic/private';
-import { json } from '@sveltejs/kit';
-import { AuthError, requireAdmin } from '$lib/services/auth';
+import { requireAdmin } from '$lib/services/auth';
 import { invalidateSettingsCache } from '$lib/services/settings';
 import { logAudit } from '$lib/services/audit';
-import { parseDatabaseUrl, resolveBackupDir, saveDatabaseDump } from '$lib/services/database-dump';
+import {
+	parseDatabaseUrl,
+	pruneDatabaseDumps,
+	resolveBackupDir,
+	resolveBackupKeep,
+	saveDatabaseDump
+} from '$lib/services/database-dump';
+import {
+	badRequest,
+	conflict,
+	forbidden,
+	noStore,
+	ok,
+	payloadTooLarge,
+	serverError,
+	withAuth
+} from '$lib/utils/api';
+import { createLogger } from '$lib/server/logger';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('admin/maintenance/import');
 
 const MAX_COMPRESSED_BYTES = 100 * 1024 * 1024;
 const MAX_SQL_BYTES = 1024 * 1024 * 1024;
@@ -93,51 +111,42 @@ async function verifyDumpDatabase(path: string, database: string) {
 }
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
-	let userId: number | undefined;
-	try {
-		const user = await locals.verifyStaffOrAdmin();
-		requireAdmin(user);
-		userId = user.id;
-	} catch (err) {
-		if (err instanceof AuthError) {
-			return json(
-				{ error: 'Accesso non consentito' },
-				{ status: err.code === 'FORBIDDEN' ? 403 : 401 }
-			);
-		}
-		throw err;
-	}
+	const user = await withAuth(async () => {
+		const current = await locals.verifyStaffOrAdmin();
+		requireAdmin(current);
+		return current;
+	});
+	if (user instanceof Response) return user;
 
 	if (
 		request.headers.get('origin') !== url.origin ||
 		request.headers.get('x-confirm-replace') !== 'SOVRASCRIVI'
 	) {
-		return json({ error: 'Conferma non valida' }, { status: 403 });
+		return forbidden('Conferma non valida');
 	}
 	if (request.headers.get('content-type') !== 'application/gzip' || !request.body) {
-		return json({ error: 'Seleziona un backup .sql.gz valido' }, { status: 400 });
+		return badRequest('Seleziona un backup .sql.gz valido');
 	}
 	const length = Number(request.headers.get('content-length'));
 	if (length > MAX_COMPRESSED_BYTES) {
-		return json({ error: 'Il backup supera il limite di 100 MB' }, { status: 413 });
+		return payloadTooLarge('Il backup supera il limite di 100 MB');
 	}
 
 	let config: ReturnType<typeof databaseConfig>;
 	try {
 		config = databaseConfig();
 	} catch {
-		return json({ error: 'Importazione non disponibile' }, { status: 500 });
+		return serverError('Importazione non disponibile');
 	}
 
 	if (importInProgress) {
-		return json(
-			{ error: 'Un’importazione è già in corso. Attendi che termini prima di riprovare.' },
-			{ status: 409, headers: { 'Cache-Control': 'no-store' } }
+		return noStore(
+			conflict('Un’importazione è già in corso. Attendi che termini prima di riprovare.')
 		);
 	}
 	importInProgress = true;
 	try {
-		return await importBackup(config, request.body, userId);
+		return await importBackup(config, request.body, user.id);
 	} finally {
 		importInProgress = false;
 	}
@@ -182,24 +191,21 @@ async function importBackup(
 		await runMysql([...config.args, '--execute', 'SELECT 1;'], config.env);
 
 		// Safety dump of the current database: without it the import does not go ahead.
+		const backupDir = resolveBackupDir(env.DB_BACKUP_DIR);
 		try {
-			safetyBackupPath = await saveDatabaseDump(
-				config.connection,
-				resolveBackupDir(env.DB_BACKUP_DIR)
-			);
+			safetyBackupPath = await saveDatabaseDump(config.connection, backupDir);
 		} catch (err) {
-			console.error(
-				'[DB IMPORT] Safety backup failed:',
-				err instanceof Error ? err.message : 'unknown error'
-			);
-			return json(
-				{
-					error:
-						'Impossibile creare il backup di sicurezza del database attuale. Nessun dato è stato modificato.'
-				},
-				{ status: 500, headers: { 'Cache-Control': 'no-store' } }
+			log.error('Safety backup failed', { err });
+			return noStore(
+				serverError(
+					'Impossibile creare il backup di sicurezza del database attuale. Nessun dato è stato modificato.'
+				)
 			);
 		}
+		// Retention: keep only the newest DB_BACKUP_KEEP safety dumps (never the one just made).
+		await pruneDatabaseDumps(backupDir, resolveBackupKeep(env.DB_BACKUP_KEEP)).catch(
+			(err: unknown) => log.warn('Pruning old safety backups failed', { err })
+		);
 
 		// DDL is not transactional in MySQL. The verified archive is ready before this point.
 		replacing = true;
@@ -209,17 +215,21 @@ async function importBackup(
 		invalidateSettingsCache();
 		// Written after the import, so the entry lives in the restored audit_log.
 		await logImportAudit(userId, true, safetyBackupPath);
-		return json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
+		return noStore(ok({ imported: true }));
 	} catch (err) {
-		console.error('[DB IMPORT] Failed:', err instanceof Error ? err.message : 'unknown error');
-		if (replacing) await logImportAudit(userId, false, safetyBackupPath);
-		return json(
-			{
-				error: replacing
-					? 'Importazione fallita. Il database potrebbe essere incompleto: ripristina un backup valido prima di usare l’app.'
-					: 'Backup non valido o non compatibile con questo database. Nessun dato è stato modificato.'
-			},
-			{ status: replacing ? 500 : 400, headers: { 'Cache-Control': 'no-store' } }
+		log.error('Database import failed', { err, replacing });
+		if (replacing) {
+			await logImportAudit(userId, false, safetyBackupPath);
+			return noStore(
+				serverError(
+					'Importazione fallita. Il database potrebbe essere incompleto: ripristina un backup valido prima di usare l’app.'
+				)
+			);
+		}
+		return noStore(
+			badRequest(
+				'Backup non valido o non compatibile con questo database. Nessun dato è stato modificato.'
+			)
 		);
 	} finally {
 		await rm(directory, { recursive: true, force: true });

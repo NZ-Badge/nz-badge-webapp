@@ -3,6 +3,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { cardRfid, subscribers, users } from '$lib/db/schema';
 import { ok, badRequest, serverError, authErrorResponse } from '$lib/utils/api';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/card/lookup');
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
@@ -13,7 +16,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 
 	const uid = event.url.searchParams.get('uid');
 	if (!uid || uid.trim() === '') {
-		return badRequest('uid required');
+		return badRequest('UID obbligatorio');
 	}
 
 	try {
@@ -56,7 +59,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 				: null
 		});
 	} catch (err) {
-		console.error('[card/lookup] GET error:', err);
+		log.error('GET failed', { err });
 		return serverError();
 	}
 }

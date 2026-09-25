@@ -12,13 +12,16 @@ import {
 } from '$lib/db/schema';
 import type { CardRfid, Subscriber, User } from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
-import { formatToRomeISO, romeDateKey, toDatabaseDateTime } from '$lib/utils/date';
+import { formatToRomeISO, romeDateKey } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
 import { getSettings } from '$lib/services/settings';
 import {
 	determineNextStaffEventType,
 	isWithinStaffMinInterval
 } from '$lib/services/staff-attendance';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('attendance');
 
 // Tipo per il database o transazione
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -50,9 +53,7 @@ interface BatchResult {
 }
 
 export type AttendanceRejectionReason =
-	| 'unknown_card'
-	| 'timestamp_out_of_range'
-	| 'course_date_out_of_range';
+	'unknown_card' | 'timestamp_out_of_range' | 'course_date_out_of_range';
 
 export function getStaffCardRejectionReason(
 	cardActive: boolean,
@@ -129,12 +130,7 @@ async function isWithinMinInterval(
 	const [recentEvent] = await dbInstance
 		.select({ id: attendance.id })
 		.from(attendance)
-		.where(
-			and(
-				eq(attendance.cardUid, cardUid),
-				gte(attendance.readTimestamp, toDatabaseDateTime(minDate.toISOString()))
-			)
-		)
+		.where(and(eq(attendance.cardUid, cardUid), gte(attendance.readTimestamp, minDate)))
 		.limit(1);
 
 	return !!recentEvent;
@@ -216,7 +212,7 @@ async function determineNextEventType(
 	const dbInstance = tx ?? db;
 
 	// Converte il timestamp per il confronto SQL
-	const dbTimestamp = toDatabaseDateTime(currentTimestamp);
+	const dbTimestamp = new Date(currentTimestamp);
 
 	// Cerca l'ultimo evento per questa card (prima del timestamp corrente)
 	const [lastEvent] = await dbInstance
@@ -419,7 +415,7 @@ async function tryPairUnknownCard(
 		});
 		return await findAttendanceCardRow(uid, tx);
 	} catch (err) {
-		console.error('[attendance] NFC pairing insert failed:', err);
+		log.error('NFC pairing insert failed', { err });
 		return undefined;
 	}
 }
@@ -545,8 +541,8 @@ export async function processAttendanceEvent(
 		uidRaw: event.uid_raw ?? null,
 		deviceId: ctx.deviceId,
 		eventType: nextEventType,
-		readTimestamp: toDatabaseDateTime(timestampToUse),
-		deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
+		readTimestamp: new Date(timestampToUse),
+		deviceTimeRaw: event.device_time_raw ? new Date(event.device_time_raw) : null,
 		offlineQueued: ctx.offlineQueued,
 		rawPayload: event as unknown as Record<string, unknown>,
 		validated: true,

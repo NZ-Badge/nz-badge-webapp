@@ -16,4 +16,16 @@ describe('open source library credits', () => {
 
 		expect(directPackages.filter((packageName) => !creditedPackages.has(packageName))).toEqual([]);
 	});
+
+	it('does not credit packages that are no longer dependencies', () => {
+		const directPackages = new Set([
+			...Object.keys(packageJson.dependencies),
+			...Object.keys(packageJson.devDependencies)
+		]);
+		const creditedPackages = openSourceLibraryGroups.flatMap((group) =>
+			group.libraries.flatMap((library) => library.packages ?? [])
+		);
+
+		expect(creditedPackages.filter((packageName) => !directPackages.has(packageName))).toEqual([]);
+	});
 });

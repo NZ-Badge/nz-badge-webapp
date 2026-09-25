@@ -11,6 +11,14 @@ export interface ReadCardResponse {
 	message: string;
 }
 
+import {
+	getControlSignals,
+	parseJsonLine,
+	readLines,
+	SERIAL_BAUD_RATE,
+	SERIAL_USB_FILTERS
+} from './webserial';
+
 type PendingCommand = {
 	resolve: (response: ReadCardResponse) => void;
 };
@@ -26,22 +34,6 @@ export class WebSerialDiagnostic {
 	private pendingCommand: PendingCommand | null = null;
 	private logCallbacks: Set<(line: string) => void> = new Set();
 
-	private getControlSignals(port: SerialPort): SerialOutputSignals {
-		const info = port.getInfo();
-
-		if (info.usbVendorId === 0x303a) {
-			return {
-				dataTerminalReady: true,
-				requestToSend: true
-			};
-		}
-
-		return {
-			dataTerminalReady: false,
-			requestToSend: false
-		};
-	}
-
 	async connect(port?: SerialPort): Promise<void> {
 		if (!('serial' in navigator)) {
 			throw new Error('WebSerial API non supportata. Usa Chrome o Edge.');
@@ -52,16 +44,9 @@ export class WebSerialDiagnostic {
 			this._injected = true;
 		} else {
 			this._injected = false;
-			this.port = await navigator.serial.requestPort({
-				filters: [
-					{ usbVendorId: 0x303a }, // ESP32-S3 native USB (Espressif)
-					{ usbVendorId: 0x10c4 }, // CP210x
-					{ usbVendorId: 0x1a86 }, // CH340 / CH341 / CH9102
-					{ usbVendorId: 0x0403 } // FT232x
-				]
-			});
-			await this.port.open({ baudRate: 115200 });
-			await this.port.setSignals(this.getControlSignals(this.port));
+			this.port = await navigator.serial.requestPort({ filters: SERIAL_USB_FILTERS });
+			await this.port.open({ baudRate: SERIAL_BAUD_RATE });
+			await this.port.setSignals(getControlSignals(this.port));
 		}
 
 		if (!this.port.readable || !this.port.writable) {
@@ -153,41 +138,17 @@ export class WebSerialDiagnostic {
 
 	// Loop di lettura continuo: gira finché la porta non viene chiusa o si verifica un errore.
 	private async readLoop(): Promise<void> {
-		const decoder = new TextDecoder();
-		let buffer = '';
-
+		if (!this.reader) return;
 		try {
-			while (true) {
-				if (!this.reader) break;
-				const { value, done } = await this.reader.read();
-				if (done) break;
-
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split('\n');
-
-				// Processa tutte le righe complete (tutte tranne l'ultima, parziale)
-				for (const line of lines.slice(0, -1)) {
-					if (!line.trim()) continue;
-
-					let parsed: ReadCardResponse | null = null;
-					try {
-						parsed = JSON.parse(line) as ReadCardResponse;
-					} catch {
-						// Riga non-JSON — trattata come log grezzo
-					}
-
-					if (parsed !== null && this.pendingCommand) {
-						// Risposta JSON a un comando in attesa
-						this.pendingCommand.resolve(parsed);
-					} else {
-						// Log generico: notifica tutti i callback con la riga raw
-						for (const cb of this.logCallbacks) {
-							cb(line);
-						}
-					}
+			for await (const line of readLines(this.reader)) {
+				const parsed = parseJsonLine<ReadCardResponse>(line);
+				if (parsed !== null && this.pendingCommand) {
+					// Risposta JSON a un comando in attesa
+					this.pendingCommand.resolve(parsed);
+				} else {
+					// Log generico: notifica tutti i callback con la riga raw
+					for (const cb of this.logCallbacks) cb(line);
 				}
-
-				buffer = lines[lines.length - 1];
 			}
 		} catch {
 			// La porta è stata chiusa o si è verificato un errore

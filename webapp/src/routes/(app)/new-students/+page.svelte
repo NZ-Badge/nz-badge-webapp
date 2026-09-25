@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { DatePicker } from '$lib/components/ui/date-picker';
@@ -18,32 +17,29 @@
 	import { Download } from '@lucide/svelte';
 
 	let { data } = $props();
-	let from = $state('');
-	let to = $state('');
+	// Valori del form: seguono l'intervallo caricato e restano modificabili dall'utente.
+	let from = $derived(data.range.start);
+	let to = $derived(data.range.end);
 	let rangeError = $state('');
-	$effect(() => {
-		from = data.range.start;
-		to = data.range.end;
-		rangeError = '';
-	});
 	const exportHref = $derived(
 		`/api/v1/new-students/export?from=${encodeURIComponent(data.range.start)}&to=${encodeURIComponent(data.range.end)}`
 	);
 	const pageHref = (page: number) =>
 		`/new-students?from=${encodeURIComponent(data.range.start)}&to=${encodeURIComponent(data.range.end)}&page=${page}`;
 
-	function filter(event: SubmitEvent) {
-		event.preventDefault();
+	// Il form GET naviga da solo; qui si blocca soltanto un intervallo non valido.
+	function validate(event: SubmitEvent) {
 		if (!from || !to) {
+			event.preventDefault();
 			rangeError = 'Inserisci entrambe le date.';
 			return;
 		}
 		if (from > to) {
+			event.preventDefault();
 			rangeError = 'La data Da deve precedere o coincidere con la data A.';
 			return;
 		}
 		rangeError = '';
-		goto(`/new-students?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 	}
 </script>
 
@@ -62,13 +58,16 @@
 	</PageHeader>
 
 	<form
-		onsubmit={filter}
+		method="GET"
+		action="/new-students"
+		onsubmit={validate}
 		class="flex flex-wrap items-end gap-3 rounded-lg border bg-background p-4"
 	>
 		<div class="space-y-1.5">
 			<Label for="from">Da</Label>
 			<DatePicker
 				id="from"
+				name="from"
 				bind:value={from}
 				class="w-40"
 				aria-invalid={!!rangeError}
@@ -80,6 +79,7 @@
 			<Label for="to">A</Label>
 			<DatePicker
 				id="to"
+				name="to"
 				bind:value={to}
 				class="w-40"
 				aria-invalid={!!rangeError}

@@ -46,7 +46,7 @@
 		description={`Controlla e correggi le presenze di ${data.subscriber.firstName} ${data.subscriber.lastName}.`}
 	/>
 
-	<div class="rounded-lg border bg-white p-5 space-y-3">
+	<div class="space-y-3 rounded-lg border bg-card p-5">
 		<div class="flex flex-wrap items-center gap-2">
 			<h2 class="font-semibold">{data.enrollment.productTitle ?? 'Corso senza titolo'}</h2>
 			{#if data.enrollment.variantTitle}
@@ -93,8 +93,8 @@
 		</Alert>
 	{:else}
 		<form method="POST" action="?/resolve" use:enhance class="space-y-4">
-			<div class="rounded-lg border bg-white divide-y">
-				{#each data.resolutionRows as row}
+			<div class="divide-y rounded-lg border bg-card">
+				{#each data.resolutionRows as row (row.entryAttendanceId)}
 					<div class="p-5 space-y-4">
 						<div class="flex flex-wrap items-center justify-between gap-2">
 							<div>
@@ -123,9 +123,15 @@
 									placeholder="Es. 3.5"
 									value={getFieldValue(row.fieldName)}
 									aria-invalid={Boolean(getFieldError(row.fieldName))}
+									aria-describedby={getFieldError(row.fieldName)
+										? `${row.fieldName}-error`
+										: undefined}
+									data-tutorial-description="Ore effettivamente svolte dopo questo ingresso: servono a calcolare e registrare l’uscita mancante."
 								/>
 								{#if getFieldError(row.fieldName)}
-									<p class="text-sm text-red-600">{getFieldError(row.fieldName)}</p>
+									<p id="{row.fieldName}-error" class="text-sm text-red-600">
+										{getFieldError(row.fieldName)}
+									</p>
 								{/if}
 							</div>
 
@@ -145,8 +151,17 @@
 			</div>
 
 			<div class="flex items-center justify-end gap-2">
-				<Button variant="outline" href={`/subscribers/${data.subscriber.id}`}>Annulla</Button>
-				<Button type="submit">Salva uscite</Button>
+				<Button
+					variant="outline"
+					href={`/subscribers/${data.subscriber.id}`}
+					data-tutorial="dialog.cancel">Annulla</Button
+				>
+				<Button
+					type="submit"
+					data-tutorial-title="Salva uscite"
+					data-tutorial-description="Registra le uscite calcolate dalle ore inserite e aggiorna il totale delle ore del corso."
+					>Salva uscite</Button
+				>
 			</div>
 		</form>
 	{/if}

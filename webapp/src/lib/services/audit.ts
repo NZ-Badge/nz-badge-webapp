@@ -8,6 +8,9 @@ import { auditLog } from '$lib/db/schema';
 import type { DbOrTx } from '$lib/db/types';
 import { maskEmail, maskUid } from '$lib/utils/security';
 import type { RequestEvent } from '@sveltejs/kit';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('audit');
 
 // Action types for audit logging.
 // Naming convention: generic CRUD verbs (CREATE/UPDATE/DELETE) + a lowercase singular
@@ -59,6 +62,10 @@ interface AuditEntry {
 	dataAfter?: Record<string, unknown>;
 	ipAddress?: string;
 	userAgent?: string;
+	/**
+	 * Extra context. `audit_log` has no metadata column: it is stored under
+	 * `dataAfter.metadata` (sanitized like the rest of the payload).
+	 */
 	metadata?: Record<string, unknown>;
 }
 
@@ -121,14 +128,24 @@ function sanitizeAuditData(
 }
 
 /**
- * Get client IP address from request
+ * Client IP address as resolved by the adapter. Behind a reverse proxy adapter-node reads
+ * it from `ADDRESS_HEADER`/`XFF_DEPTH`, so spoofed `X-Forwarded-For` values are ignored.
  */
-function getClientIp(event: RequestEvent): string {
-	const forwarded = event.request.headers.get('x-forwarded-for');
-	if (forwarded) {
-		return forwarded.split(',')[0].trim();
+function getClientIp(event: Pick<RequestEvent, 'getClientAddress'>): string {
+	try {
+		return event.getClientAddress();
+	} catch {
+		return 'unknown';
 	}
-	return event.request.headers.get('x-real-ip') ?? 'unknown';
+}
+
+/** `dataAfter` with `metadata` merged in under its own key (no dedicated column). */
+function mergeMetadata(
+	dataAfter: Record<string, unknown> | undefined,
+	metadata: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+	if (!metadata || Object.keys(metadata).length === 0) return dataAfter;
+	return { ...dataAfter, metadata };
 }
 
 /**
@@ -144,27 +161,25 @@ export async function logAudit(entry: AuditEntry, database: DbOrTx = db): Promis
 			entityType: entry.entityType,
 			entityId: entry.entityId,
 			dataBefore: sanitizeAuditData(entry.dataBefore),
-			dataAfter: sanitizeAuditData(entry.dataAfter),
+			dataAfter: sanitizeAuditData(mergeMetadata(entry.dataAfter, entry.metadata)),
 			ipAddress: entry.ipAddress,
 			userAgent: entry.userAgent,
 			createdAt: new Date()
 		});
 	} catch (err) {
-		// Never throw from audit logging - log to console as fallback
-		console.error('[AUDIT] Failed to write audit log:', err);
-		console.error(
-			'[AUDIT] Entry:',
-			JSON.stringify({
-				...entry,
-				dataBefore: '[sanitized]',
-				dataAfter: '[sanitized]'
-			})
-		);
+		// Never throw from audit logging: record only non-sensitive identifiers.
+		log.error('Failed to write audit log', {
+			err,
+			action: entry.action,
+			entityType: entry.entityType,
+			entityId: entry.entityId,
+			userId: entry.userId
+		});
 	}
 }
 
 /** IP and user agent of a request, for services that call `logAudit` directly. */
-export function getAuditRequestInfo(event: RequestEvent): {
+export function getAuditRequestInfo(event: Pick<RequestEvent, 'getClientAddress' | 'request'>): {
 	ipAddress: string;
 	userAgent: string | undefined;
 } {
@@ -173,163 +188,3 @@ export function getAuditRequestInfo(event: RequestEvent): {
 		userAgent: event.request.headers.get('user-agent') ?? undefined
 	};
 }
-
-/**
- * Create audit logger bound to a request event
- * Automatically extracts user info, IP, and user agent
- */
-export function createAuditLogger(event: RequestEvent, userId?: number) {
-	const { ipAddress, userAgent } = getAuditRequestInfo(event);
-
-	return {
-		log: (entry: Omit<AuditEntry, 'ipAddress' | 'userAgent'>) =>
-			logAudit({
-				...entry,
-				userId,
-				ipAddress,
-				userAgent
-			}),
-
-		logLogin: (success: boolean, metadata?: Record<string, unknown>) =>
-			logAudit({
-				userId,
-				action: 'LOGIN',
-				ipAddress,
-				userAgent,
-				metadata: { success, ...metadata }
-			}),
-
-		logLogout: () =>
-			logAudit({
-				userId,
-				action: 'LOGOUT',
-				ipAddress,
-				userAgent
-			}),
-
-		logDataAccess: (
-			entityType: AuditEntityType,
-			entityId: number,
-			action: 'READ' | 'UPDATE' | 'DELETE' = 'READ',
-			dataBefore?: Record<string, unknown>,
-			dataAfter?: Record<string, unknown>
-		) =>
-			logAudit({
-				userId,
-				action,
-				entityType,
-				entityId,
-				dataBefore,
-				dataAfter,
-				ipAddress,
-				userAgent
-			}),
-
-		logExport: (
-			entityType: AuditEntityType,
-			recordCount: number,
-			filters?: Record<string, unknown>
-		) =>
-			logAudit({
-				userId,
-				action: 'EXPORT',
-				entityType,
-				metadata: { recordCount, filters },
-				ipAddress,
-				userAgent
-			}),
-
-		logCardOperation: (
-			action: 'CARD_WRITE' | 'CARD_ERASE' | 'CARD_DISABLE' | 'CARD_ENABLE',
-			cardId: number,
-			uid: string,
-			subscriberId?: number
-		) =>
-			logAudit({
-				userId,
-				action,
-				entityType: 'card',
-				entityId: cardId,
-				metadata: {
-					uid: maskUid(uid),
-					subscriberId
-				},
-				ipAddress,
-				userAgent
-			})
-	};
-}
-
-/**
- * Async context storage for audit logging
- * Allows automatic association of operations with the current request
- */
-class AuditContext {
-	private context = new Map<string, ReturnType<typeof createAuditLogger>>();
-
-	set(requestId: string, logger: ReturnType<typeof createAuditLogger>): void {
-		this.context.set(requestId, logger);
-	}
-
-	get(requestId: string): ReturnType<typeof createAuditLogger> | undefined {
-		return this.context.get(requestId);
-	}
-
-	remove(requestId: string): void {
-		this.context.delete(requestId);
-	}
-}
-
-export const auditContext = new AuditContext();
-
-/**
- * Query audit logs with filtering
- * For admin audit trail review
- */
-export async function queryAuditLogs(options: {
-	userId?: number;
-	entityType?: AuditEntityType;
-	entityId?: number;
-	action?: AuditAction;
-	from?: Date;
-	to?: Date;
-	limit?: number;
-	offset?: number;
-}): Promise<{
-	logs: Array<{
-		id: number;
-		userId: number | null;
-		action: string;
-		entityType: string | null;
-		entityId: number | null;
-		createdAt: Date | null;
-	}>;
-	total: number;
-}> {
-	const { /* userId, entityType, entityId, action, from, to, */ limit = 50, offset = 0 } = options;
-
-	// Build query - simplified for now
-	// TODO: Add dynamic where clauses when needed
-	const logs = await db
-		.select({
-			id: auditLog.id,
-			userId: auditLog.userId,
-			action: auditLog.action,
-			entityType: auditLog.entityType,
-			entityId: auditLog.entityId,
-			createdAt: auditLog.createdAt
-		})
-		.from(auditLog)
-		.limit(limit)
-		.offset(offset)
-		.orderBy(auditLog.createdAt);
-
-	// Get total count
-	const countResult = await db.select({ count: sql`COUNT(*)` }).from(auditLog);
-	const total = Number(countResult[0]?.count ?? 0);
-
-	return { logs, total };
-}
-
-// Need to import sql for the count query
-import { sql } from 'drizzle-orm';

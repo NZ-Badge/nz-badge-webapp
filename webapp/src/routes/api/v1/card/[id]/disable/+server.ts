@@ -1,6 +1,10 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { ok, notFound, badRequest, serverError, authErrorResponse } from '$lib/utils/api';
-import { CardWriterError, disableCard } from '$lib/services/card-writer';
+import { ok, notFound, serverError, authErrorResponse } from '$lib/utils/api';
+import { disableCard } from '$lib/services/card-writer';
+import { cardWriterErrorResponse } from '$lib/server/card-errors';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/card/[id]/disable');
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
@@ -11,18 +15,15 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 
 	const id = Number(event.params.id);
-	if (isNaN(id) || id <= 0) return notFound('Invalid card ID');
+	if (isNaN(id) || id <= 0) return notFound('ID card non valido');
 
 	try {
 		const updated = await disableCard(id, adminUser);
 		return ok(updated);
 	} catch (err) {
-		if (err instanceof CardWriterError) {
-			if (err.code === 'NOT_FOUND') return notFound('Card not found');
-			if (err.code === 'VALIDATION_ERROR') return notFound('Invalid card ID');
-			if (err.code === 'INVALID_STATE') return badRequest(err.message);
-		}
-		console.error('[card/disable] error:', err);
+		const response = cardWriterErrorResponse(err);
+		if (response) return response;
+		log.error('Request failed', { err });
 		return serverError();
 	}
 }

@@ -17,7 +17,7 @@ Il backend cerca `X-Device-ID` in `device_registry`, verifica che il device sia 
 
 Gli endpoint reader restituiscono `401` se gli header mancano, il device non esiste o e' disabilitato, oppure il token non e' valido.
 
-Dopo 5 tentativi di autenticazione falliti in 5 minuti per lo stesso `X-Device-ID`, gli endpoint attendance e `firmware/check` restituiscono `429` con `Retry-After: 60` finche' la finestra non scade (`firmware/download` risponde ancora `401`). Un'autenticazione riuscita azzera il contatore.
+Dopo 5 tentativi di autenticazione falliti in 5 minuti per lo stesso `X-Device-ID`, gli endpoint attendance, `firmware/check` e `firmware/download` restituiscono `429` con `Retry-After: 60` e il consueto corpo `{ "success": false, "error": "..." }` finche' la finestra non scade. Un'autenticazione riuscita azzera il contatore.
 
 ### Flussi hardware assistiti dalla UI
 
@@ -49,35 +49,18 @@ Un evento di presenza rifiutato per una regola applicativa non produce un errore
 
 ## Probe e health
 
-Entrambi gli endpoint eseguono `SELECT 1` sul database e non richiedono autenticazione.
-
-### `GET /status`
-
-Risposta `200`:
-
-```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "timestamp": "2026-08-25T13:09:57.000Z"
-}
-```
-
-In caso di database non raggiungibile restituisce `503`, `status: "unhealthy"` e `database: "disconnected"`.
-
-### `GET /api/v1/health`
+`GET /api/v1/health` e' l'health check (usato dall'`HEALTHCHECK` dell'immagine Docker e dalle
+probe). Esegue `SELECT 1` sul database e non richiede autenticazione. `GET /status` e' un alias
+con la stessa risposta, mantenuto per le probe esistenti.
 
 Risposta `200`:
 
 ```json
-{
-  "status": "ok",
-  "db": "connected",
-  "timestamp": "2026-08-25T13:09:57.000Z"
-}
+{ "status": "ok" }
 ```
 
-In caso di database non raggiungibile restituisce `503`, `status: "error"` e `db: "unreachable"`.
+Con database non raggiungibile restituisce `503` e `{ "status": "error" }`. Il corpo non
+contiene dettagli dell'errore, che vengono scritti solo nei log del server.
 
 ## Attendance ingest
 

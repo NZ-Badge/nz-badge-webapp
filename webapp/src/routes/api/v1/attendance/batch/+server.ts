@@ -10,6 +10,9 @@ import {
 } from '$lib/utils/api';
 import { processBatchAttendance } from '$lib/services/attendance';
 import { createDeviceRateLimiter } from '$lib/services/device-rate-limit';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/attendance/batch');
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
 const deviceRateLimiter = createDeviceRateLimiter(10, 1000);
@@ -34,11 +37,9 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		return badRequest('Invalid JSON body');
 	}
 
-	console.log('[attendance/batch] Received body:', JSON.stringify(body));
-
 	const parsed = attendanceBatchSchema.safeParse(body);
 	if (!parsed.success) {
-		console.error('[attendance/batch] Validation error:', parsed.error);
+		log.warn('Validation failed', { deviceId, issues: parsed.error.issues.length });
 		return badRequest(formatZodError(parsed.error));
 	}
 
@@ -62,7 +63,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			actions: result.actions
 		});
 	} catch (err) {
-		console.error('[attendance/batch] processBatchAttendance error:', err);
+		log.error('processBatchAttendance failed', { err });
 		return serverError();
 	}
 }

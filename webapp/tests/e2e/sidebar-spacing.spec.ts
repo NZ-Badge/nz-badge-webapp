@@ -11,13 +11,20 @@ for (const width of [390, 1440]) {
 			const layoutPath = '/src/routes/(app)/+layout.svelte';
 			const { mount, createRawSnippet } = await import(runtimePath);
 			const { default: Layout } = await import(layoutPath);
-			// Initialize the navigation store used by the isolated layout with a demo URL.
+			// Point the isolated layout at a demo URL through the `$app/state` page object.
 			const source = await (await fetch(layoutPath)).text();
-			const storesPath = source.match(/from "([^"]*\/app\/stores.js[^"]*)"/)![1];
-			const storesSource = await (await fetch(storesPath)).text();
-			const clientPath = storesSource.match(/from "([^"]*\/client\/client.js[^"]*)"/)![1];
-			const { stores } = await import(clientPath);
-			stores.page.set({
+			const importPath = (code: string, pattern: RegExp) => code.match(pattern)![1];
+			const statePath = importPath(source, /from "([^"]*\/app\/state[^"]*)"/);
+			const clientPath = importPath(
+				await (await fetch(statePath)).text(),
+				/from "([^"]*\/client\.js[^"]*)"/
+			);
+			const internalStatePath = importPath(
+				await (await fetch(clientPath)).text(),
+				/from "([^"]*\/client\/state\.svelte\.js[^"]*)"/
+			);
+			const { update } = await import(internalStatePath);
+			update({
 				url: new URL('/dashboard', location.origin),
 				params: {},
 				data: {},
@@ -27,7 +34,6 @@ for (const width of [390, 1440]) {
 				form: null,
 				state: {}
 			});
-			stores.page.notify();
 			localStorage.removeItem('nzbadge-tutorial-enabled');
 			document.body.replaceChildren();
 			mount(Layout, {

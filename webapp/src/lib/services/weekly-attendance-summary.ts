@@ -5,7 +5,7 @@ import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { attendance, subscribers, weeklyAttendanceSummaryLog } from '../db/schema';
 import * as schema from '../db/schema';
-import { calculateAttendanceHours } from './attendance-hours';
+import { buildWeeklySummaryEmail } from './weekly-attendance-summary-email';
 import { readSettings } from './settings-schema';
 import { addDaysToDateKey, romeDateKey, romeDayStart, TIMEZONE } from '../utils/date';
 
@@ -76,26 +76,8 @@ function getWeekWindow(referenceDate: Date): {
 	};
 }
 
-function formatDateTime(value: Date | string): string {
-	return formatInTimeZone(value, TIMEZONE, 'dd/MM/yyyy HH:mm');
-}
-
-function formatDate(value: string): string {
-	const [year, month, day] = value.split('-');
-	return `${day}/${month}/${year}`;
-}
-
 function dateKeyToDate(value: string): Date {
 	return new Date(`${value}T00:00:00.000Z`);
-}
-
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#039;');
 }
 
 function getMailConfig(env: Record<string, string | undefined>): MailConfig {
@@ -151,119 +133,91 @@ function groupRowsBySubscriber(rows: AttendanceRow[]): Map<number, AttendanceRow
 	return grouped;
 }
 
-function buildEmail(params: {
-	subscriber: SubscriberCandidate;
-	weekStartDate: string;
-	weekEndDate: string;
-	weekRows: AttendanceRow[];
-	totalRows: AttendanceRow[];
-}): { subject: string; text: string; html: string } {
-	const weekCalculation = calculateAttendanceHours(params.weekRows);
-	const totalCalculation = calculateAttendanceHours(params.totalRows);
-	const fullName = `${params.subscriber.firstName} ${params.subscriber.lastName}`.trim();
-	const period = `${formatDate(params.weekStartDate)} - ${formatDate(params.weekEndDate)}`;
-	const subject = `Riepilogo presenze ${period}`;
-	const eventLines = params.weekRows.map(
-		(row) =>
-			`- ${formatDateTime(row.readTimestamp)}: ${row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}`
-	);
-	const sessionLines = weekCalculation.sessions.map(
-		(session) =>
-			`- ${formatDateTime(session.entryAt)} - ${formatDateTime(session.exitAt)}: ${session.durationLabel}`
-	);
-
-	const text = [
-		`Ciao ${fullName},`,
-		'',
-		`questo e' il riepilogo delle presenze dal ${period}.`,
-		'',
-		'Ingressi e uscite:',
-		...(eventLines.length ? eventLines : ['- Nessuna strisciata valida']),
-		'',
-		'Sessioni calcolate:',
-		...(sessionLines.length ? sessionLines : ['- Nessuna sessione completa']),
-		'',
-		`Monte ore della settimana: ${weekCalculation.totalLabel}`,
-		`Monte ore totale fino al ${formatDate(params.weekEndDate)}: ${totalCalculation.totalLabel}`
-	].join('\n');
-
-	const eventRows = params.weekRows
-		.map(
-			(row) =>
-				`<tr><td>${escapeHtml(formatDateTime(row.readTimestamp))}</td><td>${
-					row.eventType === 'entry' ? 'Ingresso' : 'Uscita'
-				}</td></tr>`
-		)
-		.join('');
-	const sessionRows = weekCalculation.sessions
-		.map(
-			(session) =>
-				`<tr><td>${escapeHtml(formatDateTime(session.entryAt))}</td><td>${escapeHtml(
-					formatDateTime(session.exitAt)
-				)}</td><td>${escapeHtml(session.durationLabel)}</td></tr>`
-		)
-		.join('');
-
-	const html = `<!doctype html>
-<html lang="it">
-<body style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
-	<p>Ciao ${escapeHtml(fullName)},</p>
-	<p>questo e' il riepilogo delle presenze dal <strong>${escapeHtml(period)}</strong>.</p>
-	<h2 style="font-size: 16px;">Ingressi e uscite</h2>
-	<table cellpadding="6" cellspacing="0" style="border-collapse: collapse; border: 1px solid #d1d5db;">
-		<thead><tr><th align="left">Data/ora</th><th align="left">Evento</th></tr></thead>
-		<tbody>${eventRows || '<tr><td colspan="2">Nessuna strisciata valida</td></tr>'}</tbody>
-	</table>
-	<h2 style="font-size: 16px;">Sessioni calcolate</h2>
-	<table cellpadding="6" cellspacing="0" style="border-collapse: collapse; border: 1px solid #d1d5db;">
-		<thead><tr><th align="left">Ingresso</th><th align="left">Uscita</th><th align="left">Durata</th></tr></thead>
-		<tbody>${sessionRows || '<tr><td colspan="3">Nessuna sessione completa</td></tr>'}</tbody>
-	</table>
-	<p><strong>Monte ore della settimana:</strong> ${escapeHtml(weekCalculation.totalLabel)}</p>
-	<p><strong>Monte ore totale fino al ${escapeHtml(formatDate(params.weekEndDate))}:</strong> ${escapeHtml(
-		totalCalculation.totalLabel
-	)}</p>
-</body>
-</html>`;
-
-	return { subject, text, html };
-}
-
 async function isEnabled(database: AppDb): Promise<boolean> {
 	return (await readSettings(database)).weekly_attendance_summary_enabled;
 }
 
-async function recordLog(
+function isDuplicateKeyError(err: unknown): boolean {
+	for (let current: unknown = err; current; current = (current as { cause?: unknown }).cause) {
+		if (typeof current === 'object' && (current as { code?: unknown }).code === 'ER_DUP_ENTRY') {
+			return true;
+		}
+		if (typeof current !== 'object') break;
+	}
+	return false;
+}
+
+/**
+ * Reserves the log row of a recipient for this week *before* the email is sent, so that
+ * two overlapping runs (or a retry after a crash) cannot send the same summary twice.
+ *
+ * - no row yet: insert it as `pending` (the unique key on subscriber/week settles races);
+ * - `error`/`skipped` row: flip it to `pending` only if it still has that status;
+ * - `sent` or `pending` row: not reserved. A `pending` row left by a crashed run is not
+ *   retried automatically, because the email may already have gone out.
+ *
+ * Returns the id of the reserved row, or `null` if another run owns it.
+ */
+async function reserveLogRow(
 	database: AppDb,
 	params: {
-		existingId?: number;
+		existing?: { id: number; status: string };
 		weekStartDate: string;
 		weekEndDate: string;
 		subscriberId: number;
 		recipientEmail: string;
-		status: 'sent' | 'skipped' | 'error';
-		errorMsg?: string | null;
 	}
-): Promise<void> {
-	const values = {
-		weekStartDate: dateKeyToDate(params.weekStartDate),
-		weekEndDate: dateKeyToDate(params.weekEndDate),
-		subscriberId: params.subscriberId,
-		recipientEmail: params.recipientEmail,
-		status: params.status,
-		sentAt: params.status === 'sent' ? new Date() : null,
-		errorMsg: params.errorMsg ?? null
-	};
-
-	if (params.existingId) {
-		await database
+): Promise<number | null> {
+	if (params.existing) {
+		if (params.existing.status !== 'error' && params.existing.status !== 'skipped') return null;
+		const [result] = await database
 			.update(weeklyAttendanceSummaryLog)
-			.set(values)
-			.where(eq(weeklyAttendanceSummaryLog.id, params.existingId));
-		return;
+			.set({
+				status: 'pending',
+				recipientEmail: params.recipientEmail,
+				sentAt: null,
+				errorMsg: null
+			})
+			.where(
+				and(
+					eq(weeklyAttendanceSummaryLog.id, params.existing.id),
+					eq(weeklyAttendanceSummaryLog.status, params.existing.status as 'error' | 'skipped')
+				)
+			);
+		return result.affectedRows === 1 ? params.existing.id : null;
 	}
 
-	await database.insert(weeklyAttendanceSummaryLog).values(values);
+	try {
+		const [result] = await database.insert(weeklyAttendanceSummaryLog).values({
+			weekStartDate: dateKeyToDate(params.weekStartDate),
+			weekEndDate: dateKeyToDate(params.weekEndDate),
+			subscriberId: params.subscriberId,
+			recipientEmail: params.recipientEmail,
+			status: 'pending',
+			sentAt: null,
+			errorMsg: null
+		});
+		return Number(result.insertId);
+	} catch (err) {
+		if (isDuplicateKeyError(err)) return null;
+		throw err;
+	}
+}
+
+/** Final state of a reserved row once the send attempt is over. */
+async function completeLogRow(
+	database: AppDb,
+	id: number,
+	outcome: { status: 'sent' } | { status: 'error'; errorMsg: string }
+): Promise<void> {
+	await database
+		.update(weeklyAttendanceSummaryLog)
+		.set(
+			outcome.status === 'sent'
+				? { status: 'sent', sentAt: new Date(), errorMsg: null }
+				: { status: 'error', sentAt: null, errorMsg: outcome.errorMsg }
+		)
+		.where(eq(weeklyAttendanceSummaryLog.id, id));
 }
 
 export async function sendWeeklyAttendanceSummaries(
@@ -383,7 +337,7 @@ export async function sendWeeklyAttendanceSummaries(
 			continue;
 		}
 
-		const email = buildEmail({
+		const email = buildWeeklySummaryEmail({
 			subscriber,
 			weekStartDate: week.weekStartDate,
 			weekEndDate: week.weekEndDate,
@@ -391,42 +345,42 @@ export async function sendWeeklyAttendanceSummaries(
 			totalRows: totalRowsBySubscriber.get(subscriber.id) ?? []
 		});
 
-		try {
-			if (transport) {
-				await transport.sendMail({
-					from: mailConfig!.from,
-					to: subscriber.email,
-					subject: email.subject,
-					text: email.text,
-					html: email.html
-				});
-			}
-
-			if (!options.dryRun) {
-				await recordLog(database, {
-					existingId: existing?.id,
-					weekStartDate: week.weekStartDate,
-					weekEndDate: week.weekEndDate,
-					subscriberId: subscriber.id,
-					recipientEmail: subscriber.email,
-					status: 'sent'
-				});
-			}
+		if (options.dryRun || !transport) {
 			sent += 1;
+			continue;
+		}
+
+		const logId = await reserveLogRow(database, {
+			existing,
+			weekStartDate: week.weekStartDate,
+			weekEndDate: week.weekEndDate,
+			subscriberId: subscriber.id,
+			recipientEmail: subscriber.email
+		});
+		if (logId === null) {
+			skipped += 1;
+			continue;
+		}
+
+		try {
+			await transport.sendMail({
+				from: mailConfig!.from,
+				to: subscriber.email,
+				subject: email.subject,
+				text: email.text,
+				html: email.html
+			});
 		} catch (err) {
 			errors += 1;
-			if (!options.dryRun) {
-				await recordLog(database, {
-					existingId: existing?.id,
-					weekStartDate: week.weekStartDate,
-					weekEndDate: week.weekEndDate,
-					subscriberId: subscriber.id,
-					recipientEmail: subscriber.email,
-					status: 'error',
-					errorMsg: err instanceof Error ? err.message : 'Errore sconosciuto'
-				});
-			}
+			await completeLogRow(database, logId, {
+				status: 'error',
+				errorMsg: err instanceof Error ? err.message : 'Errore sconosciuto'
+			});
+			continue;
 		}
+
+		await completeLogRow(database, logId, { status: 'sent' });
+		sent += 1;
 	}
 
 	return {

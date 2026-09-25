@@ -2,6 +2,10 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
 import { ok, badRequest, serverError, formatZodError, authErrorResponse } from '$lib/utils/api';
 import { confirmCardErase } from '$lib/services/card-writer';
+import { cardWriterErrorResponse } from '$lib/server/card-errors';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/card/[id]/erase/confirm');
 
 const schema = z.object({
 	session_token: z.string().uuid()
@@ -19,7 +23,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	const parsed = schema.safeParse(body);
@@ -29,9 +33,9 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		const result = await confirmCardErase(parsed.data.session_token, adminUser);
 		return ok(result);
 	} catch (err) {
-		const msg = err instanceof Error ? err.message : 'Unknown error';
-		if (msg.includes('token')) return badRequest(msg);
-		console.error('[card/erase/confirm] error:', err);
+		const response = cardWriterErrorResponse(err);
+		if (response) return response;
+		log.error('Request failed', { err });
 		return serverError();
 	}
 }

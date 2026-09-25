@@ -43,10 +43,16 @@ export const openSourceLibraryGroups: OpenSourceLibraryGroup[] = [
 				packages: ['bits-ui']
 			},
 			{
+				name: 'Svelte Sonner',
+				license: 'MIT',
+				url: 'https://github.com/wobsoriano/svelte-sonner',
+				packages: ['svelte-sonner']
+			},
+			{
 				name: 'Lucide Icons',
 				license: 'ISC',
 				url: 'https://lucide.dev/',
-				packages: ['@lucide/svelte', 'lucide-svelte']
+				packages: ['@lucide/svelte']
 			},
 			{ name: 'Zod', license: 'MIT', url: 'https://zod.dev/', packages: ['zod'] },
 			{

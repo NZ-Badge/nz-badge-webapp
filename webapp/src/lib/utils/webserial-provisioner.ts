@@ -2,6 +2,8 @@
 // Apre la propria connessione seriale dedicata (indipendente dallo store globale)
 // per evitare conflitti di lock sullo stream.
 
+import { readLines, SERIAL_BAUD_RATE, SERIAL_USB_FILTERS } from './webserial';
+
 export type ProvisionState = 'idle' | 'connecting' | 'listening' | 'sending' | 'success' | 'error';
 
 export interface ProvisionLogEntry {
@@ -9,13 +11,6 @@ export interface ProvisionLogEntry {
 	text: string;
 	type: 'info' | 'rx' | 'tx' | 'success' | 'error';
 }
-
-const USB_FILTERS = [
-	{ usbVendorId: 0x303a }, // ESP32-S3 native USB
-	{ usbVendorId: 0x10c4 }, // CP210x (Silicon Labs)
-	{ usbVendorId: 0x1a86 }, // CH340 / CH341 / CH9102
-	{ usbVendorId: 0x0403 } // FT232x (FTDI)
-];
 
 // Timeout massimo (ms) in attesa di conferma dal firmware dopo l'invio del comando.
 // Se scade, il dispositivo si è probabilmente riavviato ma la disconnessione USB
@@ -73,7 +68,7 @@ export class WebSerialProvisioner {
 		this.log('Seleziona la porta USB del dispositivo nel picker...', 'info');
 
 		try {
-			this.port = await navigator.serial.requestPort({ filters: USB_FILTERS });
+			this.port = await navigator.serial.requestPort({ filters: SERIAL_USB_FILTERS });
 		} catch {
 			// Utente ha annullato il picker
 			this.setState('idle');
@@ -81,7 +76,7 @@ export class WebSerialProvisioner {
 		}
 
 		try {
-			await this.port.open({ baudRate: 115200 });
+			await this.port.open({ baudRate: SERIAL_BAUD_RATE });
 			// Non impostiamo DTR/RTS: evita reset indesiderati su devkit con circuito auto-reset
 		} catch (err) {
 			this.setState('error');
@@ -196,59 +191,44 @@ export class WebSerialProvisioner {
 	}
 
 	private async readLoop(): Promise<void> {
-		const decoder = new TextDecoder();
-		let buffer = '';
-
+		if (!this.reader) return;
 		try {
-			while (!this.cancelled) {
-				if (!this.reader) break;
-				const { value, done } = await this.reader.read();
+			for await (const raw of readLines(this.reader)) {
+				if (this.cancelled) break;
+				const line = raw.trim();
 
-				if (done) {
-					// Lo stream si è chiuso. Se eravamo in 'sending', il firmware ha chiamato
-					// ESP.restart() (USB drop = provisioning ok).
-					if (!this.cancelled && this.state === 'sending') {
-						this.clearSendTimeout();
-						this.log('Dispositivo riavviato — provisioning completato.', 'success');
-						this.setState('success');
-					}
-					break;
+				this.log(line, 'rx');
+
+				// Auto-invio quando il firmware entra nella finestra di provisioning
+				if (!this.commandSent && line.includes('[BOOT]') && line.includes('PROVISION')) {
+					await this.sendNow();
 				}
 
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split('\n');
-
-				for (const raw of lines.slice(0, -1)) {
-					const line = raw.trim();
-					if (!line) continue;
-
-					this.log(line, 'rx');
-
-					// Auto-invio quando il firmware entra nella finestra di provisioning
-					if (!this.commandSent && line.includes('[BOOT]') && line.includes('PROVISION')) {
-						await this.sendNow();
-					}
-
-					// Conferma di successo dal firmware (ricevuta prima del disconnect USB)
-					if (line.includes('Provisioned OK')) {
-						this.clearSendTimeout();
-						this.setState('success');
-						this.log('Provisioning completato con successo!', 'success');
-						await this.release();
-						return;
-					}
-
-					// Errori firmware
-					if (line.includes('PROVISION format error') || line.includes('Provisioning FAILED')) {
-						this.clearSendTimeout();
-						this.setState('error');
-						this.log('Errore riportato dal firmware — verifica il comando.', 'error');
-						await this.release();
-						return;
-					}
+				// Conferma di successo dal firmware (ricevuta prima del disconnect USB)
+				if (line.includes('Provisioned OK')) {
+					this.clearSendTimeout();
+					this.setState('success');
+					this.log('Provisioning completato con successo!', 'success');
+					await this.release();
+					return;
 				}
 
-				buffer = lines[lines.length - 1];
+				// Errori firmware
+				if (line.includes('PROVISION format error') || line.includes('Provisioning FAILED')) {
+					this.clearSendTimeout();
+					this.setState('error');
+					this.log('Errore riportato dal firmware — verifica il comando.', 'error');
+					await this.release();
+					return;
+				}
+			}
+
+			// Lo stream si è chiuso. Se eravamo in 'sending', il firmware ha chiamato
+			// ESP.restart() (USB drop = provisioning ok).
+			if (!this.cancelled && this.state === 'sending') {
+				this.clearSendTimeout();
+				this.log('Dispositivo riavviato — provisioning completato.', 'success');
+				this.setState('success');
 			}
 		} catch {
 			if (!this.cancelled) {

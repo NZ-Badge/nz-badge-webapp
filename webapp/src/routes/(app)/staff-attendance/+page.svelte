@@ -1,16 +1,19 @@
 <script lang="ts">
 	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { goto, invalidateAll } from '$app/navigation';
-	import { navigating } from '$app/stores';
+	import { invalidateAll } from '$app/navigation';
+	import { navigating } from '$app/state';
+	import { toast } from 'svelte-sonner';
 	import { History, Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import AttendanceEditDialog from '$lib/components/AttendanceEditDialog.svelte';
 	import AttendanceExportDialog from '$lib/components/AttendanceExportDialog.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { Label } from '$lib/components/ui/label';
-	import { formatDateTimeIT, toRomeDateTimeInputValue } from '$lib/utils/date.js';
-	import * as Dialog from '$lib/components/ui/dialog';
+	import { formatDateTimeIT } from '$lib/utils/date.js';
+	import { apiFetch } from '$lib/utils/http';
 	import {
 		Table,
 		TablePanel,
@@ -24,92 +27,51 @@
 	import StaffManualEntryDialog from '$lib/components/StaffManualEntryDialog.svelte';
 
 	let { data } = $props();
+	type Row = (typeof data.rows)[number];
+
 	let manualOpen = $state(false);
 	let exportDialogOpen = $state(false);
 	let editOpen = $state(false);
-	let editingId = $state<number | null>(null);
-	let editTimestamp = $state('');
-	let editError = $state('');
-	let editBusy = $state(false);
-	let deletingId = $state<number | null>(null);
+	let editing = $state<Row | null>(null);
 	let deleteOpen = $state(false);
-	let deleteError = $state('');
-	let deleteBusy = $state(false);
-	const isLoading = $derived(Boolean($navigating));
+	let deleting = $state<Row | null>(null);
+	const isLoading = $derived(Boolean(navigating.to));
 
 	function sourceLabel(source: string): string {
 		return source === 'card' ? 'Card RFID' : source === 'manual' ? 'Manuale' : 'Pulsante Home';
 	}
 
-	function buildUrl(page: number, form?: FormData): string {
+	function pageHref(pageNumber: number): string {
 		const params = new URLSearchParams();
-		if (page > 1) params.set('page', String(page));
-		const currentValues: Record<string, string> = {
+		if (pageNumber > 1) params.set('page', String(pageNumber));
+		const values: Record<string, string> = {
 			from: data.from,
 			to: data.to,
 			user: data.userQuery,
 			device: data.device,
 			source: data.source
 		};
-		for (const key of ['from', 'to', 'user', 'device', 'source']) {
-			const value = form ? String(form.get(key) ?? '') : currentValues[key];
+		for (const [key, value] of Object.entries(values)) {
 			if (value) params.set(key, value);
 		}
 		return `/staff-attendance${params.size ? `?${params}` : ''}`;
 	}
 
-	function filter(event: SubmitEvent) {
-		event.preventDefault();
-		goto(buildUrl(1, new FormData(event.currentTarget as HTMLFormElement)));
-	}
-
-	function openEdit(row: { id: number; readTimestamp: Date | string }) {
-		editingId = row.id;
-		editTimestamp = toRomeDateTimeInputValue(new Date(row.readTimestamp));
-		editError = '';
+	function openEdit(row: Row) {
+		editing = row;
 		editOpen = true;
 	}
 
-	async function saveEdit() {
-		if (!editingId || !editTimestamp) return;
-		editBusy = true;
-		editError = '';
-		try {
-			const response = await fetch('/api/v1/staff-attendance', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: editingId, readTimestamp: editTimestamp })
-			});
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Modifica non riuscita');
-			editOpen = false;
-			await invalidateAll();
-		} catch (err) {
-			editError = err instanceof Error ? err.message : 'Modifica non riuscita';
-		} finally {
-			editBusy = false;
-		}
+	function openDelete(row: Row) {
+		deleting = row;
+		deleteOpen = true;
 	}
 
-	async function confirmDelete() {
-		if (deletingId === null) return;
-		deleteBusy = true;
-		deleteError = '';
-		try {
-			const response = await fetch('/api/v1/staff-attendance', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: deletingId })
-			});
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Eliminazione non riuscita');
-			deleteOpen = false;
-			await invalidateAll();
-		} catch (err) {
-			deleteError = err instanceof Error ? err.message : 'Eliminazione non riuscita';
-		} finally {
-			deleteBusy = false;
-		}
+	async function deleteOne() {
+		if (!deleting) return;
+		await apiFetch('/api/v1/staff-attendance', { method: 'DELETE', body: { id: deleting.id } });
+		toast.success('Strisciata eliminata');
+		await invalidateAll();
 	}
 </script>
 
@@ -135,7 +97,7 @@
 		listId="staff-export-emails"
 	/>
 
-	<form onsubmit={filter} class="filter-panel">
+	<form method="GET" action="/staff-attendance" class="filter-panel">
 		<div class="space-y-1">
 			<Label for="from">Dal</Label><DatePicker
 				id="from"
@@ -177,7 +139,13 @@
 			/>
 		</div>
 		<Button type="submit" variant="outline" disabled={isLoading}>Filtra</Button>
-		<Button type="button" variant="ghost" onclick={() => goto('/staff-attendance')}>Azzera</Button>
+		<Button
+			href="/staff-attendance"
+			variant="ghost"
+			data-tutorial-title="Azzera filtri"
+			data-tutorial-description="Rimuove tutti i filtri e mostra l’elenco completo degli ingressi."
+			>Azzera</Button
+		>
 	</form>
 
 	<TablePanel aria-busy={isLoading}>
@@ -199,7 +167,7 @@
 							>Nessun ingresso trovato.</TableCell
 						></TableRow
 					>{/if}
-				{#each data.rows as row}
+				{#each data.rows as row (row.id)}
 					<TableRow>
 						<TableCell
 							><span class="inline-flex items-center gap-1.5 font-mono text-xs"
@@ -239,11 +207,7 @@
 										aria-label={`Elimina ${row.eventType === 'entry' ? 'ingresso' : 'uscita'} di ${row.userName}`}
 										data-tutorial-title="Elimina strisciata"
 										data-tutorial-description="Apre la conferma per eliminare definitivamente questo ingresso o questa uscita del collaboratore."
-										onclick={() => {
-											deletingId = row.id;
-											deleteError = '';
-											deleteOpen = true;
-										}}><Trash2 size={16} /></Button
+										onclick={() => openDelete(row)}><Trash2 size={16} /></Button
 									>
 								</div></TableCell
 							>{/if}
@@ -255,7 +219,7 @@
 			page={data.page}
 			totalPages={data.totalPages}
 			total={data.total}
-			onPageChange={(page) => goto(buildUrl(page))}
+			getPageHref={pageHref}
 			disabled={isLoading}
 			ariaLabel="Paginazione ingressi collaboratori"
 		/>
@@ -270,46 +234,20 @@
 	onsaved={invalidateAll}
 />
 
-<Dialog.Root bind:open={editOpen}>
-	<Dialog.Content class="sm:max-w-sm"
-		><Dialog.Header
-			><Dialog.Title>Modifica orario</Dialog.Title><Dialog.Description
-				>È possibile modificare soltanto data e ora della strisciata.</Dialog.Description
-			></Dialog.Header
-		>
-		<div class="space-y-2 py-2">
-			<Label for="edit-time">Data e ora</Label><DatePicker
-				id="edit-time"
-				withTime
-				bind:value={editTimestamp}
-			/>{#if editError}<p class="text-sm text-red-600">{editError}</p>{/if}
-		</div>
-		<Dialog.Footer
-			><Button variant="outline" onclick={() => (editOpen = false)}>Annulla</Button><Button
-				onclick={saveEdit}
-				disabled={editBusy}>{editBusy ? 'Salvataggio…' : 'Salva'}</Button
-			></Dialog.Footer
-		></Dialog.Content
-	>
-</Dialog.Root>
+<AttendanceEditDialog
+	bind:open={editOpen}
+	endpoint="/api/v1/staff-attendance"
+	record={editing}
+	description="È possibile modificare soltanto data e ora della strisciata."
+	onsaved={invalidateAll}
+/>
 
-<Dialog.Root bind:open={deleteOpen}>
-	<Dialog.Content class="sm:max-w-sm">
-		<Dialog.Header>
-			<Dialog.Title>Elimina strisciata</Dialog.Title>
-			<Dialog.Description
-				>Eliminare definitivamente questo ingresso o questa uscita? Il totale delle ore verrà
-				ricalcolato.</Dialog.Description
-			>
-		</Dialog.Header>
-		{#if deleteError}<p class="text-sm text-red-600">{deleteError}</p>{/if}
-		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}
-				>Annulla</Button
-			>
-			<Button variant="destructive" onclick={confirmDelete} disabled={deleteBusy}
-				>{deleteBusy ? 'Eliminazione…' : 'Elimina'}</Button
-			>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Elimina strisciata"
+	description="Eliminare definitivamente questo ingresso o questa uscita? Il totale delle ore verrà ricalcolato."
+	confirmLabel="Elimina"
+	busyLabel="Eliminazione…"
+	variant="destructive"
+	onConfirm={deleteOne}
+/>

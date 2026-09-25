@@ -18,6 +18,7 @@ import {
 	authErrorResponse
 } from '$lib/utils/api';
 import { z } from 'zod';
+import { passwordSchema } from '$lib/utils/validation';
 import type { RequestHandler } from './$types';
 
 // Validation schemas
@@ -27,10 +28,7 @@ const userCreateSchema = z.object({
 	role: z.enum(['admin', 'staff', 'collaborator'], {
 		message: 'Il ruolo deve essere admin, staff o collaborator'
 	}),
-	password: z
-		.string()
-		.min(8, 'La password deve contenere almeno 8 caratteri')
-		.max(100, 'Password troppo lunga')
+	password: passwordSchema
 });
 
 const userUpdateSchema = z.object({
@@ -42,11 +40,7 @@ const userUpdateSchema = z.object({
 			message: 'Il ruolo deve essere admin, staff o collaborator'
 		})
 		.optional(),
-	password: z
-		.string()
-		.min(8, 'La password deve contenere almeno 8 caratteri')
-		.max(100, 'Password troppo lunga')
-		.optional()
+	password: passwordSchema.optional()
 });
 
 const userIdSchema = z.object({

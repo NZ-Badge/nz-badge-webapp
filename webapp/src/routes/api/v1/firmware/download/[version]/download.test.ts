@@ -19,12 +19,13 @@ vi.mock('$lib/db', () => ({
 vi.mock('fs/promises', () => ({ stat: mocks.stat }));
 vi.mock('fs', () => ({ createReadStream: mocks.createReadStream }));
 
+import { AuthError } from '$lib/services/auth';
 import { GET } from './+server';
 
-function event() {
+function event(verifyDevice: () => Promise<unknown> = async () => ({ deviceId: 'reader-1' })) {
 	return {
 		params: { version: '1.2.3' },
-		locals: { verifyDevice: async () => ({ deviceId: 'reader-1' }) }
+		locals: { verifyDevice }
 	} as unknown as Parameters<typeof GET>[0];
 }
 
@@ -64,5 +65,22 @@ describe('GET /api/v1/firmware/download/:version', () => {
 		const response = await GET(event());
 		expect(response.status).toBe(500);
 		expect(mocks.createReadStream).not.toHaveBeenCalled();
+	});
+
+	it('maps device auth failures to 401 and the auth rate limit to 429', async () => {
+		const unauthorized = await GET(
+			event(() => Promise.reject(new AuthError('Invalid token', 'UNAUTHORIZED')))
+		);
+		expect(unauthorized.status).toBe(401);
+
+		const limited = await GET(
+			event(() => Promise.reject(new AuthError('Too many authentication attempts', 'RATE_LIMITED')))
+		);
+		expect(limited.status).toBe(429);
+		expect(limited.headers.get('Retry-After')).toBe('60');
+		expect(await limited.json()).toEqual({
+			success: false,
+			error: 'Too many authentication attempts'
+		});
 	});
 });

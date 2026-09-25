@@ -22,7 +22,7 @@ describe('authErrorResponse', () => {
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const response = authErrorResponse(new Error('db password in stack'));
 		expect(response.status).toBe(500);
-		expect(await response.json()).toEqual({ success: false, error: 'Internal Server Error' });
+		expect(await response.json()).toEqual({ success: false, error: 'Errore interno del server' });
 		consoleError.mockRestore();
 	});
 });

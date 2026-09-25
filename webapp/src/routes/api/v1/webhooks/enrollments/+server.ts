@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { ok, badRequest, unauthorized, serverError } from '$lib/utils/api';
 import { getWebhookSecret, processWebhookEnrollment } from '$lib/services/enrollments';
 import type { ApiEnrollment } from '$lib/services/enrollments';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/webhooks/enrollments');
 
 const participantSchema = z.object({
 	index: z.number().int().positive(),
@@ -70,13 +73,13 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	// Verifica secret
 	const secret = await getWebhookSecret();
 	if (!secret) {
-		console.warn('[webhook/enrollments] Nessun secret configurato — chiamata rifiutata');
+		log.warn('No webhook secret configured: request rejected');
 		return unauthorized('Webhook non configurato');
 	}
 
 	const incomingSecret = event.request.headers.get('X-Webhook-Secret') ?? '';
 	if (!safeCompare(incomingSecret, secret)) {
-		console.warn('[webhook/enrollments] Secret non valido');
+		log.warn('Invalid webhook secret');
 		return unauthorized('Secret non valido');
 	}
 
@@ -85,7 +88,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	const parsed = enrollmentSchema.safeParse(body);
@@ -99,7 +102,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		const result = await processWebhookEnrollment(item);
 		return ok(result);
 	} catch (err) {
-		console.error('[webhook/enrollments] Errore durante elaborazione:', err);
+		log.error('Webhook processing failed', { err });
 		return serverError();
 	}
 }

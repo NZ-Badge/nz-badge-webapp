@@ -1,9 +1,14 @@
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
+import { fail } from '@sveltejs/kit';
 import { db } from '$lib/db';
 import { enrollments, subscribers, enrollmentSyncLog } from '$lib/db/schema';
 import { eq, like, or, and, desc, gte, isNull } from 'drizzle-orm';
 import { romeDateKey } from '$lib/utils/date';
 import { requirePageStaff } from '$lib/services/auth';
+import { syncEnrollments } from '$lib/services/enrollments';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('courses');
 
 const MAX_ROWS = 500;
 
@@ -88,4 +93,20 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		showPast,
 		lastSync: lastSync[0] ?? null
 	};
+};
+
+export const actions: Actions = {
+	/** Stessa sincronizzazione di `POST /api/v1/courses/sync`, avviata dalla pagina. */
+	sync: async ({ locals }) => {
+		await requirePageStaff(locals);
+		try {
+			const result = await syncEnrollments('manual');
+			return { result };
+		} catch (err) {
+			log.error('Enrollment sync failed', { err });
+			return fail(502, {
+				message: err instanceof Error ? err.message : 'Sincronizzazione non riuscita'
+			});
+		}
+	}
 };

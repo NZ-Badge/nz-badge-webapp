@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
 	import { ArrowLeft, CreditCard } from '@lucide/svelte';
 	import StaffHoursSummary from '$lib/components/StaffHoursSummary.svelte';
 	import { Badge } from '$lib/components/ui/badge';
@@ -14,9 +15,9 @@
 		TableRow
 	} from '$lib/components/ui/table';
 	import { formatDateIT } from '$lib/utils/date.js';
+	import { apiFetch, errorMessage } from '$lib/utils/http';
 
 	let { data } = $props();
-	let cardError = $state('');
 	let cardBusy = $state<number | null>(null);
 
 	const hasActiveCard = $derived(data.cards.some((card) => card.status === 'active'));
@@ -27,14 +28,18 @@
 
 	async function changeCardStatus(cardId: number, action: 'enable' | 'disable' | 'restore') {
 		cardBusy = cardId;
-		cardError = '';
 		try {
-			const response = await fetch(`/api/v1/card/${cardId}/${action}`, { method: 'POST' });
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Operazione non riuscita');
+			await apiFetch(`/api/v1/card/${cardId}/${action}`, { method: 'POST' });
+			toast.success(
+				action === 'disable'
+					? 'Card disabilitata'
+					: action === 'enable'
+						? 'Card riabilitata'
+						: 'Card ripristinata'
+			);
 			await invalidateAll();
 		} catch (err) {
-			cardError = err instanceof Error ? err.message : 'Operazione non riuscita';
+			toast.error(errorMessage(err, 'Operazione non riuscita'));
 		} finally {
 			cardBusy = null;
 		}
@@ -74,7 +79,6 @@
 			>
 		{/if}
 	</div>
-	{#if cardError}<p class="px-5 pt-3 text-sm text-red-600">{cardError}</p>{/if}
 	{#if data.cards.length === 0}
 		<p class="px-5 py-5 text-sm text-muted-foreground">Nessuna card RFID associata.</p>
 	{:else}
@@ -86,7 +90,7 @@
 				></TableHeader
 			>
 			<TableBody>
-				{#each data.cards as card}
+				{#each data.cards as card (card.id)}
 					<TableRow>
 						<TableCell class="font-mono text-xs">{card.uid}</TableCell>
 						<TableCell
@@ -129,8 +133,14 @@
 								>
 							{/if}
 							{#if card.status === 'active' || card.status === 'disabled'}
-								<a class="ml-2" href="/cards/{card.id}/erase"
-									><Button size="sm" variant="destructive-ghost">Erase</Button></a
+								<Button
+									class="ml-2"
+									href="/cards/{card.id}/erase"
+									size="sm"
+									variant="destructive-ghost"
+									data-tutorial-title="Cancella card"
+									data-tutorial-description="Apre la procedura guidata per cancellare i dati dalla card tramite il lettore USB."
+									>Erase</Button
 								>
 							{/if}
 						</TableCell>

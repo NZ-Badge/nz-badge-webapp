@@ -7,6 +7,9 @@ import {
 	parseSubscriberAttendanceDateTime,
 	SubscriberAttendanceAdminError
 } from '$lib/services/subscriber-attendance-admin';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/attendance/manual');
 
 const manualSchema = z.object({
 	subscriberId: z.number().int().positive(),
@@ -20,7 +23,7 @@ function errorResponse(error: unknown): Response {
 	if (error instanceof SubscriberAttendanceAdminError) {
 		return error.code === 'NOT_FOUND' ? notFound(error.message) : badRequest(error.message);
 	}
-	console.error('[attendance/manual] request failed:', error);
+	log.error('Request failed', { err: error });
 	return serverError('Errore interno');
 }
 

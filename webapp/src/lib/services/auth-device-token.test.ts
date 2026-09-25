@@ -32,7 +32,6 @@ vi.mock('$lib/db', () => {
 
 import {
 	AuthError,
-	generateDeviceToken,
 	hashDeviceToken,
 	isLegacyBcryptHash,
 	verifyDeviceToken,
@@ -62,12 +61,6 @@ describe('device token hashing', () => {
 		expect(hashDeviceToken('abc')).toBe(
 			'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
 		);
-	});
-
-	it('generates new tokens stored as SHA-256', async () => {
-		const { token, hash } = await generateDeviceToken();
-		expect(hash).toBe(hashDeviceToken(token));
-		expect(isLegacyBcryptHash(hash)).toBe(false);
 	});
 
 	it('recognises bcrypt hash prefixes', () => {
@@ -131,11 +124,15 @@ describe('verifyDeviceToken', () => {
 		};
 		await expect(verifyDeviceToken(request())).resolves.toMatchObject({ deviceId: 'reader-1' });
 		await flush();
-		expect(errorSpy).toHaveBeenCalledWith(
-			'[AUTH] Device token rehash failed:',
-			'reader-1',
-			expect.any(Error)
-		);
+		expect(errorSpy).toHaveBeenCalledTimes(1);
+		const entry = JSON.parse(String(errorSpy.mock.calls[0][0]));
+		expect(entry).toMatchObject({
+			level: 'error',
+			scope: 'auth',
+			message: 'Device token rehash failed',
+			deviceId: 'reader-1',
+			err: { name: 'Error', message: 'db down' }
+		});
 		errorSpy.mockRestore();
 	});
 

@@ -7,6 +7,9 @@ import { AuthError, isStaffManager } from '$lib/services/auth';
 import { authErrorResponse, badRequest, forbidden, serverError } from '$lib/utils/api';
 import { toCsv } from '$lib/utils/csv';
 import { isDateKey, romeDayRange, TIMEZONE } from '$lib/utils/date';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/staff-attendance/export');
 
 type ExportFilters = { from?: string; to?: string; email?: string };
 
@@ -111,7 +114,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		});
 	} catch (error) {
 		if (error instanceof AuthError) return authErrorResponse(error);
-		console.error('[staff-attendance/export] request failed:', error);
+		log.error('Request failed', { err: error });
 		return serverError('Errore interno');
 	}
 };

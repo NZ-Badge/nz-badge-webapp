@@ -8,6 +8,9 @@ import { eq } from 'drizzle-orm';
 import { createAdminSession, verifyUserSession } from '$lib/services/auth';
 import { logAudit } from '$lib/services/audit';
 import { loginEmailRateLimiter, loginIpRateLimiter } from '$lib/utils/security';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('login');
 
 const TOO_MANY_ATTEMPTS = 'Troppi tentativi di accesso. Riprova tra qualche minuto.';
 
@@ -90,12 +93,12 @@ export const actions: Actions = {
 				expires
 			});
 		} catch (err) {
-			console.error('[LOGIN] Error creating session:', err);
+			log.error('Error creating session', { err });
 			return fail(500, { error: 'Impossibile creare la sessione' });
 		}
 
 		loginEmailRateLimiter.reset(emailKey);
-		console.log('[LOGIN] Session created for user id:', user.id);
+		log.info('Session created', { userId: user.id });
 		await logAudit({
 			userId: user.id,
 			action: 'LOGIN',

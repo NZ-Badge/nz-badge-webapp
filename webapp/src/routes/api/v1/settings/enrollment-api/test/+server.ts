@@ -1,6 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { getEnrollmentApiConfig } from '$lib/services/enrollments';
 import { ok, serverError, authErrorResponse } from '$lib/utils/api';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/settings/enrollment-api/test');
 
 /**
  * POST /api/v1/settings/enrollment-api/test
@@ -70,7 +73,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			});
 		}
 	} catch (err) {
-		console.error('[settings/enrollment-api/test] Error:', err);
+		log.error('Enrollment API test failed', { err });
 
 		if (err instanceof Error) {
 			if (err.name === 'AbortError' || err.message.includes('timeout')) {

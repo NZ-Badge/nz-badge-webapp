@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
+	import { toastEnhance } from '$lib/utils/enhance';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
@@ -20,28 +21,16 @@
 	let { data } = $props();
 
 	let syncing = $state(false);
-	let syncError = $state<string | null>(null);
 
-	async function handleSync() {
-		syncing = true;
-		syncError = null;
-		try {
-			const res = await fetch('/api/v1/courses/sync', {
-				method: 'POST',
-				credentials: 'include'
-			});
-			if (!res.ok) {
-				const json = await res.json().catch(() => ({}));
-				syncError = json.error ?? `Errore server (${res.status})`;
-				return;
-			}
-			await res.json();
-			await invalidateAll();
-		} catch (err) {
-			syncError = err instanceof Error ? err.message : 'Errore sconosciuto';
-		} finally {
-			syncing = false;
-		}
+	type SyncResult = { enrollmentsCreated: number; subscribersCreated: number; errors: number };
+
+	function syncMessage(data: Record<string, unknown> | undefined): string {
+		const result = data?.result as SyncResult | undefined;
+		if (!result) return 'Corsi aggiornati';
+		const summary = `${result.enrollmentsCreated} nuove iscrizioni, ${result.subscribersCreated} iscritti creati`;
+		return result.errors > 0
+			? `Corsi aggiornati con ${result.errors} errori: ${summary}`
+			: `Corsi aggiornati: ${summary}`;
 	}
 
 	const statusVariant = (status: string) =>
@@ -63,6 +52,7 @@
 	type Enrollment = (typeof data.enrollments)[number];
 
 	type CourseGroup = {
+		key: string;
 		variantId: string | null;
 		productTitle: string;
 		variantTitle: string | null;
@@ -92,15 +82,11 @@
 			const courseKey = e.variantId
 				? `variant:${e.variantId}`
 				: `legacy:${e.productTitle ?? ''}||${e.variantTitle ?? ''}`;
-			let courseGroup = dateGroup.courses.find(
-				(c) =>
-					(c.variantId
-						? `variant:${c.variantId}`
-						: `legacy:${c.productTitle}||${c.variantTitle ?? ''}`) === courseKey
-			);
+			let courseGroup = dateGroup.courses.find((c) => c.key === courseKey);
 
 			if (!courseGroup) {
 				courseGroup = {
+					key: courseKey,
 					variantId: e.variantId ?? null,
 					productTitle: e.productTitle ?? '—',
 					variantTitle: e.variantTitle ?? null,
@@ -143,17 +129,27 @@
 				</p>
 			{/if}
 		{/snippet}
-		<Button onclick={handleSync} disabled={syncing}>
-			<RefreshCw size={16} class="mr-2 {syncing ? 'animate-spin' : ''}" />
-			{syncing ? 'Aggiornamento...' : 'Aggiorna corsi'}
-		</Button>
+		<form
+			method="POST"
+			action="?/sync"
+			use:enhance={toastEnhance({
+				success: syncMessage,
+				error: 'Sincronizzazione non riuscita',
+				onStart: () => (syncing = true),
+				onDone: () => (syncing = false)
+			})}
+		>
+			<Button
+				type="submit"
+				disabled={syncing}
+				data-tutorial-title="Aggiorna corsi"
+				data-tutorial-description="Scarica dal servizio collegato le iscrizioni più recenti e crea gli iscritti mancanti."
+			>
+				<RefreshCw size={16} class="mr-2 {syncing ? 'animate-spin' : ''}" />
+				{syncing ? 'Aggiornamento...' : 'Aggiorna corsi'}
+			</Button>
+		</form>
 	</PageHeader>
-
-	{#if syncError}
-		<div class="rounded-md bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
-			{syncError}
-		</div>
-	{/if}
 
 	<!-- Filtri -->
 	<form method="GET" class="filter-panel">
@@ -165,7 +161,7 @@
 			>Stato iscrizione
 			<select name="status" class="h-9 rounded-md border bg-background px-3 text-sm">
 				<option value="">Tutti gli stati</option>
-				{#each ['PENDING', 'SUBMITTED', 'COMPLETED'] as opt}
+				{#each ['PENDING', 'SUBMITTED', 'COMPLETED'] as opt (opt)}
 					<option value={opt} selected={data.status === opt}>{statusLabel(opt)}</option>
 				{/each}
 			</select>
@@ -184,7 +180,7 @@
 		</div>
 	{:else}
 		<div class="space-y-4">
-			{#each grouped as dateGroup}
+			{#each grouped as dateGroup (dateGroup.dateKey)}
 				<details data-day-group class="group rounded-xl border bg-white">
 					<summary
 						class="flex cursor-pointer list-none items-center gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden"
@@ -210,7 +206,7 @@
 					</summary>
 
 					<div class="space-y-4 border-t px-4 py-4">
-						{#each dateGroup.courses as courseGroup}
+						{#each dateGroup.courses as courseGroup (courseGroup.key)}
 							<TablePanel>
 								<div data-slot="table-panel-header">
 									<div class="min-w-0">
@@ -249,7 +245,7 @@
 										</TableRow>
 									</TableHeader>
 									<TableBody>
-										{#each courseGroup.enrollments as enrollment}
+										{#each courseGroup.enrollments as enrollment (enrollment.id)}
 											<TableRow>
 												<TableCell
 													class="font-mono text-xs"

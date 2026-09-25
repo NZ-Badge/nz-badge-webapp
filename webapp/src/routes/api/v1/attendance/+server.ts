@@ -21,6 +21,9 @@ import {
 } from '$lib/services/subscriber-attendance-admin';
 import { AuthError } from '$lib/services/auth';
 import { createDeviceRateLimiter } from '$lib/services/device-rate-limit';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/attendance');
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
 const deviceRateLimiter = createDeviceRateLimiter(10, 1000);
@@ -71,7 +74,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			actions: result.actions
 		});
 	} catch (err) {
-		console.error('[attendance] processSingleAttendance error:', err);
+		log.error('processSingleAttendance failed', { err });
 		return serverError();
 	}
 }
@@ -107,7 +110,7 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 		if (err instanceof SubscriberAttendanceAdminError) {
 			return err.code === 'NOT_FOUND' ? notFound(err.message) : badRequest(err.message);
 		}
-		console.error('[attendance] PATCH error:', err);
+		log.error('PATCH failed', { err });
 		return serverError();
 	}
 }
@@ -138,7 +141,7 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 			return err.code === 'FORBIDDEN' ? forbidden(err.message) : badRequest(err.message);
 		}
 		if (err instanceof AuthError) return forbidden(err.message);
-		console.error('[attendance] DELETE error:', err);
+		log.error('DELETE failed', { err });
 		return serverError();
 	}
 }

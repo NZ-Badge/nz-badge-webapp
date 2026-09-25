@@ -21,8 +21,10 @@
 		class?: string;
 		'aria-invalid'?: boolean | 'true' | 'false' | undefined;
 		'aria-describedby'?: string;
-		'data-tutorial-title'?: string;
-		'data-tutorial-description'?: string;
+		/** Nome accessibile del campo segmentato (gg/mm/aaaa). */
+		'aria-label'?: string;
+		/** Attributi `data-*` inoltrati al contenitore (es. testi della guida Tutorial). */
+		[dataAttribute: `data-${string}`]: string | undefined;
 	};
 
 	let {
@@ -35,8 +37,8 @@
 		class: className,
 		'aria-invalid': ariaInvalid,
 		'aria-describedby': ariaDescribedby,
-		'data-tutorial-title': tutorialTitle,
-		'data-tutorial-description': tutorialDescription
+		'aria-label': ariaLabel = 'Data (gg/mm/aaaa)',
+		...dataAttributes
 	}: Props = $props();
 
 	function parseParts(iso: string): { date?: DateValue; time: string } {
@@ -106,9 +108,8 @@
 <div
 	data-slot="date-picker"
 	class={cn('flex items-center gap-2', className)}
-	data-tutorial-title={tutorialTitle ?? 'Seleziona data'}
-	data-tutorial-description={tutorialDescription ??
-		'Inserisci giorno, mese e anno nel formato gg/mm/aaaa oppure scegli il giorno dal calendario. Usa le frecce per cambiare mese e Canc per svuotare un segmento. Gli orari, se presenti, sono riferiti a Europe/Rome.'}
+	data-tutorial="date-picker"
+	{...dataAttributes}
 >
 	<DatePickerPrimitive.Root
 		bind:value={dateValue}
@@ -140,7 +141,7 @@
 				{#snippet child({ props, segments })}
 					<div
 						{...props}
-						aria-label={tutorialTitle ?? 'Data (gg/mm/aaaa)'}
+						aria-label={ariaLabel}
 						aria-invalid={ariaInvalid}
 						aria-describedby={ariaDescribedby}
 					>

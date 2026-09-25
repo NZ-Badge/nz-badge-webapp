@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { History } from '@lucide/svelte';
 	import StaffHoursSummary from '$lib/components/StaffHoursSummary.svelte';
 	import StaffAttendanceDeleteButton from '$lib/components/StaffAttendanceDeleteButton.svelte';
@@ -47,7 +46,7 @@
 				</TableRow></TableHeader
 			>
 			<TableBody>
-				{#each data.swipes as row}
+				{#each data.swipes as row (row.id)}
 					<TableRow>
 						<TableCell
 							><span class="inline-flex items-center gap-1.5">
@@ -73,7 +72,7 @@
 		page={data.page}
 		totalPages={data.totalPages}
 		total={data.total}
-		onPageChange={(page) => goto(pageUrl(page))}
+		getPageHref={pageUrl}
 		ariaLabel="Paginazione delle mie strisciate"
 	/>
 </TablePanel>

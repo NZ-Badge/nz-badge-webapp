@@ -4,6 +4,9 @@ import { db } from '$lib/db';
 import { cardRfid, subscribers } from '$lib/db/schema';
 import { cardQuerySchema } from '$lib/utils/validation';
 import { ok, badRequest, serverError, formatZodError, authErrorResponse } from '$lib/utils/api';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/card');
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
@@ -37,7 +40,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 
 		return ok({ cards, total, page, limit });
 	} catch (err) {
-		console.error('[card] GET error:', err);
+		log.error('GET failed', { err });
 		return serverError();
 	}
 }

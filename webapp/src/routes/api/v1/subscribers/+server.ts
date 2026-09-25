@@ -12,6 +12,9 @@ import {
 	authErrorResponse
 } from '$lib/utils/api';
 import { createSubscriber, SubscriberServiceError } from '$lib/services/subscribers';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/subscribers');
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
@@ -48,7 +51,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 		]);
 		return ok({ subscribers: rows, total, page, limit });
 	} catch (err) {
-		console.error('[subscribers] GET error:', err);
+		log.error('GET failed', { err });
 		return serverError();
 	}
 }
@@ -65,7 +68,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		body = await event.request.json();
 	} catch {
-		return badRequest('Invalid JSON body');
+		return badRequest('JSON non valido');
 	}
 
 	try {
@@ -74,7 +77,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		if (err instanceof SubscriberServiceError && err.zodError) {
 			return badRequest(formatZodError(err.zodError));
 		}
-		console.error('[subscribers] POST error:', err);
+		log.error('POST failed', { err });
 		return serverError();
 	}
 }

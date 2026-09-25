@@ -1,6 +1,9 @@
 import type { ZodError } from 'zod';
 import type { AttendanceAction } from '$lib/services/attendance';
 import { AuthError } from '$lib/services/auth';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api');
 
 const JSON_CONTENT_TYPE = 'application/json';
 
@@ -61,15 +64,15 @@ export function badRequest(message: string, errors?: unknown): Response {
 	return jsonResponse(JSON.stringify(body), 400);
 }
 
-export function unauthorized(message = 'Unauthorized'): Response {
+export function unauthorized(message = 'Non autorizzato'): Response {
 	return jsonResponse(JSON.stringify({ success: false, error: message }), 401);
 }
 
-export function forbidden(message = 'Forbidden'): Response {
+export function forbidden(message = 'Accesso non consentito'): Response {
 	return jsonResponse(JSON.stringify({ success: false, error: message }), 403);
 }
 
-export function notFound(message = 'Not Found'): Response {
+export function notFound(message = 'Risorsa non trovata'): Response {
 	return jsonResponse(JSON.stringify({ success: false, error: message }), 404);
 }
 
@@ -84,10 +87,11 @@ export function conflict(message: string, details?: unknown): Response {
 	return jsonResponse(JSON.stringify(body), 409);
 }
 
-export function tooManyRequests(
-	retryAfterSeconds: number,
-	message = 'Too Many Requests'
-): Response {
+export function payloadTooLarge(message: string): Response {
+	return jsonResponse(JSON.stringify({ success: false, error: message }), 413);
+}
+
+export function tooManyRequests(retryAfterSeconds: number, message = 'Troppe richieste'): Response {
 	return jsonResponse(JSON.stringify({ success: false, error: message }), 429, {
 		'Retry-After': String(retryAfterSeconds)
 	});
@@ -95,12 +99,8 @@ export function tooManyRequests(
 
 // --- Server error responses ---
 
-export function serverError(message = 'Internal Server Error'): Response {
+export function serverError(message = 'Errore interno del server'): Response {
 	return jsonResponse(JSON.stringify({ success: false, error: message }), 500);
-}
-
-export function serviceUnavailable(message = 'Service Unavailable'): Response {
-	return jsonResponse(JSON.stringify({ success: false, error: message }), 503);
 }
 
 // --- Auth ---
@@ -123,7 +123,7 @@ export function authErrorResponse(err: unknown): Response {
 				return tooManyRequests(AUTH_RATE_LIMIT_RETRY_AFTER_SECONDS, err.message);
 		}
 	}
-	console.error('[auth] unexpected error:', err);
+	log.error('Unexpected error during authentication', { err });
 	return serverError();
 }
 
@@ -143,6 +143,12 @@ export async function withAuth<T>(check: () => T | Promise<T>): Promise<T | Resp
 }
 
 // --- Utility ---
+
+/** Marks a response as non-cacheable (`Cache-Control: no-store`) and returns it. */
+export function noStore(response: Response): Response {
+	response.headers.set('Cache-Control', 'no-store');
+	return response;
+}
 
 export function formatZodError(error: ZodError): string {
 	return error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join(', ');

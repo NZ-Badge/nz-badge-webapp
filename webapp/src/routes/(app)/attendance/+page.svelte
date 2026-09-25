@@ -1,24 +1,21 @@
 <script lang="ts">
 	import PageHeader from '$lib/components/PageHeader.svelte';
-	import { goto, invalidateAll } from '$app/navigation';
-	import { navigating } from '$app/stores';
+	import { afterNavigate, goto, invalidateAll } from '$app/navigation';
+	import { navigating, page } from '$app/state';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { toast } from 'svelte-sonner';
 	import { Pencil, Plus, Trash2 } from '@lucide/svelte';
+	import AttendanceEditDialog from '$lib/components/AttendanceEditDialog.svelte';
 	import AttendanceExportDialog from '$lib/components/AttendanceExportDialog.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SubscriberManualEntryDialog from '$lib/components/SubscriberManualEntryDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import {
-		Dialog,
-		DialogContent,
-		DialogDescription,
-		DialogFooter,
-		DialogHeader,
-		DialogTitle
-	} from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { Label } from '$lib/components/ui/label';
-	import { formatDateTimeIT, toRomeDateTimeInputValue } from '$lib/utils/date.js';
+	import { formatDateTimeIT } from '$lib/utils/date.js';
+	import { apiFetch } from '$lib/utils/http';
 	import {
 		Table,
 		TablePanel,
@@ -31,111 +28,30 @@
 	} from '$lib/components/ui/table';
 
 	let { data } = $props();
-	let editOpen = $state(false);
-	let editingId = $state<number | null>(null);
-	let editTimestamp = $state('');
-	let editError = $state('');
-	let editBusy = $state(false);
+	type Row = (typeof data.rows)[number];
 	let manualOpen = $state(false);
 	let exportDialogOpen = $state(false);
-	let deletingId = $state<number | null>(null);
+	let editOpen = $state(false);
+	let editing = $state<Row | null>(null);
 	let deleteOpen = $state(false);
-	let deleteError = $state('');
-	let deleteBusy = $state(false);
+	let deleting = $state<Row | null>(null);
+	let bulkDeleteOpen = $state(false);
 
-	function openEdit(row: { id: number; readTimestamp: Date | string }) {
-		editingId = row.id;
-		editTimestamp = toRomeDateTimeInputValue(new Date(row.readTimestamp));
-		editError = '';
-		editOpen = true;
-	}
+	const isLoading = $derived(Boolean(navigating.to));
 
-	async function saveEdit() {
-		if (editingId === null || !editTimestamp) return;
-		editBusy = true;
-		editError = '';
-
-		try {
-			const response = await fetch('/api/v1/attendance', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ id: editingId, readTimestamp: editTimestamp })
-			});
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Modifica non riuscita');
-			editOpen = false;
-			await invalidateAll();
-		} catch (err) {
-			editError = err instanceof Error ? err.message : 'Modifica non riuscita';
-		} finally {
-			editBusy = false;
-		}
-	}
-
-	async function confirmDelete() {
-		if (deletingId === null) return;
-		deleteBusy = true;
-		deleteError = '';
-		try {
-			const response = await fetch('/api/v1/attendance', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ mode: 'ids', ids: [deletingId] })
-			});
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Eliminazione non riuscita');
-			deleteOpen = false;
-			selectedIds = new Set([...selectedIds].filter((id) => id !== deletingId));
-			selectAllFiltered = false;
-			await invalidateAll();
-		} catch (err) {
-			deleteError = err instanceof Error ? err.message : 'Eliminazione non riuscita';
-		} finally {
-			deleteBusy = false;
-		}
-	}
-
-	function buildUrl(
-		page: number,
-		filters?: { from: string; to: string; subscriber: string; device: string }
-	) {
-		const f = filters ?? {
-			from: data.from,
-			to: data.to,
-			subscriber: data.subscriber,
-			device: data.device
-		};
-		const params = new URLSearchParams();
-		if (page > 1) params.set('page', String(page));
-		if (f.from) params.set('from', f.from);
-		if (f.to) params.set('to', f.to);
-		if (f.subscriber) params.set('subscriber', f.subscriber);
-		if (f.device) params.set('device', f.device);
-		const qs = params.toString();
-		return `/attendance${qs ? '?' + qs : ''}`;
-	}
-
-	function handleSubmit(e: SubmitEvent) {
-		e.preventDefault();
-		const fd = new FormData(e.target as HTMLFormElement);
-		selectedIds = new Set();
-		selectAllFiltered = false;
-		goto(
-			buildUrl(1, {
-				from: (fd.get('from') as string) ?? '',
-				to: (fd.get('to') as string) ?? '',
-				subscriber: (fd.get('subscriber') as string) ?? '',
-				device: (fd.get('device') as string) ?? ''
-			})
-		);
-	}
-
-	const isLoading = $derived(!!$navigating);
-
-	// --- Selezione e eliminazione ---
-	let selectedIds = $state(new Set<number>());
+	// --- Selezione ---
+	const selectedIds = new SvelteSet<number>();
 	let selectAllFiltered = $state(false);
-	let isDeleting = $state(false);
+
+	function clearSelection() {
+		selectedIds.clear();
+		selectAllFiltered = false;
+	}
+
+	// Filtri e pagine cambiano l'insieme dei record: la selezione non ha più senso.
+	afterNavigate(({ from, to }) => {
+		if (from?.url.search !== to?.url.search) clearSelection();
+	});
 
 	const allPageSelected = $derived(
 		data.rows.length > 0 && data.rows.every((r) => selectedIds.has(r.id))
@@ -149,82 +65,82 @@
 	const hasActiveFilter = $derived(Boolean(data.from || data.to || data.subscriber || data.device));
 	const canDeleteByFilters = $derived(data.user?.role === 'admin' && hasActiveFilter);
 
+	function pageHref(pageNumber: number): string {
+		const params = new URLSearchParams();
+		if (pageNumber > 1) params.set('page', String(pageNumber));
+		if (data.from) params.set('from', data.from);
+		if (data.to) params.set('to', data.to);
+		if (data.subscriber) params.set('subscriber', data.subscriber);
+		if (data.device) params.set('device', data.device);
+		const qs = params.toString();
+		return `/attendance${qs ? '?' + qs : ''}`;
+	}
+
 	function toggleHeaderCheckbox() {
 		if (allPageSelected) {
-			const next = new Set(selectedIds);
-			for (const row of data.rows) next.delete(row.id);
-			selectedIds = next;
+			for (const row of data.rows) selectedIds.delete(row.id);
 			selectAllFiltered = false;
 		} else {
-			const next = new Set(selectedIds);
-			for (const row of data.rows) next.add(row.id);
-			selectedIds = next;
+			for (const row of data.rows) selectedIds.add(row.id);
 		}
 	}
 
 	function toggleRow(id: number) {
-		const next = new Set(selectedIds);
-		if (next.has(id)) {
-			next.delete(id);
+		if (selectedIds.has(id)) {
+			selectedIds.delete(id);
 			selectAllFiltered = false;
 		} else {
-			next.add(id);
+			selectedIds.add(id);
 		}
-		selectedIds = next;
+	}
+
+	function openEdit(row: Row) {
+		editing = row;
+		editOpen = true;
+	}
+
+	function openDelete(row: Row) {
+		deleting = row;
+		deleteOpen = true;
+	}
+
+	async function deleteOne() {
+		if (!deleting) return;
+		const id = deleting.id;
+		await apiFetch('/api/v1/attendance', { method: 'DELETE', body: { mode: 'ids', ids: [id] } });
+		selectedIds.delete(id);
+		selectAllFiltered = false;
+		toast.success('Presenza eliminata');
+		await invalidateAll();
 	}
 
 	async function deleteSelected() {
+		let body: Record<string, unknown>;
+		if (selectAllFiltered) {
+			if (!canDeleteByFilters) throw new Error('Eliminazione per filtro non consentita');
+			body = {
+				mode: 'filters',
+				filters: {
+					from: data.from,
+					to: data.to,
+					subscriber: data.subscriber,
+					device: data.device
+				}
+			};
+		} else {
+			body = { mode: 'ids', ids: [...selectedIds] };
+		}
+
 		const count = selectionCount;
-		if (!confirm(`Eliminare ${count} record di presenza? Questa operazione non è reversibile.`))
-			return;
+		await apiFetch('/api/v1/attendance', { method: 'DELETE', body });
+		clearSelection();
+		toast.success(count === 1 ? 'Presenza eliminata' : `${count} presenze eliminate`);
 
-		isDeleting = true;
-		try {
-			let body: object;
-			if (selectAllFiltered) {
-				if (!canDeleteByFilters) throw new Error('Eliminazione per filtro non consentita');
-				body = {
-					mode: 'filters',
-					filters: {
-						from: data.from,
-						to: data.to,
-						subscriber: data.subscriber,
-						device: data.device
-					}
-				};
-			} else {
-				body = { mode: 'ids', ids: [...selectedIds] };
-			}
-
-			const res = await fetch('/api/v1/attendance', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-
-			if (!res.ok) {
-				const resBody = await res.json().catch(() => ({}));
-				throw new Error(resBody.error ?? 'Eliminazione non riuscita');
-			}
-
-			selectedIds = new Set();
-			selectAllFiltered = false;
-			const targetUrl = buildUrl(1);
-			const currentUrl = `${window.location.pathname}${window.location.search}`;
-
-			if (targetUrl === currentUrl) {
-				await invalidateAll();
-			} else {
-				await goto(targetUrl);
-			}
-		} catch (err) {
-			alert(
-				err instanceof Error
-					? `Errore durante l'eliminazione: ${err.message}`
-					: "Errore durante l'eliminazione. Riprova."
-			);
-		} finally {
-			isDeleting = false;
+		const targetUrl = pageHref(1);
+		if (targetUrl === `${page.url.pathname}${page.url.search}`) {
+			await invalidateAll();
+		} else {
+			await goto(targetUrl);
 		}
 	}
 </script>
@@ -236,8 +152,14 @@
 	>
 		<div class="flex flex-wrap items-center gap-2">
 			{#if selectionCount > 0}
-				<Button variant="destructive" size="sm" disabled={isDeleting} onclick={deleteSelected}>
-					{isDeleting ? 'Eliminazione...' : `Elimina ${selectionCount}`}
+				<Button
+					variant="destructive"
+					size="sm"
+					onclick={() => (bulkDeleteOpen = true)}
+					data-tutorial-title="Elimina selezionati"
+					data-tutorial-description="Apre la conferma per eliminare definitivamente le presenze selezionate."
+				>
+					<Trash2 size={14} /> Elimina {selectionCount}
 				</Button>
 			{/if}
 			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
@@ -257,7 +179,7 @@
 	/>
 
 	<!-- Filtri -->
-	<form onsubmit={handleSubmit} class="filter-panel">
+	<form method="GET" action="/attendance" class="filter-panel">
 		<div class="space-y-1">
 			<Label for="from">Dal</Label>
 			<DatePicker id="from" name="from" value={data.from} class="w-40" />
@@ -288,13 +210,11 @@
 		</div>
 		<Button type="submit" variant="outline" disabled={isLoading}>Filtra</Button>
 		<Button
-			type="button"
+			href="/attendance"
 			variant="ghost"
-			onclick={() => {
-				selectedIds = new Set();
-				selectAllFiltered = false;
-				goto('/attendance');
-			}}>Azzera</Button
+			data-tutorial-title="Azzera filtri"
+			data-tutorial-description="Rimuove i filtri e torna all’elenco degli ultimi 30 giorni."
+			>Azzera</Button
 		>
 	</form>
 
@@ -314,13 +234,7 @@
 	{:else if selectAllFiltered}
 		<div class="flex items-center gap-2 rounded-md bg-blue-50 px-4 py-2 text-sm text-blue-800">
 			<span>Tutti i {data.total} record filtrati sono selezionati.</span>
-			<button
-				class="font-medium underline hover:no-underline"
-				onclick={() => {
-					selectAllFiltered = false;
-					selectedIds = new Set();
-				}}
-			>
+			<button class="font-medium underline hover:no-underline" onclick={clearSelection}>
 				Annulla selezione
 			</button>
 		</div>
@@ -358,7 +272,7 @@
 						<TableCell colspan={7} data-empty>Nessuna presenza trovata.</TableCell>
 					</TableRow>
 				{/if}
-				{#each data.rows as row}
+				{#each data.rows as row (row.id)}
 					<TableRow
 						data-state={selectedIds.has(row.id) || selectAllFiltered ? 'selected' : undefined}
 					>
@@ -412,11 +326,7 @@
 									aria-label={`Elimina ${row.eventType === 'entry' ? 'ingresso' : 'uscita'} di ${row.subscriberName ?? 'iscritto'}`}
 									data-tutorial-title="Elimina presenza"
 									data-tutorial-description="Apre la conferma per eliminare definitivamente questo ingresso o questa uscita del corsista."
-									onclick={() => {
-										deletingId = row.id;
-										deleteError = '';
-										deleteOpen = true;
-									}}><Trash2 size={16} /></Button
+									onclick={() => openDelete(row)}><Trash2 size={16} /></Button
 								>
 							</div>
 						</TableCell>
@@ -428,7 +338,7 @@
 			page={data.page}
 			totalPages={data.totalPages}
 			total={data.total}
-			onPageChange={(page) => goto(buildUrl(page))}
+			getPageHref={pageHref}
 			disabled={isLoading}
 			ariaLabel="Paginazione ingressi corsisti"
 		/>
@@ -441,46 +351,29 @@
 	onsaved={invalidateAll}
 />
 
-<Dialog bind:open={editOpen}>
-	<DialogContent class="sm:max-w-sm">
-		<DialogHeader>
-			<DialogTitle>Modifica orario</DialogTitle>
-			<DialogDescription>
-				È possibile modificare soltanto data e ora della presenza.
-			</DialogDescription>
-		</DialogHeader>
-		<div class="space-y-2 py-2">
-			<Label for="edit-time">Data e ora</Label>
-			<DatePicker id="edit-time" withTime bind:value={editTimestamp} />
-			{#if editError}
-				<p class="text-sm text-red-600">{editError}</p>
-			{/if}
-		</div>
-		<DialogFooter>
-			<Button variant="outline" onclick={() => (editOpen = false)}>Annulla</Button>
-			<Button onclick={saveEdit} disabled={editBusy}>
-				{editBusy ? 'Salvataggio…' : 'Salva'}
-			</Button>
-		</DialogFooter>
-	</DialogContent>
-</Dialog>
+<AttendanceEditDialog
+	bind:open={editOpen}
+	endpoint="/api/v1/attendance"
+	record={editing}
+	onsaved={invalidateAll}
+/>
 
-<Dialog bind:open={deleteOpen}>
-	<DialogContent class="sm:max-w-sm">
-		<DialogHeader>
-			<DialogTitle>Elimina presenza</DialogTitle>
-			<DialogDescription
-				>Eliminare definitivamente questo ingresso o questa uscita?</DialogDescription
-			>
-		</DialogHeader>
-		{#if deleteError}<p class="text-sm text-red-600">{deleteError}</p>{/if}
-		<DialogFooter>
-			<Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}
-				>Annulla</Button
-			>
-			<Button variant="destructive" onclick={confirmDelete} disabled={deleteBusy}
-				>{deleteBusy ? 'Eliminazione…' : 'Elimina'}</Button
-			>
-		</DialogFooter>
-	</DialogContent>
-</Dialog>
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Elimina presenza"
+	description="Eliminare definitivamente questo ingresso o questa uscita?"
+	confirmLabel="Elimina"
+	busyLabel="Eliminazione…"
+	variant="destructive"
+	onConfirm={deleteOne}
+/>
+
+<ConfirmDialog
+	bind:open={bulkDeleteOpen}
+	title="Elimina presenze"
+	description={`Eliminare ${selectionCount} record di presenza? Questa operazione non è reversibile.`}
+	confirmLabel={`Elimina ${selectionCount}`}
+	busyLabel="Eliminazione…"
+	variant="destructive"
+	onConfirm={deleteSelected}
+/>

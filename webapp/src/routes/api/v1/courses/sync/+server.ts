@@ -1,6 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { ok, serverError, authErrorResponse } from '$lib/utils/api';
-import { syncEnrollments } from '$lib/services/enrollments';
+import { ok, conflict, serverError, authErrorResponse } from '$lib/utils/api';
+import { EnrollmentSyncInProgressError, syncEnrollments } from '$lib/services/enrollments';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/courses/sync');
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
@@ -13,7 +16,8 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		const result = await syncEnrollments('manual');
 		return ok(result);
 	} catch (err) {
-		console.error('[courses/sync] error:', err);
-		return serverError(err instanceof Error ? err.message : 'Sync failed');
+		if (err instanceof EnrollmentSyncInProgressError) return conflict(err.message);
+		log.error('Enrollment sync failed', { err });
+		return serverError(err instanceof Error ? err.message : 'Sincronizzazione non riuscita');
 	}
 }

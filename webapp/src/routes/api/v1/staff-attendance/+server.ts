@@ -18,6 +18,9 @@ import {
 	StaffAttendanceError,
 	updateStaffAttendanceTimestamp
 } from '$lib/services/staff-attendance';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('api/staff-attendance');
 
 const manualSchema = z.object({
 	userId: z.number().int().positive(),
@@ -56,7 +59,7 @@ function errorResponse(err: unknown): Response {
 				return badRequest(err.message);
 		}
 	}
-	console.error('[staff-attendance] request failed:', err);
+	log.error('Request failed', { err });
 	return serverError('Errore interno');
 }
 

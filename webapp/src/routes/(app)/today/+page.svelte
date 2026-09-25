@@ -70,7 +70,7 @@
 								{:else}{row.name}{/if}
 							</TableCell>
 							<TableCell>
-								{#each row.courses as course}
+								{#each row.courses as course, index (index)}
 									<div>{course}</div>
 								{/each}
 							</TableCell>

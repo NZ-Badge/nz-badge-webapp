@@ -1,18 +1,10 @@
 import { z } from 'zod';
-import { dateKeySchema } from '$lib/utils/date';
 
 // UID pattern: uppercase hex pairs separated by colons, 4–7 bytes
 // e.g. "AA:BB:CC:DD" (4 bytes) up to "AA:BB:CC:DD:EE:FF:GG" (7 bytes)
 const UID_PATTERN = /^[A-F0-9]{2}(:[A-F0-9]{2}){3,6}$/;
 
-// 1. attendanceEventSchema (LEGACY - deprecato, da rimuovere in v2)
-export const attendanceEventSchema = z.object({
-	uid: z.string().regex(UID_PATTERN),
-	timestamp: z.string().datetime(),
-	event_type: z.enum(['entry', 'exit'])
-});
-
-// 1b. attendanceEventSchemaV2 — Schema evento conforme al protocollo
+// attendanceEventSchemaV2 — Schema evento conforme al protocollo
 export const attendanceEventSchemaV2 = z.object({
 	uid: z.string().regex(UID_PATTERN),
 	uid_raw: z
@@ -23,16 +15,6 @@ export const attendanceEventSchemaV2 = z.object({
 	type: z.enum(['entry', 'exit']),
 	device_time_raw: z.string().datetime({ offset: true }).optional()
 });
-
-// 1c. attendanceEventUnifiedSchema — Schema che accetta entrambi (transizione)
-export const attendanceEventUnifiedSchema = z.union([
-	attendanceEventSchemaV2,
-	attendanceEventSchema.transform((data) => ({
-		uid: data.uid,
-		timestamp: data.timestamp,
-		type: data.event_type === 'entry' ? ('entry' as const) : ('exit' as const)
-	}))
-]);
 
 // Queue status schema
 const queueStatusSchema = z.object({
@@ -46,44 +28,30 @@ const batchInfoSchema = z.object({
 	batch_sequence: z.number().int().min(1)
 });
 
-// 2. attendanceSingleSchema
+// attendanceSingleSchema
 export const attendanceSingleSchema = z.object({
 	events: z.array(attendanceEventSchemaV2).min(1),
 	queue_status: queueStatusSchema.optional()
 });
 
-// 3. attendanceBatchSchema
+// attendanceBatchSchema
 export const attendanceBatchSchema = z.object({
 	events: z.array(attendanceEventSchemaV2).min(1).max(10),
 	batch_info: batchInfoSchema,
 	queue_status: queueStatusSchema
 });
 
-// 4. shopifyWebhookOrderSchema
-export const shopifyWebhookOrderSchema = z
-	.object({
-		id: z.number(),
-		email: z.string().email(),
-		line_items: z.array(
-			z.object({
-				product_id: z.number(),
-				variant_id: z.number()
-			})
-		)
-	})
-	.passthrough();
-
-// 5. cardWriteSchema
+// cardWriteSchema
 export const cardWriteSchema = z
 	.object({
 		subscriber_id: z.number().int().positive().optional(),
 		user_id: z.number().int().positive().optional()
 	})
 	.refine((data) => Number(Boolean(data.subscriber_id)) + Number(Boolean(data.user_id)) === 1, {
-		message: 'Specify exactly one of subscriber_id or user_id'
+		message: 'Indica esattamente uno tra subscriber_id e user_id'
 	});
 
-// 6. cardValidateSchema
+// cardValidateSchema
 export const cardValidateSchema = z.object({
 	session_token: z.string().uuid(),
 	uid: z.string().regex(UID_PATTERN),
@@ -91,24 +59,9 @@ export const cardValidateSchema = z.object({
 	sector_data_hash: z.string().optional()
 });
 
-// 7. cardDisableSchema (for path param validation)
-export const cardDisableSchema = z.object({
-	id: z.coerce.number().int().positive()
-});
+// Subscriber create/update schemas live in $lib/services/subscribers.
 
-// 8–9. Subscriber create/update schemas live in $lib/services/subscribers.
-
-// 10. attendanceQuerySchema (query params — use z.coerce for numbers)
-export const attendanceQuerySchema = z.object({
-	from: dateKeySchema.optional(),
-	to: dateKeySchema.optional(),
-	device_id: z.string().optional(),
-	subscriber_id: z.coerce.number().int().positive().optional(),
-	page: z.coerce.number().int().positive().default(1),
-	limit: z.coerce.number().int().positive().max(100).default(50)
-});
-
-// 11. cardQuerySchema
+// cardQuerySchema
 export const cardQuerySchema = z.object({
 	status: z.enum(['active', 'disabled', 'replaced', 'lost', 'deleted']).optional(),
 	subscriber_id: z.coerce.number().int().positive().optional(),
@@ -116,7 +69,7 @@ export const cardQuerySchema = z.object({
 	limit: z.coerce.number().int().positive().max(100).default(100)
 });
 
-// 12. subscribersQuerySchema
+// subscribersQuerySchema
 export const subscribersQuerySchema = z.object({
 	status: z.enum(['active', 'completed', 'suspended', 'cancelled']).optional(),
 	course_id: z.coerce.number().int().positive().optional(),
@@ -125,18 +78,17 @@ export const subscribersQuerySchema = z.object({
 	limit: z.coerce.number().int().positive().max(100).default(25)
 });
 
+// Password policy for system users (API create/update). The admin UI checks the same
+// minimum length before submitting, so keep PASSWORD_MIN_LENGTH in sync with it.
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 100;
+
+export const passwordSchema = z
+	.string()
+	.min(PASSWORD_MIN_LENGTH, `La password deve contenere almeno ${PASSWORD_MIN_LENGTH} caratteri`)
+	.max(PASSWORD_MAX_LENGTH, 'Password troppo lunga');
+
 // Inferred TypeScript types
 export type AttendanceEvent = z.infer<typeof attendanceEventSchemaV2>;
-export type AttendanceSingle = z.infer<typeof attendanceSingleSchema>;
-export type AttendanceBatch = z.infer<typeof attendanceBatchSchema>;
-export type AttendanceEventLegacy = z.infer<typeof attendanceEventSchema>;
-export type AttendanceEventV2 = z.infer<typeof attendanceEventSchemaV2>;
 export type QueueStatus = z.infer<typeof queueStatusSchema>;
 export type BatchInfo = z.infer<typeof batchInfoSchema>;
-export type ShopifyWebhookOrder = z.infer<typeof shopifyWebhookOrderSchema>;
-export type CardWrite = z.infer<typeof cardWriteSchema>;
-export type CardValidate = z.infer<typeof cardValidateSchema>;
-export type CardDisable = z.infer<typeof cardDisableSchema>;
-export type AttendanceQuery = z.infer<typeof attendanceQuerySchema>;
-export type CardQuery = z.infer<typeof cardQuerySchema>;
-export type SubscribersQuery = z.infer<typeof subscribersQuerySchema>;

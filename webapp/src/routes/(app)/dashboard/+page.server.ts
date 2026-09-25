@@ -116,6 +116,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const activeCoursesByKey = new Map<
 		string,
 		{
+			key: string;
 			variantId: string | null;
 			productTitle: string;
 			variantTitle: string | null;
@@ -143,6 +144,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		}
 
 		activeCoursesByKey.set(courseKey, {
+			key: courseKey,
 			variantId: enrollment.variantId,
 			productTitle: enrollment.productTitle ?? 'Corso senza nome',
 			variantTitle: enrollment.variantTitle,
