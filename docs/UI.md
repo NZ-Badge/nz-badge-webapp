@@ -36,8 +36,8 @@ chiaro e scuro, senza scrivere sul database.
 ## Aree
 
 - **Gestione quotidiana, blu**: panoramica, iscritti, corsi, tessere e presenze.
-- **Amministrazione, viola**: staff e accessi, dispositivi, aggiornamenti,
-  impostazioni e verifica tecnica delle tessere.
+- **Amministrazione, viola**: staff e accessi, verifica tecnica delle tessere,
+  dispositivi, aggiornamenti, impostazioni e manutenzione del database.
 
 Il layout determina l'area dalla navigazione e la espone con `data-area`.
 L'identità dell'area compare nelle intestazioni, nelle tabelle e nella navigazione,

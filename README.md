@@ -45,6 +45,7 @@ Route principali in `src/routes/(app)`:
 - `/firmware`
 - `/settings`
 - `/admin/users`
+- `/admin/maintenance`
 
 Accesso tramite login con cookie di sessione JWT.
 La pagina `/cards` elenca le tessere di corsisti, collaboratori, operatori e amministratori,
@@ -53,6 +54,13 @@ indica il tipo di intestatario e permette di cercare per nome le tessere non can
 I Collaboratori vedono soltanto Panoramica, Ingressi collaboratori e I miei ingressi. Gli
 Operatori possono consultare lo Staff, gestire card e strisciate, ma la creazione, modifica e
 disattivazione o riattivazione degli account resta riservata agli Amministratori.
+
+Gli Amministratori possono scaricare da **Amministrazione → Manutenzione** un backup completo
+del database in formato `.sql.gz`. Il download include struttura, dati, trigger, routine ed eventi
+del database configurato in `DATABASE_URL`; usa `mariadb-dump` o `mysqldump` e comprime il flusso con gzip.
+Il server deve avere uno dei due client installato (`mariadb-dump` e' incluso nell'immagine Docker).
+Il file contiene dati riservati: conservarlo in modo sicuro. Se il dump fallisce durante il
+download, il trasferimento viene interrotto e il file non è valido.
 
 ### 2. Device backend
 

@@ -20,6 +20,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Database export from the administrator maintenance page
+RUN apk add --no-cache mariadb-client
+
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S sveltekit -u 1001

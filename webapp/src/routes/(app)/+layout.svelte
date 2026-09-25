@@ -18,6 +18,7 @@
 		LogOut,
 		Plug,
 		UserCog,
+		DatabaseBackup,
 		Clock3,
 		LogIn,
 		CircleHelp
@@ -71,15 +72,16 @@
 
 	// Admin submenu links (only visible to admin users)
 	const adminLinks = $derived([
+		{ href: '/admin/users', label: 'Staff e accessi', icon: UserCog },
 		...(isUserAdmin
 			? [
 					{ href: '/card-diagnostics', label: 'Verifica tessera', icon: ScanLine },
 					{ href: '/devices', label: 'Dispositivi', icon: Cpu },
 					{ href: '/firmware', label: 'Aggiornamenti', icon: Microchip },
-					{ href: '/settings', label: 'Impostazioni', icon: Settings }
+					{ href: '/settings', label: 'Impostazioni', icon: Settings },
+					{ href: '/admin/maintenance', label: 'Manutenzione', icon: DatabaseBackup }
 				]
-			: []),
-		{ href: '/admin/users', label: 'Staff e accessi', icon: UserCog }
+			: [])
 	]);
 
 	// Check if any admin link is active
@@ -314,6 +316,12 @@
 											href={link.href}
 											role="menuitem"
 											aria-current={isActive ? 'page' : undefined}
+											data-tutorial-title={link.label}
+											data-tutorial-description={link.href === '/admin/maintenance'
+												? 'Apre gli strumenti di manutenzione per scaricare un backup completo del database.'
+												: link.href === '/admin/users'
+													? 'Apre la gestione dello staff, dei ruoli e degli accessi.'
+													: `Apre la sezione ${link.label.toLowerCase()} dell'amministrazione.`}
 											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all
 										       {isActive
 												? 'bg-violet-700/50 text-white'
