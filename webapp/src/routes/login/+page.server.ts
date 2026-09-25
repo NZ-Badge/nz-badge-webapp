@@ -48,10 +48,10 @@ export const actions: Actions = {
 		const ipAddress = getClientIp(getClientAddress);
 		const userAgent = request.headers.get('user-agent')?.slice(0, 500) ?? undefined;
 		const emailKey = `login:email:${email.toLowerCase()}`;
-		// Both limiters are always evaluated so that each attempt is counted on both keys.
-		const ipLimited = loginIpRateLimiter.isLimited(`login:ip:${ipAddress ?? 'unknown'}`);
-		const emailLimited = loginEmailRateLimiter.isLimited(emailKey);
-		if (ipLimited || emailLimited) {
+		const ipKey = `login:ip:${ipAddress ?? 'unknown'}`;
+		// Only failed attempts count towards the limits, so successful logins from a shared
+		// address (NAT, or the ingress when ADDRESS_HEADER is not configured) never lock users out.
+		if (loginIpRateLimiter.isBlocked(ipKey) || loginEmailRateLimiter.isBlocked(emailKey)) {
 			await logAudit({
 				action: 'LOGIN_FAILED',
 				entityType: 'user',
@@ -66,6 +66,8 @@ export const actions: Actions = {
 
 		// Messaggio generico — non rivela se l'email esiste
 		if (!user || user.status !== 'active' || !(await bcrypt.compare(password, user.passwordHash))) {
+			loginIpRateLimiter.record(ipKey);
+			loginEmailRateLimiter.record(emailKey);
 			await logAudit({
 				userId: user?.id,
 				action: 'LOGIN_FAILED',

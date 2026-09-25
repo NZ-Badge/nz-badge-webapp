@@ -10,13 +10,18 @@ vi.mock('$lib/db', () => ({
 	db: { select: () => ({ from: () => ({ where: () => ({ limit: mocks.limit }) }) }) }
 }));
 vi.mock('$lib/services/audit', () => ({ logAudit: mocks.logAudit }));
+vi.mock('$lib/services/auth', () => ({
+	createAdminSession: vi.fn(async () => ({ token: 'token', expires: new Date() })),
+	verifyUserSession: vi.fn()
+}));
 
+import bcrypt from 'bcryptjs';
 import { actions } from './+page.server';
 
-function event(email: string, ip = '10.0.0.1') {
+function event(email: string, ip = '10.0.0.1', password = 'wrong-password') {
 	const body = new FormData();
 	body.set('email', email);
-	body.set('password', 'wrong-password');
+	body.set('password', password);
 	return {
 		request: new Request('http://localhost/login?/login', { method: 'POST', body }),
 		cookies: { set: vi.fn(), delete: vi.fn() },
@@ -41,7 +46,21 @@ describe('login rate limiting', () => {
 		);
 	});
 
-	it('blocks an IP after 20 attempts regardless of email', async () => {
+	it('does not count successful logins towards the IP limit', async () => {
+		const passwordHash = await bcrypt.hash('right-password', 4);
+		mocks.limit.mockResolvedValue([{ id: 1, status: 'active', passwordHash }]);
+		for (let attempt = 0; attempt < 25; attempt++) {
+			await expect(
+				actions.login(event(`ok${attempt}@example.com`, '10.7.7.7', 'right-password'))
+			).rejects.toMatchObject({ status: 303, location: '/dashboard' });
+		}
+		mocks.limit.mockResolvedValue([]);
+		expect(await actions.login(event('other@example.com', '10.7.7.7'))).toMatchObject({
+			status: 400
+		});
+	});
+
+	it('blocks an IP after 20 failed attempts regardless of email', async () => {
 		for (let attempt = 0; attempt < 20; attempt++) {
 			await actions.login(event(`user${attempt}@example.com`, '10.9.9.9'));
 		}

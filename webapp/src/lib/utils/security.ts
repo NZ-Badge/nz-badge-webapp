@@ -110,6 +110,21 @@ class RateLimiter {
 		return false;
 	}
 
+	/** Check whether `key` is over the limit without counting a new request. */
+	isBlocked(key: string): boolean {
+		const now = Date.now();
+		const timestamps = this.requests.get(key) ?? [];
+		return timestamps.filter((t) => now - t < this.windowMs).length >= this.maxRequests;
+	}
+
+	/** Count one request (e.g. a failed attempt) for `key`. */
+	record(key: string): void {
+		const now = Date.now();
+		const validTimestamps = (this.requests.get(key) ?? []).filter((t) => now - t < this.windowMs);
+		validTimestamps.push(now);
+		this.requests.set(key, validTimestamps);
+	}
+
 	getRemainingRequests(key: string): number {
 		const now = Date.now();
 		const timestamps = this.requests.get(key) ?? [];
@@ -137,9 +152,10 @@ class RateLimiter {
 
 // Global rate limiter instances
 export const authRateLimiter = new RateLimiter(300000, 5); // 5 device auth attempts per 5 minutes
-// Admin login: per-IP limit is looser because staff may share a NAT/proxy address.
-export const loginIpRateLimiter = new RateLimiter(15 * 60000, 20); // 20 attempts per 15 minutes
-export const loginEmailRateLimiter = new RateLimiter(15 * 60000, 5); // 5 attempts per 15 minutes
+// Admin login: only failed attempts are counted. The per-IP limit is looser because staff
+// may share a NAT/proxy address (or the ingress address when ADDRESS_HEADER is not set).
+export const loginIpRateLimiter = new RateLimiter(15 * 60000, 20); // 20 failed attempts per 15 minutes
+export const loginEmailRateLimiter = new RateLimiter(15 * 60000, 5); // 5 failed attempts per 15 minutes
 
 /**
  * Hash sensitive data for audit logs (one-way)

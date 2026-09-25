@@ -15,7 +15,7 @@ Questo documento riassume le misure di sicurezza effettivamente rintracciabili n
 - ruoli ammessi nell'app: `admin`, `staff`, `collaborator`
 - ogni richiesta ricarica l'utente dal database e rifiuta account con stato diverso da `active`
 - la disattivazione e' un soft delete; invalida anche sessioni gia' emesse al controllo successivo
-- login con rate limit in-memory: 5 tentativi per email e 20 per IP ogni 15 minuti (risposta 429)
+- login con rate limit in-memory: 5 tentativi falliti per email e 20 per IP ogni 15 minuti (risposta 429); i login riusciti non vengono conteggiati, quindi utenti dietro lo stesso NAT/proxy non si bloccano a vicenda
 - login riusciti (`LOGIN`) e falliti (`LOGIN_FAILED`, email mascherata) finiscono in `audit_log`;
   i log applicativi riportano solo l'id utente
 
