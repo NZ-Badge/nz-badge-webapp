@@ -1,8 +1,9 @@
 import { db } from '$lib/db';
 import { enrollments, subscribers } from '$lib/db/schema';
-import { TIMEZONE } from '$lib/utils/date';
+import { formatDateIT, TIMEZONE } from '$lib/utils/date';
 import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { formatInTimeZone } from 'date-fns-tz';
+import { z } from 'zod';
 
 function addDays(key: string, days: number): string {
 	const date = new Date(`${key}T12:00:00.000Z`);
@@ -10,17 +11,22 @@ function addDays(key: string, days: number): string {
 	return date.toISOString().slice(0, 10);
 }
 
-export function selectedWeek(value: string | null, now = new Date()) {
+const dateKeySchema = z
+	.string()
+	.regex(/^\d{4}-\d{2}-\d{2}$/)
+	.refine((value) => {
+		const date = new Date(`${value}T12:00:00.000Z`);
+		return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+	});
+
+export function selectedDateRange(from: string | null, to: string | null, now = new Date()) {
 	const today = formatInTimeZone(now, TIMEZONE, 'yyyy-MM-dd');
-	const parsed =
-		value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00.000Z`) : null;
-	const requested =
-		parsed && !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
-			? value
-			: today;
-	const date = new Date(`${requested}T12:00:00.000Z`);
-	const start = addDays(requested, -(date.getUTCDay() + 6) % 7);
-	return { start, end: addDays(start, 6), next: addDays(start, 7) };
+	const date = new Date(`${today}T12:00:00.000Z`);
+	const weekStart = addDays(today, -(date.getUTCDay() + 6) % 7);
+	const start = from === null ? weekStart : dateKeySchema.parse(from);
+	const end = to === null ? addDays(weekStart, 6) : dateKeySchema.parse(to);
+	if (start > end) throw new RangeError('La data Da deve precedere o coincidere con la data A.');
+	return { start, end, next: addDays(end, 1) };
 }
 
 export async function getNewStudents(start: string, next: string) {
@@ -76,8 +82,8 @@ export function newStudentsCsv(rows: Awaited<ReturnType<typeof getNewStudents>>)
 			row.phone ?? '',
 			row.productTitle ?? '',
 			row.variantTitle ?? '',
-			row.startDate?.toISOString().slice(0, 10) ?? '',
-			row.endDate?.toISOString().slice(0, 10) ?? ''
+			formatDateIT(row.startDate),
+			formatDateIT(row.endDate)
 		]);
 	}
 	return `\uFEFF${lines.map((line) => line.map(csvCell).join(';')).join('\r\n')}\r\n`;

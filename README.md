@@ -311,10 +311,10 @@ e indica se esiste almeno una timbratura registrata oggi; le iscrizioni senza an
 sono segnalate separatamente. Lo stato dell'iscrizione non filtra l'elenco, come nella validazione
 del corso per i reader.
 
-La pagina `/new-students` elenca le iscrizioni con data di inizio nella settimana corrente
-(lunedì–domenica, calendario `Europe/Rome`). Un filtro data consente di scegliere un'altra
-settimana, anche futura. `GET /api/v1/new-students/export?week=AAAA-MM-GG` scarica lo stesso
-elenco completo in CSV, apribile con un foglio di calcolo. Le pagine `/today` e `/new-students`,
+La pagina `/new-students` elenca le iscrizioni con data di inizio in un intervallo Da/A inclusivo,
+preimpostato sulla settimana corrente (lunedì–domenica, calendario `Europe/Rome`).
+`GET /api/v1/new-students/export?from=AAAA-MM-GG&to=AAAA-MM-GG` scarica lo stesso
+elenco completo in CSV, con date in formato `gg/mm/aaaa`. Le pagine `/today` e `/new-students`,
 incluso l'export dei nuovi corsisti, sono accessibili anche ai Collaboratori.
 
 Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia

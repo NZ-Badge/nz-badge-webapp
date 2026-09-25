@@ -255,7 +255,7 @@
 											data-tutorial-description={link.href === '/today'
 												? 'Mostra i corsisti con un corso in programma oggi e distingue chi ha già timbrato da chi non ha ancora registrato ingressi o uscite.'
 												: link.href === '/new-students'
-													? 'Mostra chi deve iniziare un corso questa settimana o in una settimana selezionata, con esportazione CSV.'
+													? 'Mostra chi deve iniziare un corso nell’intervallo di date selezionato, con esportazione CSV.'
 													: undefined}
 											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
 												? 'bg-blue-600/50 text-white'

@@ -1,7 +1,16 @@
 import type { PageServerLoad } from './$types';
-import { getNewStudents, selectedWeek } from '$lib/services/new-students';
+import { error } from '@sveltejs/kit';
+import { ZodError } from 'zod';
+import { getNewStudents, selectedDateRange } from '$lib/services/new-students';
 
 export const load: PageServerLoad = async ({ url }) => {
-	const week = selectedWeek(url.searchParams.get('week'));
-	return { week, rows: await getNewStudents(week.start, week.next) };
+	let range;
+	try {
+		range = selectedDateRange(url.searchParams.get('from'), url.searchParams.get('to'));
+	} catch (cause) {
+		if (cause instanceof ZodError || cause instanceof RangeError)
+			error(400, 'Intervallo di date non valido.');
+		throw cause;
+	}
+	return { range, rows: await getNewStudents(range.start, range.next) };
 };

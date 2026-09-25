@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { AuthError } from '$lib/services/auth';
-import { getNewStudents, newStudentsCsv, selectedWeek } from '$lib/services/new-students';
+import { getNewStudents, newStudentsCsv, selectedDateRange } from '$lib/services/new-students';
+import { ZodError } from 'zod';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
 	try {
@@ -11,12 +12,19 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			return json({ error: 'Accesso non autorizzato' }, { status: 401 });
 		throw error;
 	}
-	const week = selectedWeek(url.searchParams.get('week'));
-	const rows = await getNewStudents(week.start, week.next);
+	let range;
+	try {
+		range = selectedDateRange(url.searchParams.get('from'), url.searchParams.get('to'));
+	} catch (error) {
+		if (error instanceof ZodError || error instanceof RangeError)
+			return json({ error: 'Intervallo di date non valido' }, { status: 400 });
+		throw error;
+	}
+	const rows = await getNewStudents(range.start, range.next);
 	return new Response(newStudentsCsv(rows), {
 		headers: {
 			'Content-Type': 'text/csv; charset=utf-8',
-			'Content-Disposition': `attachment; filename="nuovi-corsisti-${week.start}.csv"`,
+			'Content-Disposition': `attachment; filename="nuovi-corsisti-${range.start}-${range.end}.csv"`,
 			'Cache-Control': 'private, no-store'
 		}
 	});

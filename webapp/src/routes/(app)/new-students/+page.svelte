@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
+	import { DatePicker } from '$lib/components/ui/date-picker';
 	import { Label } from '$lib/components/ui/label';
 	import {
 		Table,
@@ -17,29 +17,42 @@
 	import { Download } from '@lucide/svelte';
 
 	let { data } = $props();
-	let selectedDate = $state('');
+	let from = $state('');
+	let to = $state('');
+	let rangeError = $state('');
 	$effect(() => {
-		selectedDate = data.week.start;
+		from = data.range.start;
+		to = data.range.end;
+		rangeError = '';
 	});
 	const exportHref = $derived(
-		`/api/v1/new-students/export?week=${encodeURIComponent(data.week.start)}`
+		`/api/v1/new-students/export?from=${encodeURIComponent(data.range.start)}&to=${encodeURIComponent(data.range.end)}`
 	);
 
 	function filter(event: SubmitEvent) {
 		event.preventDefault();
-		if (selectedDate) goto(`/new-students?week=${encodeURIComponent(selectedDate)}`);
+		if (!from || !to) {
+			rangeError = 'Inserisci entrambe le date.';
+			return;
+		}
+		if (from > to) {
+			rangeError = 'La data Da deve precedere o coincidere con la data A.';
+			return;
+		}
+		rangeError = '';
+		goto(`/new-students?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 	}
 </script>
 
 <div class="space-y-5">
 	<PageHeader
 		title="Nuovi corsisti"
-		description="Corsisti che iniziano un corso nella settimana selezionata, da lunedì a domenica (Europe/Rome)."
+		description="Corsisti che iniziano un corso nell'intervallo di date selezionato (Europe/Rome)."
 	>
 		<Button
 			href={exportHref}
 			data-tutorial-title="Esporta nuovi corsisti"
-			data-tutorial-description="Scarica tutti i corsisti della settimana visualizzata in un file CSV apribile con Excel o LibreOffice."
+			data-tutorial-description="Scarica tutti i corsisti nell'intervallo visualizzato in un file CSV apribile con Excel o LibreOffice."
 		>
 			<Download size={16} /> Esporta CSV
 		</Button>
@@ -50,34 +63,47 @@
 		class="flex flex-wrap items-end gap-3 rounded-lg border bg-background p-4"
 	>
 		<div class="space-y-1.5">
-			<Label for="week-date">Seleziona un giorno della settimana</Label>
-			<Input
-				id="week-date"
-				type="date"
-				bind:value={selectedDate}
-				data-tutorial-title="Settimana di inizio"
-				data-tutorial-description="Scegli una data: verranno mostrati tutti i corsisti che iniziano dal lunedì alla domenica di quella settimana, anche nelle settimane future."
+			<Label for="from">Da</Label>
+			<DatePicker
+				id="from"
+				bind:value={from}
+				class="w-40"
+				aria-invalid={!!rangeError}
+				data-tutorial-title="Data iniziale"
+				data-tutorial-description="Scegli il primo giorno dell'intervallo, incluso nel filtro. La data è nel formato gg/mm/aaaa."
+			/>
+		</div>
+		<div class="space-y-1.5">
+			<Label for="to">A</Label>
+			<DatePicker
+				id="to"
+				bind:value={to}
+				class="w-40"
+				aria-invalid={!!rangeError}
+				data-tutorial-title="Data finale"
+				data-tutorial-description="Scegli l'ultimo giorno dell'intervallo, incluso nel filtro. La data è nel formato gg/mm/aaaa."
 			/>
 		</div>
 		<Button
 			type="submit"
 			variant="secondary"
-			data-tutorial-title="Mostra settimana"
-			data-tutorial-description="Applica la data scelta e mostra i corsisti che iniziano nella relativa settimana."
-			>Mostra settimana</Button
+			data-tutorial-title="Applica intervallo"
+			data-tutorial-description="Mostra i corsisti che iniziano tra le date Da e A, estremi inclusi."
+			>Applica filtro</Button
 		>
+		{#if rangeError}<p role="alert" class="w-full text-sm text-destructive">{rangeError}</p>{/if}
 	</form>
 
 	<p class="text-sm text-muted-foreground">
-		Dal <strong>{formatDateIT(data.week.start)}</strong> al
-		<strong>{formatDateIT(data.week.end)}</strong>
+		Dal <strong>{formatDateIT(data.range.start)}</strong> al
+		<strong>{formatDateIT(data.range.end)}</strong>
 		· {data.rows.length}
 		{data.rows.length === 1 ? 'iscrizione' : 'iscrizioni'} in partenza
 	</p>
 
 	{#if data.rows.length === 0}
 		<p class="rounded-lg border bg-background p-8 text-center text-sm text-muted-foreground">
-			Nessun corsista inizia un corso in questa settimana.
+			Nessun corsista inizia un corso nell'intervallo selezionato.
 		</p>
 	{:else}
 		<TablePanel>
