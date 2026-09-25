@@ -61,6 +61,7 @@
 	const attendanceLinks = $derived(
 		isStaffManager
 			? [
+					{ href: '/today', label: 'Attesi oggi', icon: Users },
 					{ href: '/attendance', label: 'Corsisti', icon: ClipboardList },
 					{ href: '/staff-attendance', label: 'Collaboratori', icon: LogIn }
 				]
@@ -243,6 +244,12 @@
 									<li>
 										<a
 											href={link.href}
+											data-tutorial-title={link.href === '/today'
+												? 'Corsisti attesi oggi'
+												: undefined}
+											data-tutorial-description={link.href === '/today'
+												? 'Mostra i corsisti con un corso in programma oggi e distingue chi ha già timbrato da chi non ha ancora registrato ingressi o uscite.'
+												: undefined}
 											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
 												? 'bg-blue-600/50 text-white'
 												: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"

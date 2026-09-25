@@ -288,6 +288,12 @@ Dal pannello amministrativo, data e ora di una presenza corsista possono essere 
 `POST /api/v1/attendance/manual`. Le operazioni richiedono una sessione
 Amministratore/Operatore e sono registrate nell'audit log.
 
+La pagina `/today` mostra i corsisti con almeno un'iscrizione le cui date di inizio e fine
+comprendono la giornata corrente in `Europe/Rome`. Riunisce le iscrizioni dello stesso corsista
+e indica se esiste almeno una timbratura registrata oggi; le iscrizioni senza anagrafica collegata
+sono segnalate separatamente. Lo stato dell'iscrizione non filtra l'elenco, come nella validazione
+del corso per i reader.
+
 Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia
 l'esportazione CSV per intervallo di date o persona. Da entrambe le tabelle si può eliminare
 un singolo ingresso o una singola uscita dopo conferma; `/attendance` mantiene anche
