@@ -111,6 +111,8 @@
 		'/subscribers':
 			'Consulta l’elenco degli iscritti, cerca una persona e apri la sua scheda per vedere corsi, tessere e presenze.',
 		'/cards': 'Controlla tutte le tessere RFID, il loro stato e lo storico di quelle cancellate.',
+		'/new-students':
+			'Consulta i corsisti che iniziano un corso questa settimana o in una settimana selezionata ed esporta il CSV.',
 		'/attendance':
 			'Consulta e correggi gli ingressi e le uscite dei corsisti, oppure esportali in un file CSV.',
 		'/staff-attendance': 'Consulta gli ingressi, le uscite e le ore lavorate dai collaboratori.',

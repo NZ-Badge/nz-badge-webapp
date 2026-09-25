@@ -15,6 +15,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import CardQuickReader from '$lib/components/CardQuickReader.svelte';
 	import StaffManualEntryDialog from '$lib/components/StaffManualEntryDialog.svelte';
+	import StaffAttendanceDeleteButton from '$lib/components/StaffAttendanceDeleteButton.svelte';
 	import { Card, CardContent } from '$lib/components/ui/card';
 	import {
 		Table,
@@ -129,7 +130,7 @@
 	<TablePanel class="mt-8">
 		<div data-slot="table-panel-header">
 			<h2 class="font-semibold">Le mie ultime 10 strisciate</h2>
-			<a href="/my-attendance" class="app-link text-sm">Vedi tutte →</a>
+			<a href="/my-attendance#strisciate" class="app-link text-sm">Vedi tutte →</a>
 		</div>
 		{#if data.recentStaffAttendance.length === 0}<p class="px-5 py-6 text-sm text-muted-foreground">
 				Nessuna strisciata registrata.
@@ -139,7 +140,7 @@
 					><TableRow
 						><TableHead>Data/ora</TableHead><TableHead>Evento</TableHead><TableHead
 							>Sorgente</TableHead
-						></TableRow
+						><TableHead class="w-px text-right">Azioni</TableHead></TableRow
 					></TableHeader
 				><TableBody
 					>{#each data.recentStaffAttendance as row}<TableRow
@@ -152,6 +153,8 @@
 								></TableCell
 							><TableCell>{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}</TableCell><TableCell
 								>{sourceLabel(row.source)}</TableCell
+							><TableCell class="w-px text-right"
+								><StaffAttendanceDeleteButton id={row.id} eventType={row.eventType} /></TableCell
 							></TableRow
 						>{/each}</TableBody
 				></Table

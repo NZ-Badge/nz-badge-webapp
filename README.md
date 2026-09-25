@@ -294,14 +294,24 @@ e indica se esiste almeno una timbratura registrata oggi; le iscrizioni senza an
 sono segnalate separatamente. Lo stato dell'iscrizione non filtra l'elenco, come nella validazione
 del corso per i reader.
 
+La pagina `/new-students` elenca le iscrizioni con data di inizio nella settimana corrente
+(lunedì–domenica, calendario `Europe/Rome`). Un filtro data consente di scegliere un'altra
+settimana, anche futura. `GET /api/v1/new-students/export?week=AAAA-MM-GG` scarica lo stesso
+elenco completo in CSV, apribile con un foglio di calcolo. Le pagine `/today` e `/new-students`,
+incluso l'export dei nuovi corsisti, sono accessibili anche ai Collaboratori.
+
 Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia
 l'esportazione CSV per intervallo di date o persona. Da entrambe le tabelle si può eliminare
 un singolo ingresso o una singola uscita dopo conferma; `/attendance` mantiene anche
-l'eliminazione multipla. Le API amministrative sono `DELETE /api/v1/attendance` con
+l'eliminazione multipla. Gli endpoint sono `DELETE /api/v1/attendance` con
 `{ "ids": [id] }` e `DELETE /api/v1/staff-attendance` con `{ "id": id }`.
 La pagina `/staff-attendance` e il relativo
 export sono riservati ad Amministratori e Operatori; i Collaboratori consultano le proprie
-presenze da `/my-attendance`. Gli endpoint di download sono rispettivamente
+presenze da `/my-attendance`. La dashboard mostra le ultime 10 strisciate del Collaboratore;
+`/my-attendance` mostra anche la cronologia completa, paginata. Da entrambe le viste il
+Collaboratore può eliminare, dopo conferma, soltanto una propria strisciata errata tramite
+`DELETE /api/v1/staff-attendance`; il riepilogo delle ore viene ricalcolato.
+Gli endpoint di download sono rispettivamente
 `GET /api/v1/attendance/export` e `GET /api/v1/staff-attendance/export`.
 
 Nell'interfaccia le date sono visualizzate come `gg/mm/aaaa`, anche nei calendari di

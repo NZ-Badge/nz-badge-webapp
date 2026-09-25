@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getStaffCardRejectionReason } from './attendance';
 import {
 	buildStaffAttendanceReport,
+	canDeleteStaffAttendance,
 	determineNextStaffEventTypeFromPrevious,
 	getCurrentMonthDateRange,
 	getCurrentWeekDateRange,
@@ -10,6 +11,12 @@ import {
 } from './staff-attendance';
 
 describe('staff attendance validation', () => {
+	it('allows collaborators to delete only their own events and managers to delete any event', () => {
+		expect(canDeleteStaffAttendance({ id: 7, role: 'collaborator' }, 7)).toBe(true);
+		expect(canDeleteStaffAttendance({ id: 7, role: 'collaborator' }, 8)).toBe(false);
+		expect(canDeleteStaffAttendance({ id: 7, role: 'staff' }, 8)).toBe(true);
+		expect(canDeleteStaffAttendance({ id: 7, role: 'admin' }, 8)).toBe(true);
+	});
 	it('does not require an enrollment or course range', () => {
 		expect(getStaffCardRejectionReason(true, true)).toBeNull();
 		expect(getStaffCardRejectionReason(false, true)).toBe('unknown_card');

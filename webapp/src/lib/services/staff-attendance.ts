@@ -430,15 +430,15 @@ export async function deleteStaffAttendance(params: {
 	actor: User;
 	attendanceId: number;
 }): Promise<void> {
-	if (!isStaffManager(params.actor)) {
-		throw new StaffAttendanceError('Operazione non consentita', 'FORBIDDEN');
-	}
 	const [current] = await db
 		.select()
 		.from(staffAttendance)
 		.where(eq(staffAttendance.id, params.attendanceId))
 		.limit(1);
 	if (!current) throw new StaffAttendanceError('Strisciata non trovata', 'NOT_FOUND');
+	if (!canDeleteStaffAttendance(params.actor, current.userId)) {
+		throw new StaffAttendanceError('Operazione non consentita', 'FORBIDDEN');
+	}
 
 	await db.delete(staffAttendance).where(eq(staffAttendance.id, params.attendanceId));
 	await logAudit({
@@ -453,6 +453,13 @@ export async function deleteStaffAttendance(params: {
 			source: current.source
 		}
 	});
+}
+
+export function canDeleteStaffAttendance(
+	actor: Pick<User, 'id' | 'role'>,
+	targetUserId: number
+): boolean {
+	return actor.role === 'admin' || actor.role === 'staff' || actor.id === targetUserId;
 }
 
 export async function getStaffAttendanceReport(

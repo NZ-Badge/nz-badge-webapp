@@ -7,7 +7,13 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	try {
 		const user = await locals.verifyUser();
 		if (user.role === 'collaborator') {
-			const allowedPrefixes = ['/dashboard', '/my-attendance', '/copyrights'];
+			const allowedPrefixes = [
+				'/dashboard',
+				'/my-attendance',
+				'/copyrights',
+				'/today',
+				'/new-students'
+			];
 			if (!allowedPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
 				error(403, 'Accesso non consentito');
 			}

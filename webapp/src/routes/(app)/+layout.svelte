@@ -58,15 +58,16 @@
 			: [])
 	]);
 
-	const attendanceLinks = $derived(
-		isStaffManager
+	const attendanceLinks = $derived([
+		{ href: '/today', label: 'Attesi oggi', icon: Users },
+		{ href: '/new-students', label: 'Nuovi corsisti', icon: Users },
+		...(isStaffManager
 			? [
-					{ href: '/today', label: 'Attesi oggi', icon: Users },
 					{ href: '/attendance', label: 'Corsisti', icon: ClipboardList },
 					{ href: '/staff-attendance', label: 'Collaboratori', icon: LogIn }
 				]
-			: []
-	);
+			: [])
+	]);
 
 	// Admin submenu links (only visible to admin users)
 	const adminLinks = $derived([
@@ -218,7 +219,7 @@
 					</li>
 				{/each}
 
-				{#if isStaffManager}
+				{#if attendanceLinks.length > 0}
 					<li role="none">
 						<button
 							type="button"
@@ -246,10 +247,14 @@
 											href={link.href}
 											data-tutorial-title={link.href === '/today'
 												? 'Corsisti attesi oggi'
-												: undefined}
+												: link.href === '/new-students'
+													? 'Nuovi corsisti'
+													: undefined}
 											data-tutorial-description={link.href === '/today'
 												? 'Mostra i corsisti con un corso in programma oggi e distingue chi ha già timbrato da chi non ha ancora registrato ingressi o uscite.'
-												: undefined}
+												: link.href === '/new-students'
+													? 'Mostra chi deve iniziare un corso questa settimana o in una settimana selezionata, con esportazione CSV.'
+													: undefined}
 											class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium {isActive
 												? 'bg-blue-600/50 text-white'
 												: 'text-slate-400 hover:bg-slate-800 hover:text-white'}"
