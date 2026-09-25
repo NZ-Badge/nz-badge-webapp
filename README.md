@@ -313,6 +313,7 @@ del corso per i reader.
 
 La pagina `/new-students` elenca le iscrizioni con data di inizio in un intervallo Da/A inclusivo,
 preimpostato sulla settimana corrente (lunedì–domenica, calendario `Europe/Rome`).
+La tabella mostra 25 iscrizioni per pagina, mantenendo l'intervallo selezionato nella paginazione.
 `GET /api/v1/new-students/export?from=AAAA-MM-GG&to=AAAA-MM-GG` scarica lo stesso
 elenco completo in CSV, con date in formato `gg/mm/aaaa`. Le pagine `/today` e `/new-students`,
 incluso l'export dei nuovi corsisti, sono accessibili anche ai Collaboratori.

@@ -7,6 +7,7 @@
 	import {
 		Table,
 		TablePanel,
+		TablePagination,
 		TableBody,
 		TableCell,
 		TableHead,
@@ -28,6 +29,8 @@
 	const exportHref = $derived(
 		`/api/v1/new-students/export?from=${encodeURIComponent(data.range.start)}&to=${encodeURIComponent(data.range.end)}`
 	);
+	const pageHref = (page: number) =>
+		`/new-students?from=${encodeURIComponent(data.range.start)}&to=${encodeURIComponent(data.range.end)}&page=${page}`;
 
 	function filter(event: SubmitEvent) {
 		event.preventDefault();
@@ -97,49 +100,57 @@
 	<p class="text-sm text-muted-foreground">
 		Dal <strong>{formatDateIT(data.range.start)}</strong> al
 		<strong>{formatDateIT(data.range.end)}</strong>
-		· {data.rows.length}
-		{data.rows.length === 1 ? 'iscrizione' : 'iscrizioni'} in partenza
+		· {data.total}
+		{data.total === 1 ? 'iscrizione' : 'iscrizioni'} in partenza
 	</p>
 
-	{#if data.rows.length === 0}
-		<p class="rounded-lg border bg-background p-8 text-center text-sm text-muted-foreground">
-			Nessun corsista inizia un corso nell'intervallo selezionato.
-		</p>
-	{:else}
-		<TablePanel>
-			<Table embedded class="min-w-[48rem]">
-				<TableHeader
-					><TableRow
-						><TableHead>Inizio</TableHead><TableHead>Corsista</TableHead><TableHead>Corso</TableHead
-						><TableHead>Email</TableHead><TableHead>Telefono</TableHead></TableRow
-					></TableHeader
-				>
-				<TableBody>
-					{#each data.rows as row (row.id)}
-						<TableRow>
-							<TableCell>{formatDateIT(row.startDate)}</TableCell>
-							<TableCell class="font-medium">
-								{#if row.subscriberId}
-									<a
-										href={`/subscribers/${row.subscriberId}`}
-										class="app-link"
-										data-tutorial-title="Scheda corsista"
-										data-tutorial-description="Apre la scheda del corsista per consultare iscrizioni, tessere e presenze."
-										>{row.firstName} {row.lastName}</a
-									>
-								{:else}{row.firstName} {row.lastName}{/if}
-							</TableCell>
-							<TableCell
-								>{row.productTitle ?? 'Corso senza nome'}{#if row.variantTitle}<span
-										class="block text-sm text-muted-foreground">{row.variantTitle}</span
-									>{/if}</TableCell
-							>
-							<TableCell>{row.email}</TableCell>
-							<TableCell>{row.phone ?? '—'}</TableCell>
-						</TableRow>
-					{/each}
-				</TableBody>
-			</Table>
-		</TablePanel>
-	{/if}
+	<TablePanel>
+		<Table embedded class="min-w-[48rem]">
+			<TableHeader
+				><TableRow
+					><TableHead>Inizio</TableHead><TableHead>Corsista</TableHead><TableHead>Corso</TableHead
+					><TableHead>Email</TableHead><TableHead>Telefono</TableHead></TableRow
+				></TableHeader
+			>
+			<TableBody>
+				{#if data.rows.length === 0}
+					<TableRow>
+						<TableCell colspan={5} data-empty>
+							Nessun corsista inizia un corso nell'intervallo selezionato.
+						</TableCell>
+					</TableRow>
+				{/if}
+				{#each data.rows as row (row.id)}
+					<TableRow>
+						<TableCell>{formatDateIT(row.startDate)}</TableCell>
+						<TableCell class="font-medium">
+							{#if row.subscriberId}
+								<a
+									href={`/subscribers/${row.subscriberId}`}
+									class="app-link"
+									data-tutorial-title="Scheda corsista"
+									data-tutorial-description="Apre la scheda del corsista per consultare iscrizioni, tessere e presenze."
+									>{row.firstName} {row.lastName}</a
+								>
+							{:else}{row.firstName} {row.lastName}{/if}
+						</TableCell>
+						<TableCell
+							>{row.productTitle ?? 'Corso senza nome'}{#if row.variantTitle}<span
+									class="block text-sm text-muted-foreground">{row.variantTitle}</span
+								>{/if}</TableCell
+						>
+						<TableCell>{row.email}</TableCell>
+						<TableCell>{row.phone ?? '—'}</TableCell>
+					</TableRow>
+				{/each}
+			</TableBody>
+		</Table>
+		<TablePagination
+			page={data.page}
+			totalPages={data.totalPages}
+			total={data.total}
+			getPageHref={pageHref}
+			ariaLabel="Paginazione nuovi corsisti"
+		/>
+	</TablePanel>
 </div>

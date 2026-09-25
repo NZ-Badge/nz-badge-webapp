@@ -77,6 +77,15 @@ intervento il README o il documento in `docs/` pertinente.
 
 ## Note operative
 
+### Tabelle
+
+- Usare i componenti condivisi in `src/lib/components/ui/table` per struttura e stile delle
+  tabelle (`TablePanel`, `Table`, intestazione, righe, celle e `TablePagination`).
+- Mostrare il paginatore condiviso anche quando c'e' una sola pagina o la tabella e' vuota, in
+  modo che conteggio, stato vuoto e navigazione mantengano lo stesso stile nelle diverse pagine.
+- Per elenchi potenzialmente lunghi, paginare i risultati lato server, conservare i filtri nei
+  link tra pagine e mantenere gli export completi sull'intero insieme filtrato.
+
 ### Palette semantica per pulsanti e link
 
 Usare il colore per comunicare l'intento dell'azione, non la sezione della pagina. La palette di

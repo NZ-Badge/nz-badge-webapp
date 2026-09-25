@@ -1,7 +1,7 @@
 import { db } from '$lib/db';
 import { enrollments, subscribers } from '$lib/db/schema';
 import { formatDateIT, TIMEZONE } from '$lib/utils/date';
-import { and, asc, eq, gte, lt } from 'drizzle-orm';
+import { and, asc, count, eq, gte, lt } from 'drizzle-orm';
 import { formatInTimeZone } from 'date-fns-tz';
 import { z } from 'zod';
 
@@ -29,8 +29,27 @@ export function selectedDateRange(from: string | null, to: string | null, now = 
 	return { start, end, next: addDays(end, 1) };
 }
 
-export async function getNewStudents(start: string, next: string) {
-	const rows = await db
+function inDateRange(start: string, next: string) {
+	return and(
+		gte(enrollments.startDate, new Date(`${start}T00:00:00.000Z`)),
+		lt(enrollments.startDate, new Date(`${next}T00:00:00.000Z`))
+	);
+}
+
+export async function countNewStudents(start: string, next: string): Promise<number> {
+	const [{ total }] = await db
+		.select({ total: count() })
+		.from(enrollments)
+		.where(inDateRange(start, next));
+	return total;
+}
+
+export async function getNewStudents(
+	start: string,
+	next: string,
+	pagination?: { limit: number; offset: number }
+) {
+	const query = db
 		.select({
 			id: enrollments.id,
 			subscriberId: enrollments.subscriberId,
@@ -47,18 +66,14 @@ export async function getNewStudents(start: string, next: string) {
 		})
 		.from(enrollments)
 		.leftJoin(subscribers, eq(enrollments.subscriberId, subscribers.id))
-		.where(
-			and(
-				gte(enrollments.startDate, new Date(`${start}T00:00:00.000Z`)),
-				lt(enrollments.startDate, new Date(`${next}T00:00:00.000Z`))
-			)
-		)
+		.where(inDateRange(start, next))
 		.orderBy(
 			asc(enrollments.startDate),
 			asc(enrollments.lastName),
 			asc(enrollments.firstName),
 			asc(enrollments.id)
 		);
+	const rows = await (pagination ? query.limit(pagination.limit).offset(pagination.offset) : query);
 	return rows.map(({ subscriberFirstName, subscriberLastName, ...row }) => ({
 		...row,
 		firstName: subscriberFirstName ?? row.firstName ?? '',
