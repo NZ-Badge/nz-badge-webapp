@@ -1,10 +1,11 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { eq, and, like, or, count, SQL } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { subscribers, auditLog } from '$lib/db/schema';
-import { subscribersQuerySchema, subscriberCreateSchema } from '$lib/utils/validation';
+import { subscribers } from '$lib/db/schema';
+import { subscribersQuerySchema } from '$lib/utils/validation';
 import { ok, created, badRequest, unauthorized, serverError, formatZodError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
+import { createSubscriber, SubscriberServiceError } from '$lib/services/subscribers';
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
@@ -61,36 +62,12 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		return badRequest('Invalid JSON body');
 	}
 
-	const parsed = subscriberCreateSchema.safeParse(body);
-	if (!parsed.success) return badRequest(formatZodError(parsed.error));
-
 	try {
-		const result = await db.insert(subscribers).values({
-			...parsed.data,
-			purchaseDate: parsed.data.purchaseDate ? new Date(parsed.data.purchaseDate) : undefined,
-			courseStartDate: parsed.data.courseStartDate
-				? new Date(parsed.data.courseStartDate)
-				: undefined,
-			courseEndDate: parsed.data.courseEndDate ? new Date(parsed.data.courseEndDate) : undefined
-		});
-
-		const insertId = (result[0] as { insertId: number }).insertId;
-		const [newRecord] = await db
-			.select()
-			.from(subscribers)
-			.where(eq(subscribers.id, insertId))
-			.limit(1);
-
-		await db.insert(auditLog).values({
-			userId: adminUser.id,
-			action: 'subscriber_create',
-			entityType: 'subscribers',
-			entityId: newRecord.id,
-			dataAfter: newRecord as unknown as Record<string, unknown>
-		});
-
-		return created(newRecord);
+		return created(await createSubscriber(body, adminUser));
 	} catch (err) {
+		if (err instanceof SubscriberServiceError && err.zodError) {
+			return badRequest(formatZodError(err.zodError));
+		}
 		console.error('[subscribers] POST error:', err);
 		return serverError();
 	}

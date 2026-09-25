@@ -1,17 +1,32 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { subscribers, cardRfid, auditLog } from '$lib/db/schema';
-import { subscriberUpdateSchema } from '$lib/utils/validation';
+import { subscribers, cardRfid } from '$lib/db/schema';
 import {
 	ok,
 	badRequest,
 	unauthorized,
 	notFound,
+	conflict,
 	serverError,
 	formatZodError
 } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
+import {
+	removeSubscriber,
+	SubscriberServiceError,
+	updateSubscriber
+} from '$lib/services/subscribers';
+
+function serviceFailure(err: unknown, context: string): Response {
+	if (err instanceof SubscriberServiceError) {
+		if (err.code === 'NOT_FOUND') return notFound('Subscriber not found');
+		if (err.code === 'HAS_ACTIVE_CARD') return conflict(err.message);
+		if (err.zodError) return badRequest(formatZodError(err.zodError));
+	}
+	console.error(`[subscribers/[id]] ${context} error:`, err);
+	return serverError();
+}
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
@@ -48,40 +63,10 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 		return badRequest('Invalid JSON body');
 	}
 
-	const parsed = subscriberUpdateSchema.safeParse(body);
-	if (!parsed.success) return badRequest(formatZodError(parsed.error));
-
 	try {
-		const [existing] = await db.select().from(subscribers).where(eq(subscribers.id, id)).limit(1);
-		if (!existing) return notFound('Subscriber not found');
-
-		await db
-			.update(subscribers)
-			.set({
-				...parsed.data,
-				purchaseDate: parsed.data.purchaseDate ? new Date(parsed.data.purchaseDate) : undefined,
-				courseStartDate: parsed.data.courseStartDate
-					? new Date(parsed.data.courseStartDate)
-					: undefined,
-				courseEndDate: parsed.data.courseEndDate ? new Date(parsed.data.courseEndDate) : undefined
-			})
-			.where(eq(subscribers.id, id));
-
-		const [updated] = await db.select().from(subscribers).where(eq(subscribers.id, id)).limit(1);
-
-		await db.insert(auditLog).values({
-			userId: adminUser.id,
-			action: 'subscriber_update',
-			entityType: 'subscribers',
-			entityId: id,
-			dataBefore: existing as unknown as Record<string, unknown>,
-			dataAfter: updated as unknown as Record<string, unknown>
-		});
-
-		return ok(updated);
+		return ok(await updateSubscriber(id, body, adminUser));
 	} catch (err) {
-		console.error('[subscribers/[id]] PUT error:', err);
-		return serverError();
+		return serviceFailure(err, 'PUT');
 	}
 }
 
@@ -97,24 +82,9 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 	if (isNaN(id) || id <= 0) return notFound('Invalid ID');
 
 	try {
-		const [existing] = await db.select().from(subscribers).where(eq(subscribers.id, id)).limit(1);
-		if (!existing) return notFound('Subscriber not found');
-
-		// Soft delete
-		await db.update(subscribers).set({ status: 'cancelled' }).where(eq(subscribers.id, id));
-
-		await db.insert(auditLog).values({
-			userId: adminUser.id,
-			action: 'subscriber_delete',
-			entityType: 'subscribers',
-			entityId: id,
-			dataBefore: existing as unknown as Record<string, unknown>
-		});
-
-		const [updated] = await db.select().from(subscribers).where(eq(subscribers.id, id)).limit(1);
-		return ok(updated);
+		// Soft delete (status 'cancelled'): see $lib/services/subscribers.
+		return ok(await removeSubscriber(id, adminUser));
 	} catch (err) {
-		console.error('[subscribers/[id]] DELETE error:', err);
-		return serverError();
+		return serviceFailure(err, 'DELETE');
 	}
 }

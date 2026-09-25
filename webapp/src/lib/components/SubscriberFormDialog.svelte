@@ -13,6 +13,9 @@
 			firstName: string;
 			lastName: string;
 			email: string;
+			phone?: string | null;
+			taxId?: string | null;
+			note?: string | null;
 			status?: string | null;
 		} | null,
 		formResult = null as { error?: string; action?: string } | null
@@ -74,11 +77,11 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1">
 					<Label for="phone">Telefono</Label>
-					<Input id="phone" name="phone" />
+					<Input id="phone" name="phone" value={subscriber?.phone ?? ''} />
 				</div>
 				<div class="space-y-1">
 					<Label for="taxCode">Codice fiscale</Label>
-					<Input id="taxCode" name="taxCode" />
+					<Input id="taxCode" name="taxCode" value={subscriber?.taxId ?? ''} />
 				</div>
 			</div>
 
@@ -95,7 +98,7 @@
 
 			<div class="space-y-1">
 				<Label for="notes">Note</Label>
-				<Textarea id="notes" name="notes" rows={3}></Textarea>
+				<Textarea id="notes" name="notes" rows={3} value={subscriber?.note ?? ''}></Textarea>
 			</div>
 
 			<div class="flex justify-end gap-2 pt-2">

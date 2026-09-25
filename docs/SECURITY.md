@@ -28,7 +28,7 @@ Codice rilevante:
 
 - bearer token in header `Authorization`
 - device id in header `X-Device-ID`
-- token salvati come bcrypt hash in `device_registry.token_hash`
+- token salvati come hash SHA-256 (hex) in `device_registry.token_hash`, confrontati con `timingSafeEqual`; gli hash bcrypt legacy vengono migrati a SHA-256 alla prima autenticazione riuscita
 - aggiornamento `last_ping` su autenticazione riuscita
 
 Codice rilevante:
@@ -88,12 +88,20 @@ Esempi:
 
 La tabella `audit_log` viene usata per tracciare varie operazioni sensibili, tra cui:
 
-- creazione/modifica/cancellazione subscriber
-- flussi card write/erase
+- creazione/modifica/cancellazione subscriber (la cancellazione e' un soft delete: `status = 'cancelled'`)
+- flussi card write/erase, abilitazione/disabilitazione, ripristino e cancellazione card
+- modifica dei settings (`SETTINGS_UPDATE`, i segreti non vengono registrati in chiaro)
 - modifica dell'orario delle presenze corsisti
 - inserimenti e modifiche delle strisciate staff
 - soft delete degli account
 - operazioni amministrative specifiche
+
+Tutte le scritture passano da `logAudit` (`src/lib/services/audit.ts`), che accetta anche una
+transazione. Convenzione dei nomi: `action` usa i verbi generici `CREATE`/`UPDATE`/`DELETE` o
+un'azione di dominio in `UPPER_SNAKE` (`CARD_ENABLE`, `CARD_DISABLE`, `CARD_RESTORE`,
+`CARD_DELETE`, `SETTINGS_UPDATE`, …); `entity_type` e' un nome singolare minuscolo
+(`subscriber`, `card`, `attendance`, `user`, `setting`, …). Le righe storiche possono ancora
+contenere i vecchi valori `subscriber_create`/`subscribers`, `card_enable`/`card_rfid`.
 
 La copertura non e' uniforme su ogni endpoint del progetto, quindi va considerata parziale e orientata ai flussi piu' critici.
 

@@ -1,21 +1,20 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
-import { db } from '$lib/db';
-import { settings } from '$lib/db/schema';
 import { ok, badRequest, unauthorized, forbidden, serverError, conflict } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
+import { logAudit } from '$lib/services/audit';
+import { getMifareKeyConfig, regenerateGlobalKeys } from '$lib/services/mifare-keys';
 import {
-	getMifareKeyConfig,
-	regenerateGlobalKeys,
-	setSingleKeyMode,
-	isSingleKeyModeEnabled
-} from '$lib/services/mifare-keys';
-import { setEnrollmentApiConfig } from '$lib/services/enrollments';
+	getSetting,
+	getSettingRows,
+	setSettings,
+	type SettingsUpdate
+} from '$lib/services/settings';
 import {
 	countActiveCards,
 	getSettingsOverview,
 	maskMifareKeyConfig,
 	maskSettingRows,
+	MASKED_VALUE,
 	SECRET_SETTING_KEYS
 } from '$lib/services/settings-view';
 import { z } from 'zod';
@@ -94,76 +93,49 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 		return badRequest('Invalid settings data', parsed.error.issues);
 	}
 
-	const updates = parsed.data;
+	const {
+		regenerate_mifare_keys: regenerateMifareKeys,
+		enrollment_api_key: enrollmentApiKey,
+		...changes
+	} = parsed.data;
 	const userId = user.id;
 
 	try {
-		// Gestisci rigenerazione chiavi MIFARE se richiesto
-		if (updates.regenerate_mifare_keys) {
+		// Abilitazione modalità chiave unica: consentita solo senza card attive (false → true).
+		if (changes.use_single_mifare_key === true && !(await getSetting('use_single_mifare_key'))) {
+			const activeCards = await countActiveCards();
+			if (activeCards > 0) {
+				return conflict(
+					`Impossibile abilitare la modalità chiave unica: esistono ${activeCards} card attive nel sistema. ` +
+						`Tutte le card devono essere disattivate o cancellate prima di attivare questa opzione. ` +
+						`Una volta attivata, le card esistenti non funzioneranno più.`,
+					{ active_cards_count: activeCards }
+				);
+			}
+		}
+
+		if (regenerateMifareKeys) {
 			await regenerateGlobalKeys();
 		}
-		delete (updates as Record<string, unknown>).regenerate_mifare_keys;
 
-		// Gestisci abilitazione modalità chiave unica
-		if (updates.use_single_mifare_key !== undefined) {
-			// Valida solo se stiamo effettivamente cambiando da false → true
-			if (updates.use_single_mifare_key) {
-				const alreadyEnabled = await isSingleKeyModeEnabled();
-				if (!alreadyEnabled) {
-					const activeCards = await countActiveCards();
-					if (activeCards > 0) {
-						return conflict(
-							`Impossibile abilitare la modalità chiave unica: esistono ${activeCards} card attive nel sistema. ` +
-								`Tutte le card devono essere disattivate o cancellate prima di attivare questa opzione. ` +
-								`Una volta attivata, le card esistenti non funzioneranno più.`,
-							{ active_cards_count: activeCards }
-						);
-					}
-				}
-			}
-			await setSingleKeyMode(updates.use_single_mifare_key, userId);
-		}
-		delete (updates as Record<string, unknown>).use_single_mifare_key;
-
-		// Gestisci abilitazione modalità MIFARE (scrittura chiavi su carta)
-		if (updates.use_mifare !== undefined) {
-			const stringValue = String(updates.use_mifare);
-			await db
-				.update(settings)
-				.set({
-					value: stringValue,
-					updatedByUserId: userId
-				})
-				.where(eq(settings.key, 'use_mifare'));
-		}
-		delete (updates as Record<string, unknown>).use_mifare;
-
-		// Gestisci configurazione Enrollment API
 		// Una stringa vuota non sovrascrive la chiave: l'UI non la riceve mai in chiaro.
-		const apiKey = updates.enrollment_api_key === '' ? undefined : updates.enrollment_api_key;
-		if (updates.enrollment_api_url !== undefined || apiKey !== undefined) {
-			await setEnrollmentApiConfig({ url: updates.enrollment_api_url, key: apiKey });
-		}
-		delete (updates as Record<string, unknown>).enrollment_api_url;
-		delete (updates as Record<string, unknown>).enrollment_api_key;
+		// null la rimuove esplicitamente.
+		const update: SettingsUpdate = { ...changes };
+		if (enrollmentApiKey === null) update.enrollment_api_key = '';
+		else if (enrollmentApiKey) update.enrollment_api_key = enrollmentApiKey;
 
-		// Aggiorna gli altri setting tradizionali
-		for (const [key, value] of Object.entries(updates)) {
-			if (value === undefined || SECRET_SETTING_KEYS.includes(key)) continue;
+		const changedKeys = await setSettings(update, { userId });
 
-			const stringValue = String(value);
-			await db
-				.update(settings)
-				.set({
-					value: stringValue,
-					updatedByUserId: userId
-				})
-				.where(eq(settings.key, key));
+		if (changedKeys.length > 0 || regenerateMifareKeys) {
+			const dataAfter: Record<string, unknown> = {};
+			for (const key of changedKeys) {
+				dataAfter[key] = SECRET_SETTING_KEYS.includes(key) ? MASKED_VALUE : update[key];
+			}
+			if (regenerateMifareKeys) dataAfter.mifare_keys_regenerated = true;
+			await logAudit({ userId, action: 'SETTINGS_UPDATE', entityType: 'setting', dataAfter });
 		}
 
-		// Recupera i settings aggiornati e la configurazione MIFARE
-		const allSettings = await db.select().from(settings);
-		const mifareConfig = await getMifareKeyConfig();
+		const [allSettings, mifareConfig] = await Promise.all([getSettingRows(), getMifareKeyConfig()]);
 
 		return ok({
 			settings: maskSettingRows(allSettings),

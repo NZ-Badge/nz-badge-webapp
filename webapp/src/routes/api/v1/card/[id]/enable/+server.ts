@@ -1,9 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { and, eq, ne } from 'drizzle-orm';
-import { db } from '$lib/db';
-import { cardRfid, auditLog, users } from '$lib/db/schema';
 import { ok, unauthorized, notFound, badRequest, serverError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
+import { CardWriterError, enableCard } from '$lib/services/card-writer';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
@@ -17,44 +15,14 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	if (isNaN(id) || id <= 0) return notFound('Invalid card ID');
 
 	try {
-		const [existing] = await db.select().from(cardRfid).where(eq(cardRfid.id, id)).limit(1);
-		if (!existing) return notFound('Card not found');
-		if (existing.status !== 'disabled')
-			return badRequest(`Card non è disabilitata (stato: ${existing.status})`);
-		if (existing.userId) {
-			const [owner] = await db
-				.select({ status: users.status })
-				.from(users)
-				.where(eq(users.id, existing.userId))
-				.limit(1);
-			if (!owner || owner.status !== 'active') return badRequest('L’utente associato non è attivo');
-			const [otherActiveCard] = await db
-				.select({ id: cardRfid.id })
-				.from(cardRfid)
-				.where(
-					and(
-						eq(cardRfid.userId, existing.userId),
-						eq(cardRfid.type, 'rfid'),
-						eq(cardRfid.status, 'active'),
-						ne(cardRfid.id, existing.id)
-					)
-				)
-				.limit(1);
-			if (otherActiveCard) return badRequest('L’utente ha già una card RFID attiva');
-		}
-
-		await db.update(cardRfid).set({ status: 'active' }).where(eq(cardRfid.id, id));
-
-		await db.insert(auditLog).values({
-			userId: adminUser.id,
-			action: 'card_enable',
-			entityType: 'card_rfid',
-			entityId: id
-		});
-
-		const [updated] = await db.select().from(cardRfid).where(eq(cardRfid.id, id)).limit(1);
+		const updated = await enableCard(id, adminUser);
 		return ok(updated);
 	} catch (err) {
+		if (err instanceof CardWriterError) {
+			if (err.code === 'NOT_FOUND') return notFound('Card not found');
+			if (err.code === 'VALIDATION_ERROR') return notFound('Invalid card ID');
+			if (err.code === 'INVALID_STATE') return badRequest(err.message);
+		}
 		console.error('[card/enable] error:', err);
 		return serverError();
 	}

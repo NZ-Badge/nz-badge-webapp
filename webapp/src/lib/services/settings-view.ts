@@ -6,8 +6,9 @@
 
 import { count, eq, not } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { cardRfid, settings, type Setting } from '$lib/db/schema';
+import { cardRfid, type Setting } from '$lib/db/schema';
 import { getMifareKeyConfig, type MifareKeyConfig } from '$lib/services/mifare-keys';
+import { getSettingRows, parseSettingRows } from '$lib/services/settings';
 
 export const ENROLLMENT_API_URL_SETTING = 'enrollment_api_url';
 export const ENROLLMENT_API_KEY_SETTING = 'enrollment_api_key';
@@ -61,21 +62,16 @@ export function maskSettingRows(rows: Setting[]): Setting[] {
 
 /** Typed key→value map of the non-secret settings. */
 export function toSettingsValues(rows: Setting[]): SettingsValues {
-	const map: Record<string, boolean | number | string> = {};
-	for (const row of rows) {
-		if (SECRET_SETTING_KEYS.includes(row.key)) continue;
-		switch (row.dataType) {
-			case 'boolean':
-				map[row.key] = row.value === 'true';
-				break;
-			case 'integer':
-				map[row.key] = parseInt(row.value, 10);
-				break;
-			default:
-				map[row.key] = row.value;
-		}
-	}
-	return map as unknown as SettingsValues;
+	const parsed = parseSettingRows(rows);
+	return {
+		reset_entry_type_daily: parsed.reset_entry_type_daily,
+		min_swipe_interval_minutes: parsed.min_swipe_interval_minutes,
+		enforce_course_date_range: parsed.enforce_course_date_range,
+		weekly_attendance_summary_enabled: parsed.weekly_attendance_summary_enabled,
+		use_mifare: parsed.use_mifare,
+		use_single_mifare_key: parsed.use_single_mifare_key,
+		enrollment_api_url: parsed.enrollment_api_url
+	};
 }
 
 export function maskMifareKeyConfig(config: MifareKeyConfig): MaskedMifareKeyConfig {
@@ -96,7 +92,7 @@ export async function countActiveCards(): Promise<number> {
 
 /** Load all settings with secrets masked. */
 export async function getSettingsOverview(): Promise<SettingsOverview> {
-	const rows = await db.select().from(settings);
+	const rows = await getSettingRows();
 	const [mifareConfig, activeCardsCount] = await Promise.all([
 		getMifareKeyConfig(),
 		countActiveCards()

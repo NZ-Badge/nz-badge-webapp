@@ -2,10 +2,9 @@ import { db } from '$lib/db';
 import { deviceRegistry } from '$lib/db/schema';
 import { eq, desc, like, or } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import type { PageServerLoad, Actions } from './$types';
-import { requireAdmin, requirePageAdmin } from '$lib/services/auth';
+import { hashDeviceToken, requireAdmin, requirePageAdmin } from '$lib/services/auth';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -78,8 +77,8 @@ export const actions: Actions = {
 			// Generate a secure random token (48 chars, URL-safe)
 			const token = crypto.randomBytes(36).toString('base64url').slice(0, 48);
 
-			// Hash the token with bcrypt
-			const tokenHash = await bcrypt.hash(token, 10);
+			// Hash the token with SHA-256 (random high-entropy token: no slow hash needed)
+			const tokenHash = hashDeviceToken(token);
 
 			// Check if device already exists
 			const existing = await db

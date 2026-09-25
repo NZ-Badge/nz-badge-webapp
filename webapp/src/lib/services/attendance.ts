@@ -11,12 +11,12 @@ import {
 	settings,
 	users
 } from '$lib/db/schema';
+import type { CardRfid, Subscriber, User } from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
 import { formatToRomeISO, romeDateKey, toDatabaseDateTime } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
 import {
 	determineNextStaffEventType,
-	determineNextStaffEventTypeFromPrevious,
 	isWithinStaffMinInterval
 } from '$lib/services/staff-attendance';
 
@@ -265,6 +265,331 @@ async function determineNextEventType(
 	return isSameRomeDay(lastEvent.readTimestamp, currentTimestamp) ? 'exit' : 'entry';
 }
 
+type AttendanceEventType = 'entry' | 'exit';
+
+/** Riga card con iscritto/utente collegati, come letta per ogni strisciata. */
+export interface AttendanceCardRow {
+	card: CardRfid;
+	subscriber: Subscriber | null;
+	user: User | null;
+}
+
+/** Classificazione della card usata da tutte le regole di validazione. */
+export interface AttendanceCardInfo {
+	isStaffCard: boolean;
+	cardActive: boolean;
+}
+
+export function classifyAttendanceCard(cardRow: AttendanceCardRow | undefined): AttendanceCardInfo {
+	const isStaffCard = Boolean(cardRow?.card?.userId && !cardRow.card.subscriberId && cardRow.user);
+	const cardActive =
+		cardRow?.card?.status === 'active' && (!isStaffCard || cardRow?.user?.status === 'active');
+	return { isStaffCard, cardActive };
+}
+
+/** Timestamp effettivo dell'evento: `device_time_raw` se presente, altrimenti `timestamp`. */
+export function getEventTimestamp(event: Pick<AttendanceEvent, 'timestamp' | 'device_time_raw'>) {
+	return event.device_time_raw || event.timestamp;
+}
+
+function subscriberDisplayName(subscriber: Subscriber): string {
+	return `${subscriber.firstName} ${subscriber.lastName}`.trim();
+}
+
+/** Azione restituita al device per una strisciata ignorata per intervallo minimo. */
+export function createIgnoredAttendanceAction(
+	uid: string,
+	type: AttendanceEventType,
+	cardRow: AttendanceCardRow | undefined,
+	isStaffCard: boolean,
+	minSwipeIntervalMinutes: number
+): AttendanceAction {
+	return {
+		uid,
+		action: 'ignored',
+		user_name: isStaffCard
+			? cardRow?.user?.name
+			: cardRow?.subscriber
+				? subscriberDisplayName(cardRow.subscriber)
+				: undefined,
+		type,
+		ignored_reason: `min_interval_${minSwipeIntervalMinutes}min`
+	};
+}
+
+/** Azione restituita al device per una strisciata registrata. */
+export function createAcceptedAttendanceAction(
+	uid: string,
+	type: AttendanceEventType,
+	cardRow: AttendanceCardRow | undefined,
+	card: AttendanceCardInfo
+): AttendanceAction {
+	if (card.cardActive && card.isStaffCard && cardRow?.user) {
+		return { uid, action: 'confirm', user_name: cardRow.user.name, type };
+	}
+	if (card.cardActive && cardRow?.subscriber) {
+		return {
+			uid,
+			action: 'confirm',
+			user_name: subscriberDisplayName(cardRow.subscriber),
+			type
+		};
+	}
+	return { uid, action: 'unknown', type };
+}
+
+/**
+ * Tipo del prossimo evento a partire dall'evento precedente (stessa regola di
+ * `determineNextEventType`, ma senza query).
+ */
+export function determineNextEventTypeFromPrevious(
+	previous: { eventType: AttendanceEventType; readTimestamp: Date | string } | null,
+	currentTimestamp: Date | string,
+	resetEntryTypeDaily: boolean
+): AttendanceEventType {
+	if (!previous || previous.eventType === 'exit') return 'entry';
+	if (!resetEntryTypeDaily) return 'exit';
+	return isSameRomeDay(previous.readTimestamp, currentTimestamp) ? 'exit' : 'entry';
+}
+
+/** True se la strisciata e' entro l'intervallo minimo dalla precedente nello stesso batch. */
+export function isWithinBatchSwipeInterval(
+	lastBatchTime: number | undefined,
+	eventTime: number,
+	minIntervalMs: number
+): boolean {
+	return (
+		lastBatchTime !== undefined &&
+		eventTime >= lastBatchTime &&
+		eventTime - lastBatchTime < minIntervalMs
+	);
+}
+
+/**
+ * Stato condiviso tra gli eventi di un batch offline.
+ * - `virtualEvents`: eventi (anche rifiutati) gia' elaborati nel batch, per chiave identita',
+ *   usati per decidere entry/exit senza dipendere dall'ordine dei timestamp in DB.
+ * - `swipeTimes`: ultimo istante di strisciata nel batch, per il controllo dell'intervallo minimo.
+ */
+export interface BatchAttendanceState {
+	virtualEvents: Map<string, { eventType: AttendanceEventType; readTimestamp: string }[]>;
+	swipeTimes: Map<string, number>;
+}
+
+export function createBatchAttendanceState(): BatchAttendanceState {
+	return { virtualEvents: new Map(), swipeTimes: new Map() };
+}
+
+export interface AttendanceProcessingContext {
+	deviceId: string;
+	/** Istante di riferimento (ms) per la tolleranza sui timestamp. */
+	now: number;
+	settings: AttendanceSettings;
+	/** `true` per gli eventi arrivati dalla coda offline (batch). */
+	offlineQueued: boolean;
+	queueStatus?: QueueStatus;
+	/** Consente l'abbinamento NFC di card sconosciute (solo percorso online). */
+	allowNfcPairing: boolean;
+	/** Presente solo nel percorso batch. */
+	batch?: BatchAttendanceState;
+}
+
+export type AttendanceEventOutcome =
+	| { status: 'accepted'; action: AttendanceAction }
+	| { status: 'ignored'; action: AttendanceAction }
+	| { status: 'rejected'; reason: AttendanceRejectionReason; action: AttendanceAction };
+
+async function findAttendanceCardRow(
+	uid: string,
+	tx: DbOrTx
+): Promise<AttendanceCardRow | undefined> {
+	const [cardRow] = await tx
+		.select({ card: cardRfid, subscriber: subscribers, user: users })
+		.from(cardRfid)
+		.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+		.leftJoin(users, eq(cardRfid.userId, users.id))
+		.where(eq(cardRfid.uid, uid))
+		.limit(1);
+	return cardRow;
+}
+
+/**
+ * NFC pairing: se la card e' sconosciuta e c'e' una sessione di abbinamento attiva,
+ * crea la card per l'iscritto in attesa e la rilegge.
+ */
+async function tryPairUnknownCard(
+	uid: string,
+	deviceId: string,
+	tx: DbOrTx
+): Promise<AttendanceCardRow | undefined> {
+	const pairedSubscriberId = tryClaimPairing(uid);
+	if (pairedSubscriberId === null) return undefined;
+
+	try {
+		await tx.insert(cardRfid).values({
+			uid,
+			subscriberId: pairedSubscriberId,
+			status: 'active',
+			writeDate: new Date(),
+			writtenByDevice: deviceId
+		});
+		return await findAttendanceCardRow(uid, tx);
+	} catch (err) {
+		console.error('[attendance] NFC pairing insert failed:', err);
+		return undefined;
+	}
+}
+
+/**
+ * Elabora una singola strisciata: ricerca card (ed eventuale abbinamento NFC), validazione,
+ * intervallo minimo, calcolo entry/exit e inserimento. Usata sia dal percorso singolo sia dal
+ * batch; le differenze sono espresse da `ctx` (`offlineQueued`, `allowNfcPairing`, `batch`).
+ */
+export async function processAttendanceEvent(
+	event: AttendanceEvent,
+	ctx: AttendanceProcessingContext,
+	tx: DbOrTx
+): Promise<AttendanceEventOutcome> {
+	const { settings: attendanceSettings } = ctx;
+	const timestampToUse = getEventTimestamp(event);
+	const eventTime = new Date(timestampToUse).getTime();
+	const withinTolerance = Math.abs(eventTime - ctx.now) <= TOLERANCE_MS;
+
+	let cardRow = await findAttendanceCardRow(event.uid, tx);
+	if (!cardRow && ctx.allowNfcPairing) {
+		cardRow = await tryPairUnknownCard(event.uid, ctx.deviceId, tx);
+	}
+
+	const cardInfo = classifyAttendanceCard(cardRow);
+	const { isStaffCard, cardActive } = cardInfo;
+	const staffUserId = isStaffCard ? cardRow!.user!.id : null;
+	const rejectionReason = isStaffCard
+		? getStaffCardRejectionReason(cardActive, withinTolerance)
+		: await getAttendanceRejectionReason({
+				cardActive,
+				subscriberId: cardRow?.card?.subscriberId,
+				withinTolerance,
+				timestamp: timestampToUse,
+				enforceCourseDateRange: attendanceSettings.enforceCourseDateRange,
+				tx
+			});
+	const validated = rejectionReason === null;
+	const identityKey = staffUserId !== null ? `user:${staffUserId}` : `card:${event.uid}`;
+
+	// Verifica intervallo minimo tra strisciate (nel batch anche rispetto agli eventi precedenti)
+	const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60_000;
+	let withinInterval = false;
+	if (validated && minIntervalMs > 0) {
+		if (ctx.batch) {
+			withinInterval = isWithinBatchSwipeInterval(
+				ctx.batch.swipeTimes.get(identityKey),
+				eventTime,
+				minIntervalMs
+			);
+		}
+		if (!withinInterval) {
+			withinInterval =
+				staffUserId !== null
+					? await isWithinStaffMinInterval(
+							staffUserId,
+							timestampToUse,
+							attendanceSettings.minSwipeIntervalMinutes,
+							tx
+						)
+					: await isWithinMinInterval(
+							event.uid,
+							timestampToUse,
+							attendanceSettings.minSwipeIntervalMinutes,
+							tx
+						);
+		}
+		ctx.batch?.swipeTimes.set(identityKey, eventTime);
+	}
+
+	// Determina il tipo di evento (entry/exit): prima dagli eventi del batch, poi dal DB
+	const previousInBatch = ctx.batch?.virtualEvents.get(identityKey)?.at(-1) ?? null;
+	const nextEventType: AttendanceEventType = previousInBatch
+		? determineNextEventTypeFromPrevious(
+				previousInBatch,
+				timestampToUse,
+				attendanceSettings.resetEntryTypeDaily
+			)
+		: staffUserId !== null
+			? await determineNextStaffEventType(
+					staffUserId,
+					timestampToUse,
+					attendanceSettings.resetEntryTypeDaily,
+					tx
+				)
+			: await determineNextEventType(
+					event.uid,
+					timestampToUse,
+					attendanceSettings.resetEntryTypeDaily,
+					tx
+				);
+
+	if (withinInterval) {
+		// Strisciata troppo vicina alla precedente — non registrare, segnala al device
+		return {
+			status: 'ignored',
+			action: createIgnoredAttendanceAction(
+				event.uid,
+				nextEventType,
+				cardRow,
+				isStaffCard,
+				attendanceSettings.minSwipeIntervalMinutes
+			)
+		};
+	}
+
+	if (ctx.batch) {
+		const identityEvents = ctx.batch.virtualEvents.get(identityKey) ?? [];
+		identityEvents.push({ eventType: nextEventType, readTimestamp: timestampToUse });
+		ctx.batch.virtualEvents.set(identityKey, identityEvents);
+	}
+
+	if (!validated) {
+		return {
+			status: 'rejected',
+			reason: rejectionReason,
+			action: createRejectedAttendanceAction(event.uid, nextEventType, rejectionReason)
+		};
+	}
+
+	const common = {
+		cardUid: event.uid,
+		uidRaw: event.uid_raw ?? null,
+		deviceId: ctx.deviceId,
+		eventType: nextEventType,
+		readTimestamp: toDatabaseDateTime(timestampToUse),
+		deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
+		offlineQueued: ctx.offlineQueued,
+		rawPayload: event as unknown as Record<string, unknown>,
+		validated: true,
+		queuePending: ctx.queueStatus?.pending ?? null,
+		storageFreePercent: ctx.queueStatus?.storage_free_percent ?? null
+	};
+
+	if (staffUserId !== null) {
+		await tx.insert(staffAttendance).values({
+			...common,
+			userId: staffUserId,
+			source: 'card',
+			isBackdated: false
+		});
+	} else {
+		await tx.insert(attendance).values({
+			...common,
+			subscriberId: cardRow?.card?.subscriberId ?? null
+		});
+	}
+
+	return {
+		status: 'accepted',
+		action: createAcceptedAttendanceAction(event.uid, nextEventType, cardRow, cardInfo)
+	};
+}
+
 export async function processSingleAttendance(
 	events: AttendanceEvent[],
 	deviceId: string,
@@ -275,177 +600,25 @@ export async function processSingleAttendance(
 	let accepted = 0;
 	let rejected = 0;
 
-	// Carica i settings una sola volta
-	const attendanceSettings = await loadAttendanceSettings();
+	await db.transaction(async (tx) => {
+		// Carica i settings una sola volta per la transazione
+		const attendanceSettings = await loadAttendanceSettings(tx);
+		const ctx: AttendanceProcessingContext = {
+			deviceId,
+			now,
+			settings: attendanceSettings,
+			offlineQueued: false,
+			queueStatus,
+			allowNfcPairing: true
+		};
 
-	for (const event of events) {
-		// Usa device_time_raw come fallback per il timestamp se presente
-		const timestampToUse = event.device_time_raw || event.timestamp;
-		const eventTime = new Date(timestampToUse).getTime();
-		const withinTolerance = Math.abs(eventTime - now) <= TOLERANCE_MS;
-
-		// Look up card
-		let [cardRow] = await db
-			.select({ card: cardRfid, subscriber: subscribers, user: users })
-			.from(cardRfid)
-			.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
-			.leftJoin(users, eq(cardRfid.userId, users.id))
-			.where(eq(cardRfid.uid, event.uid))
-			.limit(1);
-
-		// NFC pairing: if card is unknown, check if there's an active pairing session
-		if (!cardRow) {
-			const pairedSubscriberId = tryClaimPairing(event.uid);
-			if (pairedSubscriberId !== null) {
-				try {
-					await db.insert(cardRfid).values({
-						uid: event.uid,
-						subscriberId: pairedSubscriberId,
-						status: 'active',
-						writeDate: new Date(),
-						writtenByDevice: deviceId
-					});
-					[cardRow] = await db
-						.select({ card: cardRfid, subscriber: subscribers, user: users })
-						.from(cardRfid)
-						.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
-						.leftJoin(users, eq(cardRfid.userId, users.id))
-						.where(eq(cardRfid.uid, event.uid))
-						.limit(1);
-				} catch (err) {
-					console.error('[attendance] NFC pairing insert failed:', err);
-				}
-			}
+		for (const event of events) {
+			const outcome = await processAttendanceEvent(event, ctx, tx);
+			if (outcome.status === 'accepted') accepted++;
+			else if (outcome.status === 'rejected') rejected++;
+			actions.push(outcome.action);
 		}
-
-		const isStaffCard = Boolean(
-			cardRow?.card?.userId && !cardRow.card.subscriberId && cardRow.user
-		);
-		const cardActive =
-			cardRow?.card?.status === 'active' && (!isStaffCard || cardRow?.user?.status === 'active');
-		const rejectionReason = isStaffCard
-			? getStaffCardRejectionReason(cardActive, withinTolerance)
-			: await getAttendanceRejectionReason({
-					cardActive,
-					subscriberId: cardRow?.card?.subscriberId,
-					withinTolerance,
-					timestamp: timestampToUse,
-					enforceCourseDateRange: attendanceSettings.enforceCourseDateRange
-				});
-		const validated = rejectionReason === null;
-
-		// Verifica intervallo minimo tra strisciate
-		const withinInterval = validated
-			? isStaffCard
-				? await isWithinStaffMinInterval(
-						cardRow!.user!.id,
-						timestampToUse,
-						attendanceSettings.minSwipeIntervalMinutes
-					)
-				: await isWithinMinInterval(
-						event.uid,
-						timestampToUse,
-						attendanceSettings.minSwipeIntervalMinutes
-					)
-			: false;
-
-		if (withinInterval) {
-			// Strisciata troppo vicina alla precedente — non registrare, segnala al device
-			const nextEventType = isStaffCard
-				? await determineNextStaffEventType(
-						cardRow!.user!.id,
-						timestampToUse,
-						attendanceSettings.resetEntryTypeDaily
-					)
-				: await determineNextEventType(
-						event.uid,
-						timestampToUse,
-						attendanceSettings.resetEntryTypeDaily
-					);
-			actions.push({
-				uid: event.uid,
-				action: 'ignored',
-				user_name: isStaffCard
-					? cardRow?.user?.name
-					: cardRow?.subscriber
-						? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
-						: undefined,
-				type: nextEventType,
-				ignored_reason: `min_interval_${attendanceSettings.minSwipeIntervalMinutes}min`
-			});
-			continue;
-		}
-
-		// Determina il tipo di evento (entry/exit) basandosi sull'ultimo evento salvato
-		const nextEventType = isStaffCard
-			? await determineNextStaffEventType(
-					cardRow!.user!.id,
-					timestampToUse,
-					attendanceSettings.resetEntryTypeDaily
-				)
-			: await determineNextEventType(
-					event.uid,
-					timestampToUse,
-					attendanceSettings.resetEntryTypeDaily
-				);
-
-		if (validated) {
-			accepted++;
-			if (isStaffCard) {
-				await db.insert(staffAttendance).values({
-					userId: cardRow!.user!.id,
-					cardUid: event.uid,
-					uidRaw: event.uid_raw ?? null,
-					deviceId,
-					eventType: nextEventType,
-					readTimestamp: toDatabaseDateTime(timestampToUse),
-					deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
-					offlineQueued: false,
-					source: 'card',
-					isBackdated: false,
-					rawPayload: event as unknown as Record<string, unknown>,
-					validated: true,
-					queuePending: queueStatus?.pending ?? null,
-					storageFreePercent: queueStatus?.storage_free_percent ?? null
-				});
-			} else {
-				await db.insert(attendance).values({
-					cardUid: event.uid,
-					uidRaw: event.uid_raw ?? null,
-					subscriberId: cardRow?.card?.subscriberId ?? null,
-					deviceId,
-					eventType: nextEventType,
-					readTimestamp: toDatabaseDateTime(timestampToUse),
-					deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
-					offlineQueued: false,
-					rawPayload: event as unknown as Record<string, unknown>,
-					validated: true,
-					queuePending: queueStatus?.pending ?? null,
-					storageFreePercent: queueStatus?.storage_free_percent ?? null
-				});
-			}
-			if (cardActive && isStaffCard && cardRow.user) {
-				actions.push({
-					uid: event.uid,
-					action: 'confirm',
-					user_name: cardRow.user.name,
-					type: nextEventType
-				});
-			} else if (cardActive && cardRow.subscriber) {
-				actions.push({
-					uid: event.uid,
-					action: 'confirm',
-					user_name: `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim(),
-					type: nextEventType
-				});
-			} else {
-				actions.push({ uid: event.uid, action: 'unknown', type: nextEventType });
-			}
-		} else {
-			rejected++;
-			actions.push(createRejectedAttendanceAction(event.uid, nextEventType, rejectionReason));
-		}
-	}
+	});
 
 	return {
 		accepted,
@@ -467,190 +640,28 @@ export async function processBatchAttendance(
 	let accepted = 0;
 	let rejected = 0;
 
-	// Mappa per tracciare gli eventi "virtuali" creati durante il batch
-	// Chiave: cardUid, Valore: { eventType, readTimestamp }
-	const virtualEvents = new Map<string, { eventType: 'entry' | 'exit'; readTimestamp: string }[]>();
-
-	// Mappa per tracciare le strisciate nel batch (per controllo intervallo)
-	const batchSwipeTimes = new Map<string, number>();
-
 	await db.transaction(async (tx) => {
 		// Carica i settings una sola volta per la transazione
 		const attendanceSettings = await loadAttendanceSettings(tx);
+		const ctx: AttendanceProcessingContext = {
+			deviceId,
+			now,
+			settings: attendanceSettings,
+			offlineQueued: true,
+			queueStatus,
+			allowNfcPairing: false,
+			batch: createBatchAttendanceState()
+		};
 
 		for (let i = 0; i < events.length; i++) {
-			const event = events[i];
-			// Usa device_time_raw come fallback per il timestamp se presente
-			const timestampToUse = event.device_time_raw || event.timestamp;
-			const eventTime = new Date(timestampToUse).getTime();
-			const withinTolerance = Math.abs(eventTime - now) <= TOLERANCE_MS;
-
-			const [cardRow] = await tx
-				.select({ card: cardRfid, subscriber: subscribers, user: users })
-				.from(cardRfid)
-				.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
-				.leftJoin(users, eq(cardRfid.userId, users.id))
-				.where(eq(cardRfid.uid, event.uid))
-				.limit(1);
-
-			const isStaffCard = Boolean(
-				cardRow?.card?.userId && !cardRow.card.subscriberId && cardRow.user
-			);
-			const cardActive =
-				cardRow?.card?.status === 'active' && (!isStaffCard || cardRow?.user?.status === 'active');
-			const rejectionReason: AttendanceRejectionReason | null = isStaffCard
-				? getStaffCardRejectionReason(cardActive, withinTolerance)
-				: await getAttendanceRejectionReason({
-						cardActive,
-						subscriberId: cardRow?.card?.subscriberId,
-						withinTolerance,
-						timestamp: timestampToUse,
-						enforceCourseDateRange: attendanceSettings.enforceCourseDateRange,
-						tx
-					});
-			const validated = rejectionReason === null;
-			const identityKey = isStaffCard ? `user:${cardRow!.user!.id}` : `card:${event.uid}`;
-
-			const determineBatchNextType = async (): Promise<'entry' | 'exit'> => {
-				const identityEvents = virtualEvents.get(identityKey) ?? [];
-				const previous = identityEvents.at(-1) ?? null;
-				if (isStaffCard) {
-					return previous
-						? determineNextStaffEventTypeFromPrevious(
-								previous,
-								timestampToUse,
-								attendanceSettings.resetEntryTypeDaily
-							)
-						: determineNextStaffEventType(
-								cardRow!.user!.id,
-								timestampToUse,
-								attendanceSettings.resetEntryTypeDaily,
-								tx
-							);
-				}
-
-				if (!previous) {
-					return determineNextEventType(
-						event.uid,
-						timestampToUse,
-						attendanceSettings.resetEntryTypeDaily,
-						tx
-					);
-				}
-				if (previous.eventType === 'exit') return 'entry';
-				if (!attendanceSettings.resetEntryTypeDaily) return 'exit';
-				return isSameRomeDay(previous.readTimestamp, timestampToUse) ? 'exit' : 'entry';
-			};
-
-			const minIntervalMs = attendanceSettings.minSwipeIntervalMinutes * 60_000;
-			let withinInterval = false;
-			if (validated && minIntervalMs > 0) {
-				const lastBatchTime = batchSwipeTimes.get(identityKey);
-				if (
-					lastBatchTime !== undefined &&
-					eventTime >= lastBatchTime &&
-					eventTime - lastBatchTime < minIntervalMs
-				) {
-					withinInterval = true;
-				}
-				if (!withinInterval) {
-					withinInterval = isStaffCard
-						? await isWithinStaffMinInterval(
-								cardRow!.user!.id,
-								timestampToUse,
-								attendanceSettings.minSwipeIntervalMinutes,
-								tx
-							)
-						: await isWithinMinInterval(
-								event.uid,
-								timestampToUse,
-								attendanceSettings.minSwipeIntervalMinutes,
-								tx
-							);
-				}
-				batchSwipeTimes.set(identityKey, eventTime);
-			}
-
-			const nextEventType = await determineBatchNextType();
-			if (withinInterval) {
-				actions.push({
-					uid: event.uid,
-					action: 'ignored',
-					user_name: isStaffCard
-						? cardRow?.user?.name
-						: cardRow?.subscriber
-							? `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim()
-							: undefined,
-					type: nextEventType,
-					ignored_reason: `min_interval_${attendanceSettings.minSwipeIntervalMinutes}min`
-				});
-				continue;
-			}
-
-			if (!virtualEvents.has(identityKey)) virtualEvents.set(identityKey, []);
-			virtualEvents.get(identityKey)!.push({
-				eventType: nextEventType,
-				readTimestamp: timestampToUse
-			});
-
-			if (validated) {
+			const outcome = await processAttendanceEvent(events[i], ctx, tx);
+			if (outcome.status === 'accepted') {
 				accepted++;
-				if (isStaffCard) {
-					await tx.insert(staffAttendance).values({
-						userId: cardRow!.user!.id,
-						cardUid: event.uid,
-						uidRaw: event.uid_raw ?? null,
-						deviceId,
-						eventType: nextEventType,
-						readTimestamp: toDatabaseDateTime(timestampToUse),
-						deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
-						offlineQueued: true,
-						source: 'card',
-						isBackdated: false,
-						rawPayload: event as unknown as Record<string, unknown>,
-						validated: true,
-						queuePending: queueStatus.pending,
-						storageFreePercent: queueStatus.storage_free_percent
-					});
-				} else {
-					await tx.insert(attendance).values({
-						cardUid: event.uid,
-						uidRaw: event.uid_raw ?? null,
-						subscriberId: cardRow?.card?.subscriberId ?? null,
-						deviceId,
-						eventType: nextEventType,
-						readTimestamp: toDatabaseDateTime(timestampToUse),
-						deviceTimeRaw: event.device_time_raw ? toDatabaseDateTime(event.device_time_raw) : null,
-						offlineQueued: true,
-						rawPayload: event as unknown as Record<string, unknown>,
-						validated: true,
-						queuePending: queueStatus.pending,
-						storageFreePercent: queueStatus.storage_free_percent
-					});
-				}
-
-				if (cardActive && isStaffCard && cardRow.user) {
-					actions.push({
-						uid: event.uid,
-						action: 'confirm',
-						user_name: cardRow.user.name,
-						type: nextEventType
-					});
-				} else if (cardActive && cardRow.subscriber) {
-					actions.push({
-						uid: event.uid,
-						action: 'confirm',
-						user_name: `${cardRow.subscriber.firstName} ${cardRow.subscriber.lastName}`.trim(),
-						type: nextEventType
-					});
-				} else {
-					actions.push({ uid: event.uid, action: 'unknown', type: nextEventType });
-				}
-			} else {
+			} else if (outcome.status === 'rejected') {
 				rejected++;
-				results.push({ index: i, status: 400, reason: rejectionReason ?? 'unknown_card' });
-				actions.push(createRejectedAttendanceAction(event.uid, nextEventType, rejectionReason));
+				results.push({ index: i, status: 400, reason: outcome.reason });
 			}
+			actions.push(outcome.action);
 		}
 	});
 

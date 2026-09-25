@@ -13,7 +13,7 @@ Authorization: Bearer <token>
 X-Device-ID: <device-id>
 ```
 
-Il backend cerca `X-Device-ID` in `device_registry`, verifica che il device sia attivo e confronta il bearer token con `device_registry.token_hash` tramite bcrypt. Una verifica riuscita aggiorna `last_ping` in modo asincrono.
+Il backend cerca `X-Device-ID` in `device_registry`, verifica che il device sia attivo e confronta lo SHA-256 (hex) del bearer token con `device_registry.token_hash` a tempo costante. Gli hash bcrypt legacy (`$2a`/`$2b`/`$2y`) restano validi: alla prima verifica riuscita vengono sostituiti in modo trasparente con lo SHA-256. Una verifica riuscita aggiorna `last_ping` in modo asincrono.
 
 Gli endpoint reader restituiscono `401` se gli header mancano, il device non esiste o e' disabilitato, oppure il token non e' valido.
 
@@ -368,7 +368,7 @@ La registrazione avviene dal pannello admin `/devices` e accetta `device_type` u
 - `device_id`;
 - `device_type`;
 - `location` opzionale;
-- `token_hash` bcrypt;
+- `token_hash` SHA-256 esadecimale (o bcrypt legacy, migrato al primo accesso);
 - `active`;
 - `last_ping` e `firmware_version`, aggiornati dai flussi device.
 

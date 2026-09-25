@@ -95,37 +95,7 @@ export const cardDisableSchema = z.object({
 	id: z.coerce.number().int().positive()
 });
 
-// 8. subscriberCreateSchema
-export const subscriberCreateSchema = z.object({
-	firstName: z.string().min(1).max(100),
-	lastName: z.string().min(1).max(100),
-	email: z.string().email(),
-	phone: z.string().max(20).optional(),
-	taxId: z
-		.string()
-		.regex(/^[A-Z0-9]{16}$/)
-		.optional(),
-	courseId: z.number().int().positive().optional(),
-	courseName: z.string().max(255).optional(),
-	purchaseDate: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional(),
-	courseStartDate: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional(),
-	courseEndDate: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional(),
-	status: z.enum(['active', 'completed', 'suspended', 'cancelled']).optional(),
-	note: z.string().optional(),
-	shopifyOrderId: z.number().optional()
-});
-
-// 9. subscriberUpdateSchema — all fields optional
-export const subscriberUpdateSchema = subscriberCreateSchema.partial();
+// 8–9. Subscriber create/update schemas live in $lib/services/subscribers.
 
 // 10. attendanceQuerySchema (query params — use z.coerce for numbers)
 export const attendanceQuerySchema = z.object({
@@ -172,8 +142,6 @@ export type ShopifyWebhookOrder = z.infer<typeof shopifyWebhookOrderSchema>;
 export type CardWrite = z.infer<typeof cardWriteSchema>;
 export type CardValidate = z.infer<typeof cardValidateSchema>;
 export type CardDisable = z.infer<typeof cardDisableSchema>;
-export type SubscriberCreate = z.infer<typeof subscriberCreateSchema>;
-export type SubscriberUpdate = z.infer<typeof subscriberUpdateSchema>;
 export type AttendanceQuery = z.infer<typeof attendanceQuerySchema>;
 export type CardQuery = z.infer<typeof cardQuerySchema>;
 export type SubscribersQuery = z.infer<typeof subscribersQuerySchema>;

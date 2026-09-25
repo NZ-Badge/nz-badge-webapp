@@ -29,7 +29,7 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
   - Non loggare l'email in chiaro (`routes/login/+page.server.ts:52`).
   - Registrare i login con `logAudit`.
   - All'avvio, verificare che `JWT_SECRET` sia presente e di almeno 32 caratteri; passare `algorithms: ['HS256']` a `jwtVerify`.
-- [ ] **7. bcrypt a ogni richiesta dei dispositivi.** `lib/services/auth.ts:80` usa costo 12 anche se i token sono casuali a 32 byte. Salvare SHA-256/HMAC del token e confrontarlo con `timingSafeEqual`.
+- [x] **7. bcrypt a ogni richiesta dei dispositivi.** `lib/services/auth.ts:80` usa costo 12 anche se i token sono casuali a 32 byte. Salvare SHA-256/HMAC del token e confrontarlo con `timingSafeEqual`.
 - [ ] **8. Stato in memoria.** Con più repliche k3s si rompono:
   - il `RateLimiter` e `deviceRequestLog`, duplicato in `attendance` e `attendance/batch`;
   - il `SessionStore` di `card-writer.ts`;
@@ -39,12 +39,12 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
 
 ### 🟠 Architettura e duplicazioni
 
-- [ ] **9. Service layer.** 37 file di route importano direttamente `$lib/db`.
+- [ ] **9. Service layer.** _(fatti: subscribers, settings, enable/disable card. Restano: `attendance.ts` deve usare `getSettings()`, attendance-anomalies, lock in `confirmCardWrite`)_ 37 file di route importano direttamente `$lib/db`.
   - **Service `subscribers`:** oggi l'update è implementato 3 volte con semantiche diverse (la pagina fa hard delete, l'API soft delete).
   - **Service `settings`:** tipizzato con zod, con cache TTL invalidata al PATCH. Oggi il parsing è duplicato in 3 punti e ogni richiesta dei dispositivi rilegge tutto.
   - **Enable/disable card** (`api/v1/card/[id]/enable|disable`): usare `enableCard`/`disableCard` di `card-writer.ts`, in transazione con `SELECT … FOR UPDATE`.
   - **Business logic** di `attendance-anomalies/[enrollmentId]/+page.server.ts`: spostarla in un service.
-- [ ] **10. Presenze singole e batch duplicate.** `processSingleAttendance` e `processBatchAttendance` sono circa 200 righe quasi identiche ciascuna e hanno già divergito (solo il batch usa una transazione). Estrarre una sola `processAttendanceEvent(event, ctx, tx)`.
+- [x] **10. Presenze singole e batch duplicate.** `processSingleAttendance` e `processBatchAttendance` sono circa 200 righe quasi identiche ciascuna e hanno già divergito (solo il batch usa una transazione). Estrarre una sola `processAttendanceEvent(event, ctx, tx)`.
 - [ ] **11. Risposte API incoerenti.** Usare gli helper di `lib/utils/api.ts` ovunque.
   - Le route che usano `json({error})`: `users`, `users/[id]/reactivate`, `staff-attendance/*`, `attendance/manual`, `new-students/export`, `firmware/check`, `admin/maintenance/*`.
   - La traduzione `AuthError`→HTTP è copiata circa 30 volte e risponde sempre 401 anche per FORBIDDEN e RATE_LIMITED. Creare un unico `authErrorResponse(err)` o un wrapper `withAuth()`.
@@ -63,7 +63,7 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
   - Aggiungere `attendance(card_uid, read_timestamp)` e `attendance(subscriber_id, read_timestamp)`.
   - Aggiungere indici su `enrollments(start_date, end_date)`.
   - Rimuovere `card_rfid.idx_uid`, che duplica il vincolo UNIQUE.
-- [ ] **16. Audit.** Sostituire con `logAudit` gli `db.insert(auditLog)` diretti in `api/v1/subscribers/+server.ts` e `api/v1/subscribers/[id]/+server.ts`, e uniformare i nomi di azione ed entità.
+- [x] **16. Audit.** Sostituire con `logAudit` gli `db.insert(auditLog)` diretti in `api/v1/subscribers/+server.ts` e `api/v1/subscribers/[id]/+server.ts`, e uniformare i nomi di azione ed entità.
 
 ### 🟡 Frontend
 

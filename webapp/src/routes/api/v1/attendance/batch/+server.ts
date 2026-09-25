@@ -10,16 +10,10 @@ import {
 } from '$lib/utils/api';
 import { processBatchAttendance } from '$lib/services/attendance';
 import { AuthError } from '$lib/services/auth';
+import { createDeviceRateLimiter } from '$lib/services/device-rate-limit';
 
-const deviceRequestLog = new Map<string, number[]>();
-
-function checkRateLimit(deviceId: string, maxRequests = 10, windowMs = 1000): boolean {
-	const now = Date.now();
-	const timestamps = (deviceRequestLog.get(deviceId) ?? []).filter((t) => now - t < windowMs);
-	timestamps.push(now);
-	deviceRequestLog.set(deviceId, timestamps);
-	return timestamps.length > maxRequests;
-}
+// Per-device rate limiter: max 10 requests per 1-second rolling window
+const deviceRateLimiter = createDeviceRateLimiter(10, 1000);
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let device;
@@ -30,7 +24,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 
 	const deviceId = event.request.headers.get('X-Device-ID') ?? device.deviceId;
-	if (checkRateLimit(deviceId)) {
+	if (deviceRateLimiter.isLimited(deviceId)) {
 		return tooManyRequests(1);
 	}
 

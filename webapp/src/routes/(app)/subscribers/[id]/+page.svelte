@@ -673,6 +673,10 @@
 		<p>
 			Sei sicuro di voler eliminare <strong>{sub.firstName} {sub.lastName}</strong>?
 		</p>
+		<p class="text-muted-foreground text-sm">
+			L'iscritto passerà allo stato «Annullato»: presenze, iscrizioni e tessere storiche restano
+			collegate. Puoi ripristinarlo modificandone lo stato.
+		</p>
 		{#if form?.error && form?.action === 'delete'}
 			<p class="text-sm text-red-600">{form.error}</p>
 		{/if}

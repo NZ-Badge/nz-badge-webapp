@@ -1,12 +1,13 @@
-import { and, asc, desc, eq, gte, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lt, lte } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import { db } from '$lib/db';
 import * as schema from '$lib/db/schema';
-import { settings, staffAttendance, users } from '$lib/db/schema';
+import { staffAttendance, users } from '$lib/db/schema';
 import type { User } from '$lib/db/schema';
 import { calculateAttendanceHours, formatAttendanceMinutes } from './attendance-hours';
 import { logAudit } from './audit';
+import { getSettings } from './settings';
 import { TIMEZONE, toDatabaseDateTime } from '$lib/utils/date';
 import { isStaffManager, requireSelfOrStaffManager } from './auth';
 
@@ -171,24 +172,12 @@ export function buildStaffAttendanceReport(
 	};
 }
 
-export async function loadStaffAttendanceSettings(tx?: DbOrTx): Promise<StaffAttendanceSettings> {
-	const dbInstance = tx ?? db;
-	const rows = await dbInstance
-		.select({ key: settings.key, value: settings.value })
-		.from(settings)
-		.where(sql`${settings.key} IN ('reset_entry_type_daily', 'min_swipe_interval_minutes')`);
-
-	let resetEntryTypeDaily = true;
-	let minSwipeIntervalMinutes = 15;
-	for (const row of rows) {
-		if (row.key === 'reset_entry_type_daily') resetEntryTypeDaily = row.value === 'true';
-		if (row.key === 'min_swipe_interval_minutes') {
-			const parsed = Number.parseInt(row.value, 10);
-			if (Number.isFinite(parsed)) minSwipeIntervalMinutes = parsed;
-		}
-	}
-
-	return { resetEntryTypeDaily, minSwipeIntervalMinutes };
+export async function loadStaffAttendanceSettings(): Promise<StaffAttendanceSettings> {
+	const { reset_entry_type_daily, min_swipe_interval_minutes } = await getSettings();
+	return {
+		resetEntryTypeDaily: reset_entry_type_daily,
+		minSwipeIntervalMinutes: min_swipe_interval_minutes
+	};
 }
 
 export function determineNextStaffEventTypeFromPrevious(

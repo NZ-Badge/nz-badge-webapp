@@ -20,22 +20,15 @@ import {
 	updateSubscriberAttendanceTimestamp
 } from '$lib/services/subscriber-attendance-admin';
 import { AuthError } from '$lib/services/auth';
+import { createDeviceRateLimiter } from '$lib/services/device-rate-limit';
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
-const deviceRequestLog = new Map<string, number[]>();
+const deviceRateLimiter = createDeviceRateLimiter(10, 1000);
 
 const updateTimestampSchema = z.object({
 	id: z.number().int().positive(),
 	readTimestamp: z.string()
 });
-
-function checkRateLimit(deviceId: string, maxRequests = 10, windowMs = 1000): boolean {
-	const now = Date.now();
-	const timestamps = (deviceRequestLog.get(deviceId) ?? []).filter((t) => now - t < windowMs);
-	timestamps.push(now);
-	deviceRequestLog.set(deviceId, timestamps);
-	return timestamps.length > maxRequests; // true = limit exceeded
-}
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	// Auth
@@ -48,7 +41,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	// Rate limit
 	const deviceId = event.request.headers.get('X-Device-ID') ?? device.deviceId;
-	if (checkRateLimit(deviceId)) {
+	if (deviceRateLimiter.isLimited(deviceId)) {
 		return tooManyRequests(1);
 	}
 

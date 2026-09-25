@@ -3,9 +3,10 @@ import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
-import { attendance, settings, subscribers, weeklyAttendanceSummaryLog } from '../db/schema';
+import { attendance, subscribers, weeklyAttendanceSummaryLog } from '../db/schema';
 import * as schema from '../db/schema';
 import { calculateAttendanceHours } from './attendance-hours';
+import { readSettings } from './settings-schema';
 import { TIMEZONE } from '../utils/date';
 
 type AppDb = MySql2Database<typeof schema>;
@@ -239,13 +240,7 @@ function buildEmail(params: {
 }
 
 async function isEnabled(database: AppDb): Promise<boolean> {
-	const [setting] = await database
-		.select({ value: settings.value })
-		.from(settings)
-		.where(eq(settings.key, 'weekly_attendance_summary_enabled'))
-		.limit(1);
-
-	return setting?.value === 'true';
+	return (await readSettings(database)).weekly_attendance_summary_enabled;
 }
 
 async function recordLog(

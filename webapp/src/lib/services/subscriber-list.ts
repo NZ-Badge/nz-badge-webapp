@@ -15,6 +15,9 @@ export interface SubscriberListBaseRow {
 	firstName: string;
 	lastName: string;
 	email: string;
+	phone?: string | null;
+	taxId?: string | null;
+	note?: string | null;
 	status: 'active' | 'completed' | 'suspended' | 'cancelled' | null;
 }
 

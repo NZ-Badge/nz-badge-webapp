@@ -5,6 +5,12 @@ import { db } from '$lib/db';
 import { subscribers, cardRfid, attendance, enrollments } from '$lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { buildSubscriberCourseAttendanceSummaries } from '$lib/services/subscriber-course-attendance';
+import {
+	removeSubscriber,
+	SubscriberServiceError,
+	subscriberInputFromForm,
+	updateSubscriber
+} from '$lib/services/subscribers';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	await requirePageStaff(locals);
@@ -86,31 +92,25 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	};
 };
 
+function actionFailure(err: unknown, action: 'update' | 'delete') {
+	if (err instanceof SubscriberServiceError) {
+		const status = err.code === 'NOT_FOUND' ? 404 : 400;
+		return fail(status, { error: err.message, action });
+	}
+	throw err;
+}
+
 export const actions: Actions = {
 	update: async ({ request, params, locals }) => {
-		await requirePageStaff(locals);
+		const user = await requirePageStaff(locals);
 		const id = Number(params.id);
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'update' });
 
-		const data = await request.formData();
-
-		await db
-			.update(subscribers)
-			.set({
-				firstName: data.get('firstName')?.toString().trim(),
-				lastName: data.get('lastName')?.toString().trim(),
-				email: data.get('email')?.toString().trim(),
-				phone: data.get('phone')?.toString().trim() || null,
-				taxId: data.get('taxCode')?.toString().trim() || null,
-				status: (data.get('status')?.toString() ?? 'active') as
-					| 'active'
-					| 'completed'
-					| 'suspended'
-					| 'cancelled',
-				note: data.get('notes')?.toString().trim() || null
-			})
-			.where(eq(subscribers.id, id));
-
+		try {
+			await updateSubscriber(id, subscriberInputFromForm(await request.formData()), user);
+		} catch (err) {
+			return actionFailure(err, 'update');
+		}
 		return { success: true, action: 'update' };
 	},
 
@@ -174,24 +174,16 @@ export const actions: Actions = {
 	},
 
 	delete: async ({ params, locals }) => {
-		await requirePageStaff(locals);
+		const user = await requirePageStaff(locals);
 		const id = Number(params.id);
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'delete' });
 
-		const [activeCard] = await db
-			.select({ id: cardRfid.id })
-			.from(cardRfid)
-			.where(and(eq(cardRfid.subscriberId, id), eq(cardRfid.status, 'active')))
-			.limit(1);
-
-		if (activeCard) {
-			return fail(400, {
-				error: 'Non puoi eliminare un iscritto con una tessera attiva',
-				action: 'delete'
-			});
+		// Soft delete: l'iscritto passa allo stato 'cancelled' (vedi $lib/services/subscribers).
+		try {
+			await removeSubscriber(id, user);
+		} catch (err) {
+			return actionFailure(err, 'delete');
 		}
-
-		await db.delete(subscribers).where(eq(subscribers.id, id));
 		redirect(303, '/subscribers');
 	}
 };

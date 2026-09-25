@@ -1,9 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
-import { db } from '$lib/db';
-import { cardRfid, auditLog } from '$lib/db/schema';
-import { ok, unauthorized, notFound, serverError } from '$lib/utils/api';
+import { ok, unauthorized, notFound, badRequest, serverError } from '$lib/utils/api';
 import { AuthError } from '$lib/services/auth';
+import { CardWriterError, disableCard } from '$lib/services/card-writer';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
@@ -17,25 +15,14 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	if (isNaN(id) || id <= 0) return notFound('Invalid card ID');
 
 	try {
-		// Verify card exists
-		const [existing] = await db.select().from(cardRfid).where(eq(cardRfid.id, id)).limit(1);
-		if (!existing) return notFound('Card not found');
-
-		// Disable
-		await db.update(cardRfid).set({ status: 'disabled' }).where(eq(cardRfid.id, id));
-
-		// Audit log
-		await db.insert(auditLog).values({
-			userId: adminUser.id,
-			action: 'card_disable',
-			entityType: 'card_rfid',
-			entityId: id
-		});
-
-		// Return updated record
-		const [updated] = await db.select().from(cardRfid).where(eq(cardRfid.id, id)).limit(1);
+		const updated = await disableCard(id, adminUser);
 		return ok(updated);
 	} catch (err) {
+		if (err instanceof CardWriterError) {
+			if (err.code === 'NOT_FOUND') return notFound('Card not found');
+			if (err.code === 'VALIDATION_ERROR') return notFound('Invalid card ID');
+			if (err.code === 'INVALID_STATE') return badRequest(err.message);
+		}
 		console.error('[card/disable] error:', err);
 		return serverError();
 	}

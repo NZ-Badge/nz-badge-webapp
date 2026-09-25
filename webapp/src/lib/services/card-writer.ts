@@ -3,10 +3,10 @@
  * Handles card writing, erasing, and restoration with audit logging
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { subscribers, cardRfid, users } from '$lib/db/schema';
-import type { User } from '$lib/db/schema';
+import type { CardRfid, User } from '$lib/db/schema';
 import { getMifareKeyConfig, isMifareEnabled, getOrCreateGlobalKeys } from './mifare-keys';
 import { logAudit } from './audit';
 import { sanitizeId } from '$lib/utils/security';
@@ -608,7 +608,7 @@ export async function restoreCard(cardId: number, adminUser: User): Promise<void
 	// Audit log
 	await logAudit({
 		userId: adminUser.id,
-		action: 'CARD_ENABLE',
+		action: 'CARD_RESTORE',
 		entityType: 'card',
 		entityId: validId,
 		dataBefore: { status: 'deleted' },
@@ -649,7 +649,7 @@ export async function softDeleteCard(
 	// Audit log
 	await logAudit({
 		userId: adminUser.id,
-		action: 'CARD_DISABLE',
+		action: 'CARD_DELETE',
 		entityType: 'card',
 		entityId: validId,
 		dataBefore: { status: card.status },
@@ -661,72 +661,124 @@ export async function softDeleteCard(
 }
 
 /**
- * Enable a disabled card
+ * Enable a disabled card.
+ * Runs in a transaction and locks the card row and, for staff cards, the owner row
+ * (`SELECT … FOR UPDATE`) so two concurrent requests cannot both activate an RFID card
+ * for the same user.
  */
-export async function enableCard(cardId: number, adminUser: User): Promise<void> {
-	// Validate card ID
+export async function enableCard(cardId: number, adminUser: User): Promise<CardRfid> {
 	const validId = sanitizeId(cardId);
 	if (!validId) {
 		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
 	}
 
-	// Fetch card
-	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
+	return db.transaction(async (tx) => {
+		const [card] = await tx
+			.select()
+			.from(cardRfid)
+			.where(eq(cardRfid.id, validId))
+			.limit(1)
+			.for('update');
 
-	if (!card) {
-		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
-	}
+		if (!card) {
+			throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+		}
 
-	if (card.status !== 'disabled') {
-		throw new CardWriterError(`Card is not disabled (status: ${card.status})`, 'INVALID_STATE');
-	}
+		if (card.status !== 'disabled') {
+			throw new CardWriterError(`Card non è disabilitata (stato: ${card.status})`, 'INVALID_STATE');
+		}
 
-	// Enable card
-	await db.update(cardRfid).set({ status: 'active' }).where(eq(cardRfid.id, validId));
+		if (card.userId) {
+			const [owner] = await tx
+				.select({ status: users.status })
+				.from(users)
+				.where(eq(users.id, card.userId))
+				.limit(1)
+				.for('update');
+			if (!owner || owner.status !== 'active') {
+				throw new CardWriterError('L’utente associato non è attivo', 'INVALID_STATE');
+			}
 
-	// Audit log
-	await logAudit({
-		userId: adminUser.id,
-		action: 'CARD_ENABLE',
-		entityType: 'card',
-		entityId: validId,
-		dataBefore: { status: 'disabled' },
-		dataAfter: { status: 'active' }
+			if (card.type === 'rfid') {
+				const [otherActiveCard] = await tx
+					.select({ id: cardRfid.id })
+					.from(cardRfid)
+					.where(
+						and(
+							eq(cardRfid.userId, card.userId),
+							eq(cardRfid.type, 'rfid'),
+							eq(cardRfid.status, 'active'),
+							ne(cardRfid.id, card.id)
+						)
+					)
+					.limit(1)
+					.for('update');
+				if (otherActiveCard) {
+					throw new CardWriterError('L’utente ha già una card RFID attiva', 'INVALID_STATE');
+				}
+			}
+		}
+
+		await tx.update(cardRfid).set({ status: 'active' }).where(eq(cardRfid.id, validId));
+
+		await logAudit(
+			{
+				userId: adminUser.id,
+				action: 'CARD_ENABLE',
+				entityType: 'card',
+				entityId: validId,
+				dataBefore: { status: 'disabled' },
+				dataAfter: { status: 'active' }
+			},
+			tx
+		);
+
+		const [updated] = await tx.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
+		return updated;
 	});
 }
 
 /**
  * Disable an active card
  */
-export async function disableCard(cardId: number, adminUser: User): Promise<void> {
-	// Validate card ID
+export async function disableCard(cardId: number, adminUser: User): Promise<CardRfid> {
 	const validId = sanitizeId(cardId);
 	if (!validId) {
 		throw new CardWriterError('Invalid card ID', 'VALIDATION_ERROR');
 	}
 
-	// Fetch card
-	const [card] = await db.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
+	return db.transaction(async (tx) => {
+		const [card] = await tx
+			.select()
+			.from(cardRfid)
+			.where(eq(cardRfid.id, validId))
+			.limit(1)
+			.for('update');
 
-	if (!card) {
-		throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
-	}
+		if (!card) {
+			throw new CardWriterError(`Card ${validId} not found`, 'NOT_FOUND');
+		}
 
-	if (card.status !== 'active') {
-		throw new CardWriterError(`Card is not active (status: ${card.status})`, 'INVALID_STATE');
-	}
+		if (card.status !== 'active') {
+			throw new CardWriterError(`Card non è attiva (stato: ${card.status})`, 'INVALID_STATE');
+		}
 
-	// Disable card
-	await db.update(cardRfid).set({ status: 'disabled' }).where(eq(cardRfid.id, validId));
+		await tx.update(cardRfid).set({ status: 'disabled' }).where(eq(cardRfid.id, validId));
 
-	// Audit log
-	await logAudit({
-		userId: adminUser.id,
-		action: 'CARD_DISABLE',
-		entityType: 'card',
-		entityId: validId,
-		dataBefore: { status: 'active' },
-		dataAfter: { status: 'disabled' }
+		await logAudit(
+			{
+				userId: adminUser.id,
+				action: 'CARD_DISABLE',
+				entityType: 'card',
+				entityId: validId,
+				dataBefore: { status: 'active' },
+				dataAfter: { status: 'disabled' }
+			},
+			tx
+		);
+
+		const [updated] = await tx.select().from(cardRfid).where(eq(cardRfid.id, validId)).limit(1);
+		return updated;
 	});
 }
 

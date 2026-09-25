@@ -2,9 +2,16 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
-import { subscribers, cardRfid } from '$lib/db/schema';
-import { eq, like, or, and, count } from 'drizzle-orm';
+import { subscribers } from '$lib/db/schema';
+import { like, or, and, count } from 'drizzle-orm';
 import { enrichSubscribersForList, type SubscriberListRow } from '$lib/services/subscriber-list';
+import {
+	createSubscriber,
+	removeSubscriber,
+	SubscriberServiceError,
+	subscriberInputFromForm,
+	updateSubscriber
+} from '$lib/services/subscribers';
 
 const PAGE_SIZE = 25;
 const SORT_FIELDS = ['name', 'email', 'latestCourseAttendance', 'lastEntryAt', 'card'] as const;
@@ -123,6 +130,9 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				firstName: subscribers.firstName,
 				lastName: subscribers.lastName,
 				email: subscribers.email,
+				phone: subscribers.phone,
+				taxId: subscribers.taxId,
+				note: subscribers.note,
 				status: subscribers.status
 			})
 			.from(subscribers)
@@ -145,83 +155,57 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	};
 };
 
+function actionFailure(err: unknown, action: 'create' | 'update' | 'delete') {
+	if (err instanceof SubscriberServiceError) {
+		const status = err.code === 'NOT_FOUND' ? 404 : 400;
+		return fail(status, { error: err.message, action });
+	}
+	throw err;
+}
+
 export const actions: Actions = {
 	create: async ({ request, locals }) => {
-		await requirePageStaff(locals);
-		const data = await request.formData();
-		const firstName = data.get('firstName')?.toString().trim();
-		const lastName = data.get('lastName')?.toString().trim();
-		const email = data.get('email')?.toString().trim();
+		const user = await requirePageStaff(locals);
+		const input = subscriberInputFromForm(await request.formData());
 
-		if (!firstName || !lastName || !email) {
+		if (!input.firstName || !input.lastName || !input.email) {
 			return fail(400, { error: 'Nome, cognome ed email sono obbligatori', action: 'create' });
 		}
 
-		await db.insert(subscribers).values({
-			firstName,
-			lastName,
-			email,
-			phone: data.get('phone')?.toString().trim() || null,
-			taxId: data.get('taxCode')?.toString().trim() || null,
-			status: (data.get('status')?.toString() ?? 'active') as
-				| 'active'
-				| 'completed'
-				| 'suspended'
-				| 'cancelled',
-			note: data.get('notes')?.toString().trim() || null
-		});
-
+		try {
+			await createSubscriber(input, user);
+		} catch (err) {
+			return actionFailure(err, 'create');
+		}
 		return { success: true, action: 'create' };
 	},
 
 	update: async ({ request, locals }) => {
-		await requirePageStaff(locals);
+		const user = await requirePageStaff(locals);
 		const data = await request.formData();
 		const id = Number(data.get('id'));
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'update' });
 
-		await db
-			.update(subscribers)
-			.set({
-				firstName: data.get('firstName')?.toString().trim(),
-				lastName: data.get('lastName')?.toString().trim(),
-				email: data.get('email')?.toString().trim(),
-				phone: data.get('phone')?.toString().trim() || null,
-				taxId: data.get('taxCode')?.toString().trim() || null,
-				status: (data.get('status')?.toString() ?? 'active') as
-					| 'active'
-					| 'completed'
-					| 'suspended'
-					| 'cancelled',
-				note: data.get('notes')?.toString().trim() || null
-			})
-			.where(eq(subscribers.id, id));
-
+		try {
+			await updateSubscriber(id, subscriberInputFromForm(data), user);
+		} catch (err) {
+			return actionFailure(err, 'update');
+		}
 		return { success: true, action: 'update' };
 	},
 
 	delete: async ({ request, locals }) => {
-		await requirePageStaff(locals);
+		const user = await requirePageStaff(locals);
 		const data = await request.formData();
 		const id = Number(data.get('id'));
 		if (!id) return fail(400, { error: 'ID iscritto mancante', action: 'delete' });
 
-		// Blocca se ha carta attiva
-		const [activeCard] = await db
-			.select({ id: cardRfid.id })
-			.from(cardRfid)
-			.where(and(eq(cardRfid.subscriberId, id), eq(cardRfid.status, 'active')))
-			.limit(1);
-
-		if (activeCard) {
-			return fail(400, {
-				error:
-					'Non puoi eliminare un iscritto con una tessera attiva. Rimuovi prima la tessera dalla pagina Tessere.',
-				action: 'delete'
-			});
+		// Soft delete: l'iscritto passa allo stato 'cancelled' (vedi $lib/services/subscribers).
+		try {
+			await removeSubscriber(id, user);
+		} catch (err) {
+			return actionFailure(err, 'delete');
 		}
-
-		await db.delete(subscribers).where(eq(subscribers.id, id));
 		return { success: true, action: 'delete' };
 	}
 };

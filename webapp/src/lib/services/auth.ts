@@ -5,12 +5,13 @@
  */
 
 import bcrypt from 'bcryptjs';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { error, redirect } from '@sveltejs/kit';
 import { jwtVerify, SignJWT } from 'jose';
 import { env } from '$env/dynamic/private';
 import { db } from '$lib/db';
 import { deviceRegistry, users } from '$lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { DeviceReg, User } from '$lib/db/schema';
 import { authRateLimiter, hashForAudit } from '$lib/utils/security';
 
@@ -72,6 +73,44 @@ function getRateLimitKey(deviceId: string): string {
 	return `auth:${deviceId}`;
 }
 
+const BCRYPT_HASH_PATTERN = /^\$2[aby]\$/;
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
+
+/**
+ * Hash di un token dispositivo per la memorizzazione: SHA-256 in esadecimale (64 caratteri).
+ * I token sono valori casuali ad alta entropia, quindi non serve un hash lento come bcrypt.
+ */
+export function hashDeviceToken(token: string): string {
+	return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/** True se l'hash salvato e' un hash bcrypt legacy ($2a/$2b/$2y). */
+export function isLegacyBcryptHash(storedHash: string): boolean {
+	return BCRYPT_HASH_PATTERN.test(storedHash);
+}
+
+/**
+ * Confronta un token con l'hash salvato.
+ * - SHA-256 hex: confronto a tempo costante con `timingSafeEqual`.
+ * - bcrypt legacy: `bcrypt.compare`; `needsRehash` segnala di migrare l'hash a SHA-256.
+ */
+export async function verifyDeviceTokenHash(
+	token: string,
+	storedHash: string
+): Promise<{ valid: boolean; needsRehash: boolean }> {
+	if (isLegacyBcryptHash(storedHash)) {
+		const valid = await bcrypt.compare(token, storedHash);
+		return { valid, needsRehash: valid };
+	}
+
+	const normalized = storedHash.toLowerCase();
+	if (!SHA256_HEX_PATTERN.test(normalized)) return { valid: false, needsRehash: false };
+
+	const expected = Buffer.from(normalized, 'hex');
+	const actual = Buffer.from(hashDeviceToken(token), 'hex');
+	return { valid: timingSafeEqual(expected, actual), needsRehash: false };
+}
+
 /**
  * Verify device token from request headers
  * Used by IoT card readers and attendance devices
@@ -111,11 +150,22 @@ export async function verifyDeviceToken(request: Request): Promise<DeviceReg> {
 		throw new AuthError('Device is disabled', 'UNAUTHORIZED');
 	}
 
-	// Verify token against bcrypt hash
-	const valid = await bcrypt.compare(token, device.tokenHash);
+	// Verify token against stored hash (SHA-256, or legacy bcrypt)
+	const { valid, needsRehash } = await verifyDeviceTokenHash(token, device.tokenHash);
 	if (!valid) {
 		console.warn('[AUTH] Invalid token for device:', deviceId);
 		throw new AuthError('Invalid token', 'UNAUTHORIZED');
+	}
+
+	// Legacy bcrypt hash: migrate transparently to SHA-256 (fire and forget — do not await)
+	if (needsRehash) {
+		const legacyHash = device.tokenHash;
+		db.update(deviceRegistry)
+			.set({ tokenHash: hashDeviceToken(token) })
+			.where(and(eq(deviceRegistry.deviceId, deviceId), eq(deviceRegistry.tokenHash, legacyHash)))
+			.catch((err: unknown) => {
+				console.error('[AUTH] Device token rehash failed:', deviceId, err);
+			});
 	}
 
 	// Update last_ping asynchronously (fire and forget — do not await)
@@ -332,7 +382,7 @@ export async function generateDeviceToken(): Promise<{ token: string; hash: stri
 	crypto.getRandomValues(array);
 	const token = Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
 
-	const hash = await bcrypt.hash(token, 12);
+	const hash = hashDeviceToken(token);
 
 	return { token, hash };
 }

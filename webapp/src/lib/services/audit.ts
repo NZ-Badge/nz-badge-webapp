@@ -5,10 +5,13 @@
 
 import { db } from '$lib/db';
 import { auditLog } from '$lib/db/schema';
+import type { DbOrTx } from '$lib/db/types';
 import { maskEmail, maskUid } from '$lib/utils/security';
 import type { RequestEvent } from '@sveltejs/kit';
 
-// Action types for audit logging
+// Action types for audit logging.
+// Naming convention: generic CRUD verbs (CREATE/UPDATE/DELETE) + a lowercase singular
+// entity type; domain-specific operations get their own UPPER_SNAKE action.
 export type AuditAction =
 	| 'CREATE'
 	| 'UPDATE'
@@ -22,6 +25,8 @@ export type AuditAction =
 	| 'CARD_ERASE'
 	| 'CARD_DISABLE'
 	| 'CARD_ENABLE'
+	| 'CARD_RESTORE'
+	| 'CARD_DELETE'
 	| 'SYNC_SHOPIFY'
 	| 'SETTINGS_UPDATE'
 	| 'DEVICE_REGISTER'
@@ -68,7 +73,9 @@ function sanitizeAuditData(
 		'tokenHash',
 		'keyA',
 		'keyB',
-		'secret'
+		'secret',
+		'apiKey',
+		'api_key'
 	];
 	const sanitized: Record<string, unknown> = {};
 
@@ -88,6 +95,12 @@ function sanitizeAuditData(
 		// Mask UID fields
 		if ((key.toLowerCase().includes('uid') || key === 'cardUid') && typeof value === 'string') {
 			sanitized[key] = maskUid(value);
+			continue;
+		}
+
+		// Dates would otherwise be recursed into and stored as {}
+		if (value instanceof Date) {
+			sanitized[key] = value.toISOString();
 			continue;
 		}
 
@@ -115,11 +128,13 @@ function getClientIp(event: RequestEvent): string {
 }
 
 /**
- * Log an audit event
+ * Log an audit event.
+ * Pass `database` (a transaction handle) to write the entry in the caller's transaction,
+ * so the audit row is committed or rolled back together with the change it describes.
  */
-export async function logAudit(entry: AuditEntry): Promise<void> {
+export async function logAudit(entry: AuditEntry, database: DbOrTx = db): Promise<void> {
 	try {
-		await db.insert(auditLog).values({
+		await database.insert(auditLog).values({
 			userId: entry.userId,
 			action: entry.action,
 			entityType: entry.entityType,

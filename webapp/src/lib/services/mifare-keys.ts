@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
-import { settings, mifareKeys } from '$lib/db/schema';
+import { mifareKeys } from '$lib/db/schema';
+import { getSetting } from './settings';
 
 // ── Key generation helpers ───────────────────────────────────────────────────
 
@@ -11,8 +12,6 @@ function generateHexKey(): string {
 // ── Global MIFARE Key Management ─────────────────────────────────────────────
 
 const DEFAULT_KEY_NAME = 'default';
-const SETTING_SINGLE_KEY = 'use_single_mifare_key';
-const SETTING_USE_MIFARE = 'use_mifare';
 
 export interface MifareKeyPair {
 	keyA: string;
@@ -29,39 +28,14 @@ export interface MifareKeyConfig {
  * Verifica se la modalità MIFARE è abilitata (scrittura chiavi su carta)
  */
 export async function isMifareEnabled(): Promise<boolean> {
-	const [setting] = await db
-		.select()
-		.from(settings)
-		.where(eq(settings.key, SETTING_USE_MIFARE))
-		.limit(1);
-
-	return setting?.value === 'true';
+	return getSetting('use_mifare');
 }
 
 /**
  * Verifica se è abilitata la modalità chiave unica
  */
 export async function isSingleKeyModeEnabled(): Promise<boolean> {
-	const [setting] = await db
-		.select()
-		.from(settings)
-		.where(eq(settings.key, SETTING_SINGLE_KEY))
-		.limit(1);
-
-	return setting?.value === 'true';
-}
-
-/**
- * Abilita/disabilita la modalità chiave unica
- */
-export async function setSingleKeyMode(enabled: boolean, userId?: number): Promise<void> {
-	await db
-		.update(settings)
-		.set({
-			value: String(enabled),
-			updatedByUserId: userId
-		})
-		.where(eq(settings.key, SETTING_SINGLE_KEY));
+	return getSetting('use_single_mifare_key');
 }
 
 /**

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { db } from '$lib/db';
-import { enrollments, enrollmentSyncLog, subscribers, settings } from '$lib/db/schema';
+import { enrollments, enrollmentSyncLog, subscribers } from '$lib/db/schema';
+import { getSetting, getSettings, setSettings } from './settings';
 import { eq } from 'drizzle-orm';
 
 // ── API types ─────────────────────────────────────────────────────────────────
@@ -76,30 +77,13 @@ export interface SyncResult {
 
 // ── Webhook secret management ─────────────────────────────────────────────────
 
-const WEBHOOK_SECRET_KEY = 'webhook_enrollment_secret';
-const ENROLLMENT_API_URL_KEY = 'enrollment_api_url';
-const ENROLLMENT_API_KEY_KEY = 'enrollment_api_key';
-
 export async function getWebhookSecret(): Promise<string | null> {
-	const [row] = await db
-		.select({ value: settings.value })
-		.from(settings)
-		.where(eq(settings.key, WEBHOOK_SECRET_KEY))
-		.limit(1);
-	return row?.value ?? null;
+	return (await getSetting('webhook_enrollment_secret')) || null;
 }
 
 export async function regenerateWebhookSecret(): Promise<string> {
 	const secret = randomBytes(32).toString('hex');
-	await db
-		.insert(settings)
-		.values({
-			key: WEBHOOK_SECRET_KEY,
-			value: secret,
-			dataType: 'string',
-			description: 'Secret per autenticare le chiamate webhook iscrizioni'
-		})
-		.onDuplicateKeyUpdate({ set: { value: secret } });
+	await setSettings({ webhook_enrollment_secret: secret });
 	return secret;
 }
 
@@ -111,55 +95,8 @@ export interface EnrollmentApiConfig {
 }
 
 export async function getEnrollmentApiConfig(): Promise<EnrollmentApiConfig> {
-	const [urlRow] = await db
-		.select({ value: settings.value })
-		.from(settings)
-		.where(eq(settings.key, ENROLLMENT_API_URL_KEY))
-		.limit(1);
-	const [keyRow] = await db
-		.select({ value: settings.value })
-		.from(settings)
-		.where(eq(settings.key, ENROLLMENT_API_KEY_KEY))
-		.limit(1);
-	return {
-		url: urlRow?.value || null,
-		key: keyRow?.value || null
-	};
-}
-
-/**
- * Update the Enrollment API configuration. Only the provided fields are written:
- * `undefined` leaves the stored value untouched, `null` clears the API key.
- */
-export async function setEnrollmentApiConfig(update: {
-	url?: string;
-	key?: string | null;
-}): Promise<void> {
-	if (update.url !== undefined) {
-		const url = update.url;
-		await db
-			.insert(settings)
-			.values({
-				key: ENROLLMENT_API_URL_KEY,
-				value: url,
-				dataType: 'string',
-				description: 'URL base API esterna iscrizioni'
-			})
-			.onDuplicateKeyUpdate({ set: { value: url } });
-	}
-
-	if (update.key !== undefined) {
-		const key = update.key ?? '';
-		await db
-			.insert(settings)
-			.values({
-				key: ENROLLMENT_API_KEY_KEY,
-				value: key,
-				dataType: 'string',
-				description: 'API key per autenticazione API esterna iscrizioni'
-			})
-			.onDuplicateKeyUpdate({ set: { value: key } });
-	}
+	const { enrollment_api_url: url, enrollment_api_key: key } = await getSettings();
+	return { url: url || null, key: key || null };
 }
 
 // ── Core sync logic ───────────────────────────────────────────────────────────

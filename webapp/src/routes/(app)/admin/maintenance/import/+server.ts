@@ -10,6 +10,7 @@ import { createGunzip } from 'node:zlib';
 import { env } from '$env/dynamic/private';
 import { json } from '@sveltejs/kit';
 import { AuthError, requireAdmin } from '$lib/services/auth';
+import { invalidateSettingsCache } from '$lib/services/settings';
 import type { RequestHandler } from './$types';
 
 const MAX_COMPRESSED_BYTES = 100 * 1024 * 1024;
@@ -156,6 +157,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		const quoted = `\`${config.database.replaceAll('`', '``')}\``;
 		await runMysql([...config.args, '--execute', `DROP DATABASE IF EXISTS ${quoted};`], config.env);
 		await runMysql(config.args, config.env, sqlPath);
+		invalidateSettingsCache();
 		return json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
 	} catch (err) {
 		console.error('[DB IMPORT] Failed:', err instanceof Error ? err.message : 'unknown error');
