@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { AuthError } from '$lib/services/auth';
 import {
 	createManualStaffAttendance,
+	deleteStaffAttendance,
 	parseRomeLocalDateTime,
 	StaffAttendanceError,
 	updateStaffAttendanceTimestamp
@@ -20,6 +21,8 @@ const updateSchema = z.object({
 	id: z.number().int().positive(),
 	readTimestamp: z.string()
 });
+
+const deleteSchema = z.object({ id: z.number().int().positive() });
 
 function errorResponse(err: unknown): Response {
 	if (err instanceof AuthError) {
@@ -81,6 +84,18 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 			readTimestamp: parseRomeLocalDateTime(parsed.data.readTimestamp)
 		});
 		return json({ event });
+	} catch (err) {
+		return errorResponse(err);
+	}
+};
+
+export const DELETE: RequestHandler = async ({ request, locals }) => {
+	try {
+		const actor = await locals.verifyUser();
+		const parsed = deleteSchema.safeParse(await request.json());
+		if (!parsed.success) return json({ error: 'Dati non validi' }, { status: 400 });
+		await deleteStaffAttendance({ actor, attendanceId: parsed.data.id });
+		return json({ deleted: 1 });
 	} catch (err) {
 		return errorResponse(err);
 	}

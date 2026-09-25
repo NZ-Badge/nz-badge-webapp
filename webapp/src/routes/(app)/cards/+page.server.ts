@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/db';
-import { cardRfid, subscribers } from '$lib/db/schema';
-import { and, eq, count, isNotNull, ne, or, like, asc, desc } from 'drizzle-orm';
+import { cardRfid, subscribers, users } from '$lib/db/schema';
+import { and, eq, count, isNotNull, ne, or, like, asc, desc, sql } from 'drizzle-orm';
 
 const PAGE_SIZE = 25;
 const SORT_FIELDS = ['subscriber', 'writeDate', 'expirationDate'] as const;
@@ -24,9 +24,10 @@ export const load: PageServerLoad = async ({ url }) => {
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	const sort = parseSortField(url.searchParams.get('sort'));
 	const dir = parseSortDirection(url.searchParams.get('dir'));
+	const ownerClause = or(isNotNull(cardRfid.subscriberId), isNotNull(cardRfid.userId));
 
 	if (tab === 'history') {
-		const whereClause = and(isNotNull(cardRfid.subscriberId), eq(cardRfid.status, 'deleted'));
+		const whereClause = and(ownerClause, eq(cardRfid.status, 'deleted'));
 
 		const [cards, [{ total }]] = await Promise.all([
 			db
@@ -37,11 +38,15 @@ export const load: PageServerLoad = async ({ url }) => {
 					writeDate: cardRfid.writeDate,
 					expirationDate: cardRfid.expirationDate,
 					deletedAt: cardRfid.deletedAt,
+					subscriberId: cardRfid.subscriberId,
 					subscriberName: subscribers.firstName,
-					subscriberSurname: subscribers.lastName
+					subscriberSurname: subscribers.lastName,
+					userName: users.name,
+					userRole: users.role
 				})
 				.from(cardRfid)
 				.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+				.leftJoin(users, eq(cardRfid.userId, users.id))
 				.where(whereClause)
 				.limit(PAGE_SIZE)
 				.offset((page - 1) * PAGE_SIZE),
@@ -68,13 +73,17 @@ export const load: PageServerLoad = async ({ url }) => {
 			? eq(cardRfid.status, status as (typeof validStatuses)[number])
 			: ne(cardRfid.status, 'deleted');
 	const qClause = q
-		? or(like(subscribers.firstName, `%${q}%`), like(subscribers.lastName, `%${q}%`))
+		? or(
+				like(subscribers.firstName, `%${q}%`),
+				like(subscribers.lastName, `%${q}%`),
+				like(users.name, `%${q}%`)
+			)
 		: undefined;
-	const whereClause = and(isNotNull(cardRfid.subscriberId), statusClause, qClause);
+	const whereClause = and(ownerClause, statusClause, qClause);
 
 	const sortColumns =
 		sort === 'subscriber'
-			? [subscribers.firstName, subscribers.lastName]
+			? [sql<string>`coalesce(${subscribers.firstName}, ${users.name})`, subscribers.lastName]
 			: sort === 'expirationDate'
 				? [cardRfid.expirationDate]
 				: [cardRfid.writeDate];
@@ -92,11 +101,15 @@ export const load: PageServerLoad = async ({ url }) => {
 				writeDate: cardRfid.writeDate,
 				expirationDate: cardRfid.expirationDate,
 				deletedAt: cardRfid.deletedAt,
+				subscriberId: cardRfid.subscriberId,
 				subscriberName: subscribers.firstName,
-				subscriberSurname: subscribers.lastName
+				subscriberSurname: subscribers.lastName,
+				userName: users.name,
+				userRole: users.role
 			})
 			.from(cardRfid)
 			.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+			.leftJoin(users, eq(cardRfid.userId, users.id))
 			.where(whereClause)
 			.orderBy(...orderBy)
 			.limit(PAGE_SIZE)
@@ -105,6 +118,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			.select({ total: count() })
 			.from(cardRfid)
 			.leftJoin(subscribers, eq(cardRfid.subscriberId, subscribers.id))
+			.leftJoin(users, eq(cardRfid.userId, users.id))
 			.where(whereClause)
 	]);
 

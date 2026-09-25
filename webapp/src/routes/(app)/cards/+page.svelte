@@ -92,6 +92,22 @@
 							? 'Eliminata'
 							: status;
 
+	const ownerName = (card: (typeof data.cards)[number]) =>
+		card.subscriberId
+			? [card.subscriberName, card.subscriberSurname].filter(Boolean).join(' ') || '—'
+			: (card.userName ?? '—');
+
+	const ownerType = (card: (typeof data.cards)[number]) =>
+		card.subscriberId
+			? 'Corsista'
+			: card.userRole === 'admin'
+				? 'Amministratore'
+				: card.userRole === 'staff'
+					? 'Operatore'
+					: card.userRole === 'collaborator'
+						? 'Collaboratore'
+						: '—';
+
 	function formatExpirationDate(value: Date | string | null): string {
 		if (!value) return '—';
 
@@ -184,6 +200,8 @@
 	<div class="flex gap-2 border-b">
 		<a
 			href="?tab=active"
+			data-tutorial-title="Tessere attive"
+			data-tutorial-description="Mostra tutte le tessere non cancellate di corsisti, collaboratori, operatori e amministratori."
 			class="px-4 py-2 text-sm font-medium border-b-2 -mb-px {data.tab !== 'history'
 				? 'border-primary text-primary'
 				: 'border-transparent text-muted-foreground hover:text-foreground'}"
@@ -192,6 +210,8 @@
 		</a>
 		<a
 			href="?tab=history"
+			data-tutorial-title="Storico cancellate"
+			data-tutorial-description="Mostra le tessere cancellate dal sistema e le azioni disponibili per ripristinarle o cancellarle fisicamente."
 			class="px-4 py-2 text-sm font-medium border-b-2 -mb-px {data.tab === 'history'
 				? 'border-primary text-primary'
 				: 'border-transparent text-muted-foreground hover:text-foreground'}"
@@ -216,7 +236,8 @@
 				<TableHeader>
 					<TableRow>
 						<TableHead>UID</TableHead>
-						<TableHead>Iscritto</TableHead>
+						<TableHead>Intestatario</TableHead>
+						<TableHead>Tipo</TableHead>
 						<TableHead>Scritta il</TableHead>
 						<TableHead>Cancellata il</TableHead>
 						<TableHead class="w-px text-right">Azioni</TableHead>
@@ -227,8 +248,9 @@
 						<TableRow>
 							<TableCell class="font-mono text-sm">{card.uid}</TableCell>
 							<TableCell>
-								{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
+								{ownerName(card)}
 							</TableCell>
+							<TableCell>{ownerType(card)}</TableCell>
 							<TableCell>
 								{card.writeDate ? formatDateIT(card.writeDate) : '—'}
 							</TableCell>
@@ -264,7 +286,7 @@
 					{/each}
 					{#if data.cards.length === 0}
 						<TableRow>
-							<TableCell colspan={5} data-empty>Nessuna card cancellata nello storico.</TableCell>
+							<TableCell colspan={6} data-empty>Nessuna card cancellata nello storico.</TableCell>
 						</TableRow>
 					{/if}
 				</TableBody>
@@ -288,7 +310,7 @@
 			<input type="hidden" name="sort" value={data.sort} />
 			<input type="hidden" name="dir" value={data.dir} />
 			<label class="grid min-w-0 flex-1 gap-1.5 text-sm font-medium sm:min-w-64">
-				Cerca iscritto
+				Cerca intestatario
 				<span class="relative">
 					<Search
 						class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -307,7 +329,13 @@
 					{/each}
 				</select>
 			</label>
-			<Button type="submit" variant="outline">Filtra</Button>
+			<Button
+				type="submit"
+				variant="outline"
+				data-tutorial-title="Filtra tessere"
+				data-tutorial-description="Cerca le tessere per nome o cognome dell'intestatario e filtra per stato."
+				>Filtra</Button
+			>
 			{#if data.q || data.status}
 				<Button
 					href="/cards?tab=active"
@@ -332,8 +360,10 @@
 									dir: getNextSortDirection('subscriber')
 								})}
 								class="inline-flex items-center gap-1 hover:underline"
+								data-tutorial-title="Ordina per intestatario"
+								data-tutorial-description="Ordina le tessere per nome dell'intestatario, alternando ordine crescente e decrescente."
 							>
-								Iscritto
+								Intestatario
 								{#if data.sort === 'subscriber'}
 									{#if data.dir === 'asc'}
 										<ArrowUp size={14} />
@@ -345,6 +375,7 @@
 								{/if}
 							</a>
 						</TableHead>
+						<TableHead>Tipo</TableHead>
 						<TableHead>
 							<a
 								href={buildListUrl({
@@ -352,6 +383,8 @@
 									dir: getNextSortDirection('writeDate')
 								})}
 								class="inline-flex items-center gap-1 hover:underline"
+								data-tutorial-title="Ordina per data di scrittura"
+								data-tutorial-description="Ordina le tessere per data di scrittura, alternando ordine crescente e decrescente."
 							>
 								Scritta il
 								{#if data.sort === 'writeDate'}
@@ -372,6 +405,8 @@
 									dir: getNextSortDirection('expirationDate')
 								})}
 								class="inline-flex items-center gap-1 hover:underline"
+								data-tutorial-title="Ordina per scadenza"
+								data-tutorial-description="Ordina le tessere per data di scadenza, alternando ordine crescente e decrescente."
 							>
 								Scadenza
 								{#if data.sort === 'expirationDate'}
@@ -394,8 +429,9 @@
 						<TableRow>
 							<TableCell class="font-mono text-sm">{card.uid}</TableCell>
 							<TableCell>
-								{card.subscriberName ? `${card.subscriberName} ${card.subscriberSurname}` : '—'}
+								{ownerName(card)}
 							</TableCell>
+							<TableCell>{ownerType(card)}</TableCell>
 							<TableCell>
 								{card.writeDate ? formatDateIT(card.writeDate) : '—'}
 							</TableCell>
@@ -452,7 +488,7 @@
 					{/each}
 					{#if data.cards.length === 0}
 						<TableRow
-							><TableCell colspan={6} data-empty>Nessuna tessera trovata.</TableCell></TableRow
+							><TableCell colspan={7} data-empty>Nessuna tessera trovata.</TableCell></TableRow
 						>
 					{/if}
 				</TableBody>
@@ -481,8 +517,20 @@
 			<p class="text-sm text-red-600">{disableError}</p>
 		{/if}
 		<DialogFooter>
-			<Button variant="outline" onclick={() => (disableDialogOpen = false)}>Annulla</Button>
-			<Button variant="destructive" onclick={confirmDisable} disabled={disabling}>
+			<Button
+				variant="outline"
+				onclick={() => (disableDialogOpen = false)}
+				data-tutorial-title="Annulla disabilitazione"
+				data-tutorial-description="Chiude la conferma senza cambiare lo stato della tessera."
+				>Annulla</Button
+			>
+			<Button
+				variant="destructive"
+				onclick={confirmDisable}
+				disabled={disabling}
+				data-tutorial-title="Conferma disabilitazione"
+				data-tutorial-description="Disabilita la tessera selezionata senza cancellarne i dati."
+			>
 				{disabling ? 'Disabilitando...' : 'Disabilita'}
 			</Button>
 		</DialogFooter>

@@ -47,6 +47,8 @@ Route principali in `src/routes/(app)`:
 - `/admin/users`
 
 Accesso tramite login con cookie di sessione JWT.
+La pagina `/cards` elenca le tessere di corsisti, collaboratori, operatori e amministratori,
+indica il tipo di intestatario e permette di cercare per nome le tessere non cancellate.
 
 I Collaboratori vedono soltanto Panoramica, Ingressi collaboratori e I miei ingressi. Gli
 Operatori possono consultare lo Staff, gestire card e strisciate, ma la creazione, modifica e
@@ -287,7 +289,11 @@ Dal pannello amministrativo, data e ora di una presenza corsista possono essere 
 Amministratore/Operatore e sono registrate nell'audit log.
 
 Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia
-l'esportazione CSV per intervallo di date o persona. La pagina `/staff-attendance` e il relativo
+l'esportazione CSV per intervallo di date o persona. Da entrambe le tabelle si può eliminare
+un singolo ingresso o una singola uscita dopo conferma; `/attendance` mantiene anche
+l'eliminazione multipla. Le API amministrative sono `DELETE /api/v1/attendance` con
+`{ "ids": [id] }` e `DELETE /api/v1/staff-attendance` con `{ "id": id }`.
+La pagina `/staff-attendance` e il relativo
 export sono riservati ad Amministratori e Operatori; i Collaboratori consultano le proprie
 presenze da `/my-attendance`. Gli endpoint di download sono rispettivamente
 `GET /api/v1/attendance/export` e `GET /api/v1/staff-attendance/export`.

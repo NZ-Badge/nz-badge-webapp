@@ -2,7 +2,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
-	import { Pencil, Plus } from '@lucide/svelte';
+	import { Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import AttendanceExportDialog from '$lib/components/AttendanceExportDialog.svelte';
 	import SubscriberManualEntryDialog from '$lib/components/SubscriberManualEntryDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
@@ -38,6 +38,10 @@
 	let editBusy = $state(false);
 	let manualOpen = $state(false);
 	let exportDialogOpen = $state(false);
+	let deletingId = $state<number | null>(null);
+	let deleteOpen = $state(false);
+	let deleteError = $state('');
+	let deleteBusy = $state(false);
 
 	function openEdit(row: { id: number; readTimestamp: Date | string }) {
 		editingId = row.id;
@@ -65,6 +69,29 @@
 			editError = err instanceof Error ? err.message : 'Modifica non riuscita';
 		} finally {
 			editBusy = false;
+		}
+	}
+
+	async function confirmDelete() {
+		if (deletingId === null) return;
+		deleteBusy = true;
+		deleteError = '';
+		try {
+			const response = await fetch('/api/v1/attendance', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ids: [deletingId] })
+			});
+			const body = await response.json().catch(() => ({}));
+			if (!response.ok) throw new Error(body.error ?? 'Eliminazione non riuscita');
+			deleteOpen = false;
+			selectedIds = new Set([...selectedIds].filter((id) => id !== deletingId));
+			selectAllFiltered = false;
+			await invalidateAll();
+		} catch (err) {
+			deleteError = err instanceof Error ? err.message : 'Eliminazione non riuscita';
+		} finally {
+			deleteBusy = false;
 		}
 	}
 
@@ -355,16 +382,30 @@
 						<TableCell class="text-xs text-muted-foreground">{row.deviceId}</TableCell>
 						<TableCell>{row.offlineQueued ? '✓' : ''}</TableCell>
 						<TableCell class="w-px whitespace-nowrap text-right">
-							<Button
-								size="icon-sm"
-								variant="ghost"
-								aria-label="Modifica orario"
-								data-tutorial-title="Modifica orario"
-								data-tutorial-description="Apre il modulo per correggere data e ora di questa presenza."
-								onclick={() => openEdit(row)}
-							>
-								<Pencil size={15} />
-							</Button>
+							<div class="flex items-center justify-end gap-1">
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									aria-label="Modifica orario"
+									data-tutorial-title="Modifica orario"
+									data-tutorial-description="Apre il modulo per correggere data e ora di questa presenza."
+									onclick={() => openEdit(row)}
+								>
+									<Pencil size={16} />
+								</Button>
+								<Button
+									size="icon-sm"
+									variant="destructive-ghost"
+									aria-label={`Elimina ${row.eventType === 'entry' ? 'ingresso' : 'uscita'} di ${row.subscriberName ?? 'iscritto'}`}
+									data-tutorial-title="Elimina presenza"
+									data-tutorial-description="Apre la conferma per eliminare definitivamente questo ingresso o questa uscita del corsista."
+									onclick={() => {
+										deletingId = row.id;
+										deleteError = '';
+										deleteOpen = true;
+									}}><Trash2 size={16} /></Button
+								>
+							</div>
 						</TableCell>
 					</TableRow>
 				{/each}
@@ -407,6 +448,26 @@
 			<Button onclick={saveEdit} disabled={editBusy}>
 				{editBusy ? 'Salvataggio…' : 'Salva'}
 			</Button>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>
+
+<Dialog bind:open={deleteOpen}>
+	<DialogContent class="sm:max-w-sm">
+		<DialogHeader>
+			<DialogTitle>Elimina presenza</DialogTitle>
+			<DialogDescription
+				>Eliminare definitivamente questo ingresso o questa uscita?</DialogDescription
+			>
+		</DialogHeader>
+		{#if deleteError}<p class="text-sm text-red-600">{deleteError}</p>{/if}
+		<DialogFooter>
+			<Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}
+				>Annulla</Button
+			>
+			<Button variant="destructive" onclick={confirmDelete} disabled={deleteBusy}
+				>{deleteBusy ? 'Eliminazione…' : 'Elimina'}</Button
+			>
 		</DialogFooter>
 	</DialogContent>
 </Dialog>

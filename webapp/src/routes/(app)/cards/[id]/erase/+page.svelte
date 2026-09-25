@@ -4,11 +4,17 @@
 	import { goto } from '$app/navigation';
 	import { onDestroy } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
+	import {
+		Dialog,
+		DialogContent,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle
+	} from '$lib/components/ui/dialog';
 	import type { WebSerialCardWriter } from '$lib/utils/webserial';
 	import { connection } from '$lib/stores/webserial.svelte';
 
 	let { data } = $props();
-	const useMifareEnabled = () => data.use_mifare;
 
 	let WriterClass: typeof WebSerialCardWriter | null = null;
 	let writer: WebSerialCardWriter | null = null;
@@ -18,14 +24,10 @@
 	let errorMessage = $state<string | null>(null);
 	let isLoading = $state(false);
 	let deleteMode = $state<'soft' | 'hard' | null>(null);
+	let confirmationOpen = $state(false);
+	let pendingDeleteMode = $state<'soft' | 'hard' | null>(null);
 
 	const serialSupported = browser && 'serial' in navigator;
-
-	// Se use_mifare è false, vai direttamente al soft-delete senza mostrare la scelta
-	if (!useMifareEnabled()) {
-		deleteMode = 'soft';
-		step = 'deleting';
-	}
 
 	if (browser) {
 		import('$lib/utils/webserial').then((m) => {
@@ -45,17 +47,22 @@
 		}
 	});
 
-	// Avvia il soft-delete automaticamente quando si entra nel passo 'deleting'
-	// (sia via chooseSoftDelete che via il bypass use_mifare=false)
-	$effect(() => {
-		if (step === 'deleting' && !isLoading && deleteMode === 'soft') {
-			handleSoftDelete();
-		}
-	});
-
 	function chooseSoftDelete() {
-		deleteMode = 'soft';
-		step = 'deleting';
+		pendingDeleteMode = 'soft';
+		confirmationOpen = true;
+	}
+
+	function confirmDelete() {
+		if (!pendingDeleteMode || isLoading) return;
+		const mode = pendingDeleteMode;
+		confirmationOpen = false;
+		pendingDeleteMode = null;
+		deleteMode = mode;
+		if (mode === 'soft') {
+			void handleSoftDelete();
+		} else {
+			void handleErase();
+		}
 	}
 
 	function chooseHardDelete() {
@@ -70,6 +77,7 @@
 	async function handleSoftDelete() {
 		isLoading = true;
 		errorMessage = null;
+		step = 'deleting';
 
 		try {
 			// Solo cancellazione logica dal DB
@@ -208,6 +216,8 @@
 								disabled={isLoading}
 								variant="destructive"
 								class="w-full"
+								data-tutorial-title="Cancella tessera"
+								data-tutorial-description="Apre la conferma per rimuovere la tessera dal database senza modificare la card fisica."
 							>
 								Cancella
 							</Button>
@@ -237,14 +247,38 @@
 					<p class="text-sm text-gray-600">
 						Elimina il record della carta dal database. La carta fisica non viene modificata.
 					</p>
-					<Button onclick={chooseSoftDelete} disabled={isLoading} variant="destructive">
-						Elimina
-					</Button>
+					<div class="flex gap-2">
+						<Button
+							onclick={chooseSoftDelete}
+							disabled={isLoading}
+							variant="destructive"
+							class="min-w-0 flex-1"
+							data-tutorial-title="Elimina tessera"
+							data-tutorial-description="Apre la conferma prima di rimuovere la tessera dal database. La card fisica resta invariata."
+						>
+							Elimina
+						</Button>
+						<Button
+							href={data.backHref}
+							variant="outline"
+							class="min-w-0 flex-1"
+							data-tutorial-title="Annulla cancellazione"
+							data-tutorial-description="Torna alla pagina precedente senza cancellare la tessera."
+							>Annulla</Button
+						>
+					</div>
 				{/if}
 
-				<a href={data.backHref}>
-					<Button variant="outline" class="w-full">Annulla</Button>
-				</a>
+				{#if data.use_mifare}
+					<Button
+						href={data.backHref}
+						variant="outline"
+						class="w-full"
+						data-tutorial-title="Annulla cancellazione"
+						data-tutorial-description="Torna alla pagina precedente senza cancellare la tessera."
+						>Annulla</Button
+					>
+				{/if}
 			</div>
 		{:else if step === 'connect'}
 			{#if !serialSupported}
@@ -267,7 +301,16 @@
 				procedere con la cancellazione fisica.
 			</p>
 			<div class="flex gap-2">
-				<Button onclick={handleErase} disabled={isLoading} variant="destructive">
+				<Button
+					onclick={() => {
+						pendingDeleteMode = 'hard';
+						confirmationOpen = true;
+					}}
+					disabled={isLoading}
+					variant="destructive"
+					data-tutorial-title="Cancella e formatta"
+					data-tutorial-description="Apre la conferma prima di cancellare i dati dalla card fisica e dal database."
+				>
 					Cancella e Formatta
 				</Button>
 				<Button onclick={() => (step = 'choose')} variant="outline">Indietro</Button>
@@ -293,3 +336,48 @@
 		{/if}
 	</div>
 </div>
+
+<Dialog bind:open={confirmationOpen}>
+	<DialogContent>
+		<DialogHeader>
+			<DialogTitle>
+				{pendingDeleteMode === 'hard'
+					? 'Conferma cancellazione e formattazione'
+					: 'Conferma cancellazione'}
+			</DialogTitle>
+		</DialogHeader>
+		<div class="space-y-2 text-sm">
+			<p>
+				Vuoi cancellare la tessera
+				<code class="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800"
+					>{data.card.uid}</code
+				>?
+			</p>
+			<p class="text-muted-foreground">
+				{#if pendingDeleteMode === 'hard'}
+					I dati verranno rimossi anche dalla card fisica tramite il writer.
+				{:else}
+					La card fisica non verrà modificata.
+				{/if}
+			</p>
+		</div>
+		<DialogFooter class="flex-row">
+			<Button
+				variant="outline"
+				class="min-w-0 flex-1"
+				onclick={() => (confirmationOpen = false)}
+				data-tutorial-title="Annulla cancellazione"
+				data-tutorial-description="Chiude la conferma senza cancellare la tessera.">Annulla</Button
+			>
+			<Button
+				variant="destructive"
+				class="min-w-0 flex-1"
+				onclick={confirmDelete}
+				data-tutorial-title="Conferma cancellazione"
+				data-tutorial-description="Conferma la rimozione della tessera dal database e, se scelta, anche dalla card fisica."
+			>
+				{pendingDeleteMode === 'hard' ? 'Cancella e formatta' : 'Cancella tessera'}
+			</Button>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>

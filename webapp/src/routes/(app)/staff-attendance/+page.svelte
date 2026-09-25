@@ -2,7 +2,7 @@
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/stores';
-	import { History, Pencil, Plus } from '@lucide/svelte';
+	import { History, Pencil, Plus, Trash2 } from '@lucide/svelte';
 	import AttendanceExportDialog from '$lib/components/AttendanceExportDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -31,6 +31,10 @@
 	let editTimestamp = $state('');
 	let editError = $state('');
 	let editBusy = $state(false);
+	let deletingId = $state<number | null>(null);
+	let deleteOpen = $state(false);
+	let deleteError = $state('');
+	let deleteBusy = $state(false);
 	const isLoading = $derived(Boolean($navigating));
 
 	function sourceLabel(source: string): string {
@@ -84,6 +88,27 @@
 			editError = err instanceof Error ? err.message : 'Modifica non riuscita';
 		} finally {
 			editBusy = false;
+		}
+	}
+
+	async function confirmDelete() {
+		if (deletingId === null) return;
+		deleteBusy = true;
+		deleteError = '';
+		try {
+			const response = await fetch('/api/v1/staff-attendance', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: deletingId })
+			});
+			const body = await response.json().catch(() => ({}));
+			if (!response.ok) throw new Error(body.error ?? 'Eliminazione non riuscita');
+			deleteOpen = false;
+			await invalidateAll();
+		} catch (err) {
+			deleteError = err instanceof Error ? err.message : 'Eliminazione non riuscita';
+		} finally {
+			deleteBusy = false;
 		}
 	}
 </script>
@@ -200,14 +225,27 @@
 							class="text-xs text-muted-foreground">{row.deviceId ?? '—'}</TableCell
 						><TableCell>{row.offlineQueued ? '✓' : ''}</TableCell>
 						{#if data.canManage}<TableCell class="w-px whitespace-nowrap text-right"
-								><Button
-									size="icon-sm"
-									variant="ghost"
-									aria-label="Modifica orario"
-									data-tutorial-title="Modifica orario"
-									data-tutorial-description="Apre il modulo per correggere data e ora di questa strisciata."
-									onclick={() => openEdit(row)}><Pencil size={15} /></Button
-								></TableCell
+								><div class="flex items-center justify-end gap-1">
+									<Button
+										size="icon-sm"
+										variant="ghost"
+										aria-label="Modifica orario"
+										data-tutorial-title="Modifica orario"
+										data-tutorial-description="Apre il modulo per correggere data e ora di questa strisciata."
+										onclick={() => openEdit(row)}><Pencil size={16} /></Button
+									><Button
+										size="icon-sm"
+										variant="destructive-ghost"
+										aria-label={`Elimina ${row.eventType === 'entry' ? 'ingresso' : 'uscita'} di ${row.userName}`}
+										data-tutorial-title="Elimina strisciata"
+										data-tutorial-description="Apre la conferma per eliminare definitivamente questo ingresso o questa uscita del collaboratore."
+										onclick={() => {
+											deletingId = row.id;
+											deleteError = '';
+											deleteOpen = true;
+										}}><Trash2 size={16} /></Button
+									>
+								</div></TableCell
 							>{/if}
 					</TableRow>
 				{/each}
@@ -253,4 +291,25 @@
 			></Dialog.Footer
 		></Dialog.Content
 	>
+</Dialog.Root>
+
+<Dialog.Root bind:open={deleteOpen}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Elimina strisciata</Dialog.Title>
+			<Dialog.Description
+				>Eliminare definitivamente questo ingresso o questa uscita? Il totale delle ore verrà
+				ricalcolato.</Dialog.Description
+			>
+		</Dialog.Header>
+		{#if deleteError}<p class="text-sm text-red-600">{deleteError}</p>{/if}
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (deleteOpen = false)} disabled={deleteBusy}
+				>Annulla</Button
+			>
+			<Button variant="destructive" onclick={confirmDelete} disabled={deleteBusy}
+				>{deleteBusy ? 'Eliminazione…' : 'Elimina'}</Button
+			>
+		</Dialog.Footer>
+	</Dialog.Content>
 </Dialog.Root>

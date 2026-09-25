@@ -426,6 +426,35 @@ export async function updateStaffAttendanceTimestamp(params: {
 	return updated;
 }
 
+export async function deleteStaffAttendance(params: {
+	actor: User;
+	attendanceId: number;
+}): Promise<void> {
+	if (!isStaffManager(params.actor)) {
+		throw new StaffAttendanceError('Operazione non consentita', 'FORBIDDEN');
+	}
+	const [current] = await db
+		.select()
+		.from(staffAttendance)
+		.where(eq(staffAttendance.id, params.attendanceId))
+		.limit(1);
+	if (!current) throw new StaffAttendanceError('Strisciata non trovata', 'NOT_FOUND');
+
+	await db.delete(staffAttendance).where(eq(staffAttendance.id, params.attendanceId));
+	await logAudit({
+		userId: params.actor.id,
+		action: 'DELETE',
+		entityType: 'staff_attendance',
+		entityId: params.attendanceId,
+		dataBefore: {
+			targetUserId: current.userId,
+			eventType: current.eventType,
+			readTimestamp: current.readTimestamp.toISOString(),
+			source: current.source
+		}
+	});
+}
+
 export async function getStaffAttendanceReport(
 	userId: number,
 	customRange: { from: string; to: string },
