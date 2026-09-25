@@ -76,13 +76,19 @@
 					required
 					bind:value={timestamp}
 					aria-invalid={!!error}
+					data-tutorial="field.datetime"
 				/>
 				{#if error}
 					<p class="text-sm text-red-600" role="alert">{error}</p>
 				{/if}
 			</div>
 			<Dialog.Footer class="gap-2">
-				<Button variant="secondary" onclick={() => (open = false)} disabled={busy}>Annulla</Button>
+				<Button
+					variant="secondary"
+					onclick={() => (open = false)}
+					disabled={busy}
+					data-tutorial="dialog.cancel">Annulla</Button
+				>
 				<Button
 					type="submit"
 					disabled={busy}

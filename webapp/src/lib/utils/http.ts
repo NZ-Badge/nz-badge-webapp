@@ -1,10 +1,8 @@
 /**
  * Client HTTP per le API interne che rispondono con l'involucro `{ success, data | error }`
- * prodotto da `$lib/utils/api.ts`. Utilizzabile nel browser e, passando `event.fetch`,
- * anche da load e action lato server.
+ * prodotto da `$lib/utils/api.ts`. Pensato per il browser: lato server load e action
+ * chiamano direttamente i service in `$lib/services`.
  */
-
-import { fail, type ActionFailure } from '@sveltejs/kit';
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -94,47 +92,4 @@ export async function apiFetch<T = unknown>(url: string, init: ApiFetchInit = {}
 
 	if (payload && 'data' in payload) return payload.data as T;
 	return payload as T;
-}
-
-export type ActionFailureData = { message: string; errors?: Record<string, string> };
-
-export type ApiActionResult<T> =
-	| { ok: true; data: T; failure?: undefined }
-	| { ok: false; data?: undefined; failure: ActionFailure<ActionFailureData> };
-
-/** Primo messaggio per campo dai dettagli di validazione (`fieldErrors` di zod). */
-function fieldErrors(details: unknown): Record<string, string> | undefined {
-	if (!details || typeof details !== 'object' || Array.isArray(details)) return undefined;
-	const errors: Record<string, string> = {};
-	for (const [key, value] of Object.entries(details)) {
-		if (Array.isArray(value) && typeof value[0] === 'string') errors[key] = value[0];
-	}
-	return Object.keys(errors).length > 0 ? errors : undefined;
-}
-
-/**
- * Variante di `apiFetch` per le form action: un `ApiError` diventa
- * `fail(status, { message, errors? })`, così la pagina riceve il messaggio del server.
- *
- *     const res = await apiAction('/api/v1/users', { method: 'POST', body, fetch });
- *     if (!res.ok) return res.failure;
- */
-export async function apiAction<T = unknown>(
-	url: string,
-	init: ApiFetchInit = {}
-): Promise<ApiActionResult<T>> {
-	try {
-		return { ok: true, data: await apiFetch<T>(url, init) };
-	} catch (err) {
-		if (err instanceof ApiError) {
-			return {
-				ok: false,
-				failure: fail(err.status >= 400 ? err.status : 502, {
-					message: err.message,
-					errors: fieldErrors(err.details)
-				})
-			};
-		}
-		throw err;
-	}
 }

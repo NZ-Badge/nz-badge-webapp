@@ -34,7 +34,7 @@
 			</p>
 
 			<div class="mt-4 rounded-lg bg-slate-50 p-4">
-				<div class="flex items-center gap-2 text-sm font-medium text-slate-700">
+				<div class="flex items-center gap-2 text-sm font-medium text-foreground">
 					<span>Autore</span>
 				</div>
 				<p class="mt-1 text-sm text-slate-600">Nicola Tomassoni</p>
@@ -67,13 +67,13 @@
 			<div class="space-y-6">
 				{#each openSourceLibraryGroups as group}
 					<section class="space-y-2">
-						<h3 class="text-sm font-semibold text-slate-700">{group.name}</h3>
+						<h3 class="text-sm font-semibold text-foreground">{group.name}</h3>
 						{#each group.libraries as lib}
 							<div
-								class="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-slate-50"
+								class="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-muted"
 							>
 								<div class="flex flex-wrap items-center gap-2">
-									<span class="font-medium text-slate-700">{lib.name}</span>
+									<span class="font-medium text-foreground">{lib.name}</span>
 									<span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
 										{lib.license}
 									</span>
@@ -112,7 +112,7 @@
 					href="https://github.com/NZ-Badge"
 					target="_blank"
 					rel="noopener noreferrer"
-					class="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+					class="inline-flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
 				>
 					<Github size={16} />
 					github.com/NZ-Badge

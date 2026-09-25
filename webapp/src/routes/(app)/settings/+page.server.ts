@@ -1,8 +1,16 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { requirePageAdmin } from '$lib/services/auth';
-import { getSettingsOverview, type MaskedMifareKeyConfig } from '$lib/services/settings-view';
-import { apiAction } from '$lib/utils/http';
+import { getSettingsOverview } from '$lib/services/settings-view';
+import {
+	SettingsUpdateError,
+	updateSettings,
+	type SettingsPatch
+} from '$lib/services/settings-update';
+import { regenerateWebhookSecret, testEnrollmentApiConnection } from '$lib/services/enrollments';
+import { createLogger } from '$lib/server/logger';
+
+const log = createLogger('settings');
 
 export const load: PageServerLoad = async ({ locals }) => {
 	// Only admin can access settings
@@ -12,7 +20,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return getSettingsOverview();
 };
 
-type PatchResult = { mifare_keys?: MaskedMifareKeyConfig };
+/** Applica le modifiche tramite il service; un errore di validazione diventa `fail()`. */
+async function applySettings(patch: SettingsPatch, actor: { id: number }) {
+	try {
+		return { ok: true as const, result: await updateSettings(patch, actor) };
+	} catch (err) {
+		if (!(err instanceof SettingsUpdateError)) throw err;
+		return { ok: false as const, failure: fail(err.status, { message: err.message }) };
+	}
+}
 
 function field(form: FormData, name: string): string {
 	const value = form.get(name);
@@ -24,13 +40,13 @@ function bool(form: FormData, name: string): boolean {
 }
 
 /*
- * Le action delegano a PATCH /api/v1/settings e agli altri endpoint admin tramite `event.fetch`:
+ * Le action chiamano gli stessi service di PATCH /api/v1/settings e degli altri endpoint admin:
  * validazione, controlli (es. chiave unica con card attive) e audit restano in un solo punto.
  * Ogni action ripete comunque il controllo di ruolo, perché il load non viene eseguito per le POST.
  */
 export const actions: Actions = {
-	save: async ({ request, locals, fetch }) => {
-		await requirePageAdmin(locals);
+	save: async ({ request, locals }) => {
+		const actor = await requirePageAdmin(locals);
 		const form = await request.formData();
 
 		const minInterval = Number(field(form, 'min_swipe_interval_minutes'));
@@ -39,7 +55,7 @@ export const actions: Actions = {
 		}
 
 		const newApiKey = field(form, 'enrollment_api_key');
-		const body: Record<string, unknown> = {
+		const body: SettingsPatch = {
 			reset_entry_type_daily: bool(form, 'reset_entry_type_daily'),
 			min_swipe_interval_minutes: minInterval,
 			enforce_course_date_range: bool(form, 'enforce_course_date_range'),
@@ -54,69 +70,44 @@ export const actions: Actions = {
 		if (newApiKey) body.enrollment_api_key = newApiKey;
 		else if (bool(form, 'clear_enrollment_api_key')) body.enrollment_api_key = null;
 
-		const res = await apiAction<PatchResult>('/api/v1/settings', {
-			method: 'PATCH',
-			body,
-			fetch
-		});
+		const res = await applySettings(body, actor);
 		if (!res.ok) return res.failure;
 		return { saved: true };
 	},
 
-	setMifare: async ({ request, locals, fetch }) => {
-		await requirePageAdmin(locals);
+	setMifare: async ({ request, locals }) => {
+		const actor = await requirePageAdmin(locals);
 		const form = await request.formData();
 		const useMifare = bool(form, 'use_mifare');
-		const res = await apiAction<PatchResult>('/api/v1/settings', {
-			method: 'PATCH',
-			body: { use_mifare: useMifare },
-			fetch
-		});
+		const res = await applySettings({ use_mifare: useMifare }, actor);
 		if (!res.ok) return res.failure;
-		return { useMifare, mifareKeys: res.data.mifare_keys ?? null };
+		return { useMifare, mifareKeys: res.result.mifareKeys };
 	},
 
-	regenerateMifareKeys: async ({ locals, fetch }) => {
+	regenerateMifareKeys: async ({ locals }) => {
+		const actor = await requirePageAdmin(locals);
+		const res = await applySettings({ regenerate_mifare_keys: true }, actor);
+		if (!res.ok) return res.failure;
+		return { mifareKeys: res.result.mifareKeys };
+	},
+
+	generateWebhookSecret: async ({ locals }) => {
 		await requirePageAdmin(locals);
-		const res = await apiAction<PatchResult>('/api/v1/settings', {
-			method: 'PATCH',
-			body: { regenerate_mifare_keys: true },
-			fetch
-		});
-		if (!res.ok) return res.failure;
-		return { mifareKeys: res.data.mifare_keys ?? null };
+		return { secret: await regenerateWebhookSecret() };
 	},
 
-	generateWebhookSecret: async ({ locals, fetch }) => {
-		await requirePageAdmin(locals);
-		const res = await apiAction<{ secret: string }>('/api/v1/webhooks/enrollments/secret', {
-			method: 'POST',
-			fetch
-		});
-		if (!res.ok) return res.failure;
-		return { secret: res.data.secret };
-	},
-
-	testEnrollmentApi: async ({ request, locals, fetch }) => {
+	testEnrollmentApi: async ({ request, locals }) => {
 		await requirePageAdmin(locals);
 		const form = await request.formData();
 		// Senza chiave digitata il server usa quella salvata.
-		const res = await apiAction<{ success?: boolean; message?: string }>(
-			'/api/v1/settings/enrollment-api/test',
-			{
-				method: 'POST',
-				body: {
-					url: field(form, 'url'),
-					key: field(form, 'key') || undefined
-				},
-				fetch
-			}
-		);
-		if (!res.ok) return res.failure;
-		const success = res.data.success ?? false;
-		return {
-			success,
-			message: res.data.message || (success ? 'Connessione riuscita' : 'Errore di connessione')
-		};
+		try {
+			return await testEnrollmentApiConnection({
+				url: field(form, 'url'),
+				key: field(form, 'key') || null
+			});
+		} catch (err) {
+			log.error('Enrollment API test failed', { err });
+			return fail(502, { message: 'Impossibile verificare la connessione' });
+		}
 	}
 };

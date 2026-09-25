@@ -5,6 +5,7 @@ import { db } from '$lib/db';
 import { staffAttendance, users } from '$lib/db/schema';
 import { AuthError, isStaffManager } from '$lib/services/auth';
 import { authErrorResponse, badRequest, forbidden, serverError } from '$lib/utils/api';
+import { eventType } from '$lib/labels';
 import { toCsv } from '$lib/utils/csv';
 import { isDateKey, romeDayRange, TIMEZONE } from '$lib/utils/date';
 import { createLogger } from '$lib/server/logger';
@@ -94,7 +95,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		const lines = rows.map((row) => [
 			row.name,
 			row.email,
-			row.eventType === 'entry' ? 'Ingresso' : 'Uscita',
+			eventType(row.eventType).label,
 			formatInTimeZone(row.readTimestamp, TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
 			sourceLabel(row.source),
 			row.deviceId,

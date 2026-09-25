@@ -5,6 +5,9 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Label } from '$lib/components/ui/label';
+	import { NativeSelect, NativeSelectOption } from '$lib/components/ui/native-select';
 	import {
 		Table,
 		TablePanel,
@@ -139,12 +142,7 @@
 				onDone: () => (syncing = false)
 			})}
 		>
-			<Button
-				type="submit"
-				disabled={syncing}
-				data-tutorial-title="Aggiorna corsi"
-				data-tutorial-description="Scarica dal servizio collegato le iscrizioni più recenti e crea gli iscritti mancanti."
-			>
+			<Button type="submit" disabled={syncing} data-tutorial="courses.sync">
 				<RefreshCw size={16} class="mr-2 {syncing ? 'animate-spin' : ''}" />
 				{syncing ? 'Aggiornamento...' : 'Aggiorna corsi'}
 			</Button>
@@ -159,18 +157,18 @@
 		</label>
 		<label class="grid gap-1.5 text-sm font-medium"
 			>Stato iscrizione
-			<select name="status" class="h-9 rounded-md border bg-background px-3 text-sm">
-				<option value="">Tutti gli stati</option>
+			<NativeSelect name="status" value={data.status} selectClass="font-normal">
+				<NativeSelectOption value="">Tutti gli stati</NativeSelectOption>
 				{#each ['PENDING', 'SUBMITTED', 'COMPLETED'] as opt (opt)}
-					<option value={opt} selected={data.status === opt}>{statusLabel(opt)}</option>
+					<NativeSelectOption value={opt}>{statusLabel(opt)}</NativeSelectOption>
 				{/each}
-			</select>
+			</NativeSelect>
 		</label>
-		<label class="flex cursor-pointer items-center gap-2 text-sm">
-			<input type="checkbox" name="showPast" value="1" checked={data.showPast} />
-			Mostra passati
-		</label>
-		<Button type="submit" variant="outline">Filtra</Button>
+		<div class="flex h-9 items-center gap-2">
+			<Checkbox id="courses-show-past" name="showPast" value="1" checked={data.showPast} />
+			<Label for="courses-show-past" class="cursor-pointer font-normal">Mostra passati</Label>
+		</div>
+		<Button type="submit" variant="outline" data-tutorial="filter.apply">Filtra</Button>
 	</form>
 
 	<!-- Raggruppati per data e corso -->
@@ -181,7 +179,7 @@
 	{:else}
 		<div class="space-y-4">
 			{#each grouped as dateGroup (dateGroup.dateKey)}
-				<details data-day-group class="group rounded-xl border bg-white">
+				<details data-day-group class="group rounded-xl border bg-card">
 					<summary
 						class="flex cursor-pointer list-none items-center gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden"
 					>

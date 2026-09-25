@@ -6,6 +6,10 @@
 	import { toRomeDateTimeInputValue } from '$lib/utils/date';
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import { NativeSelect, NativeSelectOption } from '$lib/components/ui/native-select';
+	import { EVENT_TYPE } from '$lib/labels';
+	import { apiFetch, errorMessage } from '$lib/utils/http';
+	import { untrack } from 'svelte';
 
 	type UserOption = { id: number; name: string; email?: string | null };
 
@@ -40,8 +44,10 @@
 		return toRomeDateTimeInputValue();
 	}
 
+	// Ripristina il modulo a ogni apertura (non quando cambia l'elenco degli utenti).
 	$effect(() => {
-		if (open) {
+		if (!open) return;
+		untrack(() => {
 			const defaultUser = users.find((user) => user.id === defaultUserId) ?? users[0];
 			userId = defaultUser?.id ?? 0;
 			userEmail = defaultUser?.email ?? '';
@@ -49,7 +55,7 @@
 			readTimestamp = nowInRomeInput();
 			note = '';
 			error = '';
-		}
+		});
 	});
 
 	async function submit() {
@@ -64,20 +70,17 @@
 		}
 		submitting = true;
 		try {
-			const response = await fetch('/api/v1/staff-attendance', {
+			await apiFetch('/api/v1/staff-attendance', {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ userId, eventType, readTimestamp, note: note.trim() || undefined })
+				body: { userId, eventType, readTimestamp, note: note.trim() || undefined }
 			});
-			const body = await response.json().catch(() => ({}));
-			if (!response.ok) throw new Error(body.error ?? 'Inserimento non riuscito');
 
 			open = false;
 			note = '';
 			readTimestamp = nowInRomeInput();
 			await onsaved?.();
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Inserimento non riuscito';
+			error = errorMessage(err, 'Inserimento non riuscito');
 		} finally {
 			submitting = false;
 		}
@@ -108,33 +111,48 @@
 
 			<div class="space-y-2">
 				<Label for="manual-event-type">Tipo</Label>
-				<select
+				<NativeSelect
 					id="manual-event-type"
 					bind:value={eventType}
-					class="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+					class="w-full"
+					data-tutorial="field.event-type"
 				>
-					<option value="entry">Ingresso</option>
-					<option value="exit">Uscita</option>
-				</select>
+					<NativeSelectOption value="entry">{EVENT_TYPE.entry.label}</NativeSelectOption>
+					<NativeSelectOption value="exit">{EVENT_TYPE.exit.label}</NativeSelectOption>
+				</NativeSelect>
 			</div>
 
 			<div class="space-y-2">
 				<Label for="manual-time">Data e ora</Label>
-				<DatePicker id="manual-time" withTime bind:value={readTimestamp} />
+				<DatePicker
+					id="manual-time"
+					withTime
+					bind:value={readTimestamp}
+					aria-label="Data e ora dell'evento"
+					data-tutorial="field.datetime"
+				/>
 			</div>
 
 			<div class="space-y-2">
 				<Label for="manual-note">Nota (facoltativa)</Label>
-				<Input id="manual-note" maxlength={255} bind:value={note} />
+				<Input id="manual-note" maxlength={255} bind:value={note} data-tutorial="field.note" />
 			</div>
 
-			{#if error}<p class="text-sm text-red-600">{error}</p>{/if}
+			{#if error}<p class="text-sm text-red-600" role="alert">{error}</p>{/if}
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)} disabled={submitting}>Annulla</Button
+			<Button
+				variant="outline"
+				onclick={() => (open = false)}
+				disabled={submitting}
+				data-tutorial="dialog.cancel">Annulla</Button
 			>
-			<Button onclick={submit} disabled={submitting}>
+			<Button
+				onclick={submit}
+				disabled={submitting}
+				data-tutorial="attendance.manual-entry-confirm"
+			>
 				{submitting ? 'Inserimento…' : 'Inserisci'}
 			</Button>
 		</Dialog.Footer>

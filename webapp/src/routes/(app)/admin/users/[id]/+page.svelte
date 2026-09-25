@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { ArrowLeft, CreditCard } from '@lucide/svelte';
+	import CardStatusBadge from '$lib/components/CardStatusBadge.svelte';
 	import StaffHoursSummary from '$lib/components/StaffHoursSummary.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -93,21 +94,7 @@
 				{#each data.cards as card (card.id)}
 					<TableRow>
 						<TableCell class="font-mono text-xs">{card.uid}</TableCell>
-						<TableCell
-							><Badge variant={card.status === 'active' ? 'positive' : 'secondary'}
-								>{card.status === 'active'
-									? 'Attiva'
-									: card.status === 'disabled'
-										? 'Disabilitata'
-										: card.status === 'deleted'
-											? 'Cancellata'
-											: card.status === 'lost'
-												? 'Smarrita'
-												: card.status === 'replaced'
-													? 'Sostituita'
-													: card.status}</Badge
-							></TableCell
-						>
+						<TableCell><CardStatusBadge status={card.status} /></TableCell>
 						<TableCell>{formatDate(card.writeDate)}</TableCell>
 						<TableCell class="text-right">
 							{#if card.status === 'active'}
@@ -115,6 +102,7 @@
 									size="sm"
 									variant="destructive-ghost"
 									disabled={cardBusy === card.id}
+									data-tutorial="card.disable"
 									onclick={() => changeCardStatus(card.id, 'disable')}>Disabilita</Button
 								>
 							{:else if card.status === 'disabled' && data.targetUser.status === 'active' && !hasActiveCard}
@@ -122,6 +110,7 @@
 									size="sm"
 									variant="positive"
 									disabled={cardBusy === card.id}
+									data-tutorial="card.enable"
 									onclick={() => changeCardStatus(card.id, 'enable')}>Riabilita</Button
 								>
 							{:else if card.status === 'deleted' && data.targetUser.status === 'active'}
@@ -140,7 +129,7 @@
 									variant="destructive-ghost"
 									data-tutorial-title="Cancella card"
 									data-tutorial-description="Apre la procedura guidata per cancellare i dati dalla card tramite il lettore USB."
-									>Erase</Button
+									>Cancella</Button
 								>
 							{/if}
 						</TableCell>

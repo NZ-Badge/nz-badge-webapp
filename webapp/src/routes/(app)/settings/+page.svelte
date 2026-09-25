@@ -120,16 +120,10 @@
 		<input type="hidden" name="enrollment_api_key" value={enrollmentApiKey} />
 		<input type="hidden" name="clear_enrollment_api_key" value={String(clearEnrollmentApiKey)} />
 
-		<Button
-			type="submit"
-			disabled={saving}
-			class="min-w-32"
-			data-tutorial-title="Salva impostazioni"
-			data-tutorial-description="Salva regole presenze, riepilogo settimanale, modalità chiave unica e configurazione dell'API iscrizioni."
-		>
+		<Button type="submit" disabled={saving} class="min-w-32" data-tutorial="settings.save">
 			{#if saving}
 				<span
-					class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+					class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
 				></span>
 				Salvataggio...
 			{:else}

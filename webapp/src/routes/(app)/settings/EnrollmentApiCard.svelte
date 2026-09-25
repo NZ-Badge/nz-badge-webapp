@@ -58,7 +58,7 @@
 <Card>
 	<CardHeader>
 		<div class="flex items-center gap-2">
-			<Link size={20} class="text-gray-700" />
+			<Link size={20} class="text-foreground" />
 			<CardTitle>API Iscrizioni</CardTitle>
 		</div>
 		<CardDescription>
@@ -75,7 +75,9 @@
 				bind:value={url}
 				class="font-mono"
 			/>
-			<p class="text-xs text-gray-500">URL base dell'API esterna (es: https://api.example.com)</p>
+			<p class="text-xs text-muted-foreground">
+				URL base dell'API esterna (es: https://api.example.com)
+			</p>
 		</div>
 
 		<div class="space-y-2">
@@ -98,6 +100,7 @@
 					aria-label={apiKeyVisible ? 'Nascondi chiave API' : 'Mostra chiave API'}
 					aria-pressed={apiKeyVisible}
 					title={apiKeyVisible ? 'Nascondi' : 'Mostra'}
+					data-tutorial={apiKeyVisible ? 'secret.hide' : 'secret.show'}
 				>
 					{#if apiKeyVisible}
 						<EyeOff size={14} />
@@ -106,7 +109,9 @@
 					{/if}
 				</Button>
 			</div>
-			<p class="text-xs text-gray-500">Chiave di autenticazione Bearer per le chiamate all'API</p>
+			<p class="text-xs text-muted-foreground">
+				Chiave di autenticazione Bearer per le chiamate all'API
+			</p>
 			{#if hasKey}
 				<div class="flex flex-wrap items-center gap-2">
 					<span class="text-xs {clearKey ? 'text-red-700' : 'text-green-700'}">
@@ -147,12 +152,11 @@
 				size="sm"
 				onclick={testConnection}
 				disabled={testing || !canTest}
-				data-tutorial-title="Test connessione"
-				data-tutorial-description="Verifica che URL e chiave API permettano di leggere le iscrizioni dal server remoto. Senza una nuova chiave viene usata quella salvata."
+				data-tutorial="settings.test-connection"
 			>
 				{#if testing}
 					<span
-						class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-gray-700 border-t-transparent"
+						class="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
 					></span>
 					Test in corso...
 				{:else}

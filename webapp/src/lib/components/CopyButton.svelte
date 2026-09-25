@@ -12,8 +12,11 @@
 		class: className,
 		tutorialDescription = 'Copia negli appunti il valore mostrato accanto, così puoi incollarlo dove serve.'
 	}: {
-		/** Testo da copiare; una funzione viene valutata solo al clic. */
-		value: string | (() => string);
+		/**
+		 * Testo da copiare. Una funzione viene valutata solo al clic e può essere asincrona
+		 * (es. per leggere un secret dal server); se lancia un errore la copia risulta fallita.
+		 */
+		value: string | (() => string | Promise<string>);
 		/** Nome accessibile, per esempio "Copia token". */
 		label?: string;
 		variant?: ButtonVariant;
@@ -25,17 +28,23 @@
 
 	let copied = $state(false);
 	let failed = $state(false);
+	let busy = $state(false);
 	let resetTimer: ReturnType<typeof setTimeout> | undefined;
 
 	async function copy() {
+		if (busy) return;
 		clearTimeout(resetTimer);
+		busy = true;
 		try {
-			await navigator.clipboard.writeText(typeof value === 'function' ? value() : value);
+			const text = typeof value === 'function' ? await value() : value;
+			await navigator.clipboard.writeText(text);
 			copied = true;
 			failed = false;
 		} catch {
 			copied = false;
 			failed = true;
+		} finally {
+			busy = false;
 		}
 		resetTimer = setTimeout(() => {
 			copied = false;
@@ -52,6 +61,7 @@
 	{size}
 	class={className}
 	onclick={copy}
+	aria-busy={busy || undefined}
 	aria-label={copied ? `${label}: copiato` : label}
 	title={failed ? 'Copia non riuscita: seleziona il testo e copialo a mano' : label}
 	data-tutorial-title={label}

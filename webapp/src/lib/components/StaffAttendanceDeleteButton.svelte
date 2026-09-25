@@ -4,6 +4,7 @@
 	import { Trash2 } from '@lucide/svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { EVENT_TYPE } from '$lib/labels';
 	import { apiFetch } from '$lib/utils/http';
 
 	let { id, eventType }: { id: number; eventType: 'entry' | 'exit' } = $props();
@@ -19,7 +20,7 @@
 <Button
 	size="icon-sm"
 	variant="destructive-ghost"
-	aria-label={`Elimina ${eventType === 'entry' ? 'ingresso' : 'uscita'}`}
+	aria-label={`Elimina ${EVENT_TYPE[eventType].lower}`}
 	data-tutorial-title="Elimina strisciata"
 	data-tutorial-description="Apre la conferma per eliminare definitivamente questa strisciata errata. Le ore lavorate vengono ricalcolate."
 	onclick={() => (open = true)}><Trash2 size={16} /></Button

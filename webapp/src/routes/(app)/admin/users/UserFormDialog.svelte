@@ -7,6 +7,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { NativeSelect, NativeSelectOption } from '$lib/components/ui/native-select';
 	import type { UserRole } from '$lib/db/schema';
 
 	type EditableUser = { id: number; name: string; email: string; role: UserRole };
@@ -148,16 +149,17 @@
 
 				<div class="space-y-2">
 					<Label for="{idPrefix}-role">Ruolo</Label>
-					<select
-						id="{idPrefix}-role"
-						name="role"
-						bind:value={role}
-						class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-					>
-						<option value="staff">Operatore - accesso a dashboard, tessere e presenze</option>
-						<option value="collaborator">Collaboratore - accesso ai propri ingressi</option>
-						<option value="admin">Amministratore - accesso completo al sistema</option>
-					</select>
+					<NativeSelect id="{idPrefix}-role" name="role" bind:value={role} class="w-full">
+						<NativeSelectOption value="staff"
+							>Operatore - accesso a dashboard, tessere e presenze</NativeSelectOption
+						>
+						<NativeSelectOption value="collaborator"
+							>Collaboratore - accesso ai propri ingressi</NativeSelectOption
+						>
+						<NativeSelectOption value="admin"
+							>Amministratore - accesso completo al sistema</NativeSelectOption
+						>
+					</NativeSelect>
 					{@render fieldError(errors.role, `${idPrefix}-role-error`)}
 				</div>
 
@@ -165,7 +167,7 @@
 					<Label for="{idPrefix}-password">
 						{isEdit ? 'Nuova password' : 'Password'}
 						{#if isEdit}
-							<span class="ml-1 text-xs font-normal text-slate-400"
+							<span class="ml-1 text-xs font-normal text-muted-foreground"
 								>(lascia vuoto per non modificarla)</span
 							>
 						{/if}
@@ -209,16 +211,18 @@
 			</div>
 
 			<Dialog.Footer class="gap-2">
-				<Button variant="secondary" onclick={() => (open = false)} disabled={submitting}>
+				<Button
+					variant="secondary"
+					onclick={() => (open = false)}
+					disabled={submitting}
+					data-tutorial="dialog.cancel"
+				>
 					Annulla
 				</Button>
 				<Button
 					type="submit"
 					disabled={submitting}
-					data-tutorial-title={isEdit ? 'Salva modifiche utente' : 'Crea utente'}
-					data-tutorial-description={isEdit
-						? 'Salva nome, email, ruolo ed eventuale nuova password dell’utente.'
-						: 'Crea l’account con il ruolo scelto: la persona potrà accedere subito con email e password.'}
+					data-tutorial={isEdit ? 'form.save' : 'user.create'}
 				>
 					{#if submitting}
 						<Loader2 class="mr-2 h-4 w-4 animate-spin" />

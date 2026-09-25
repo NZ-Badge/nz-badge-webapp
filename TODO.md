@@ -97,11 +97,11 @@ Percorsi relativi a `webapp/src/` salvo diversa indicazione.
 - [x] **22. Settings: hydration e valori iniziali.**
   - Hydration mismatch in `settings/+page.svelte:66`: il valore letto da `window.location.origin` diverso tra server e client; usare `page.url.origin`.
   - I valori iniziali di confronto non vengono mai aggiornati dopo un salvataggio.
-- [ ] **23. UI kit.** _(fatto su layout, devices, cards, subscribers; restano settings, admin/users, attendance, staff-attendance, courses, firmware, dashboard)_
-  - Aggiungere Select e Checkbox, oggi elementi nativi con stili scritti a mano.
-  - Usare i token del tema al posto di `bg-white`/`text-gray-*`.
-  - Decidere se tenere o eliminare il dark mode (definito ma mai attivato).
-  - Uniformare lo stile degli import dei moduli ui (namespace o named).
+- [x] **23. UI kit.** _(completato su tutte le pagine)_
+  - `<select>` e checkbox nativi sostituiti da `ui/native-select` e `ui/checkbox`.
+  - Token del tema (`bg-card`, `bg-muted`, `text-foreground`, `text-muted-foreground`, `border-border`) al posto di `bg-white`/`text-gray-*`.
+  - Dark mode non attivato: rimosse le classi `dark:` fuori da `components/ui`.
+  - Import dei moduli ui: named per i componenti singoli (`import { Button } from '$lib/components/ui/button'`); namespace (`* as Dialog`, `* as Table`) ammesso per i gruppi.
 
 ### 🟢 Bassa priorità e pulizia
 

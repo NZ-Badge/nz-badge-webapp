@@ -71,6 +71,7 @@
 				bind:value={from}
 				class="w-40"
 				aria-invalid={!!rangeError}
+				aria-label="Data iniziale"
 				data-tutorial-title="Data iniziale"
 				data-tutorial-description="Scegli il primo giorno dell'intervallo, incluso nel filtro. La data è nel formato gg/mm/aaaa."
 			/>
@@ -83,6 +84,7 @@
 				bind:value={to}
 				class="w-40"
 				aria-invalid={!!rangeError}
+				aria-label="Data finale"
 				data-tutorial-title="Data finale"
 				data-tutorial-description="Scegli l'ultimo giorno dell'intervallo, incluso nel filtro. La data è nel formato gg/mm/aaaa."
 			/>

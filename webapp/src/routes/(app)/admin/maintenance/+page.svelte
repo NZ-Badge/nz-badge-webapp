@@ -96,7 +96,7 @@
 			</CardHeader>
 			<CardContent class="space-y-5 px-5 pb-5 sm:px-6 sm:pb-6">
 				<div
-					class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+					class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm leading-relaxed text-red-900"
 				>
 					<p class="flex items-center gap-2 font-semibold">
 						<TriangleAlert size={18} /> Attenzione: operazione irreversibile
@@ -117,17 +117,17 @@
 						bind:this={fileInput}
 						onchange={selectFile}
 						disabled={importing}
-						class="block w-full rounded-md border border-slate-300 bg-background px-3 py-2 text-sm file:mr-3 file:border-0 file:bg-transparent file:font-medium focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700"
+						class="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:border-0 file:bg-transparent file:font-medium focus-visible:ring-2 focus-visible:ring-blue-500"
 					/>
 					<p class="text-xs text-muted-foreground">
 						Massimo 100 MB compressi. Il nome del database nel backup deve coincidere con quello
 						attuale.
 					</p>
 				</div>
-				{#if importError}<p class="text-sm text-red-700 dark:text-red-300" role="alert">
+				{#if importError}<p class="text-sm text-red-700" role="alert">
 						{importError}
 					</p>{/if}
-				{#if importSuccess}<p class="text-sm text-emerald-700 dark:text-emerald-300" role="status">
+				{#if importSuccess}<p class="text-sm text-emerald-700" role="status">
 						Database ripristinato. Aggiorna la pagina o accedi di nuovo se la sessione non è più
 						valida.
 					</p>{/if}
@@ -171,7 +171,7 @@
 				type="text"
 				bind:value={confirmation}
 				autocomplete="off"
-				class="w-full rounded-md border border-slate-300 bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700"
+				class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-500"
 			/>
 		</div>
 		<Dialog.Footer>

@@ -54,7 +54,9 @@
 		description={`Riepilogo delle ore e delle presenze · ${user.email}`}
 	>
 		{#if showManualAction}
-			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
+			<Button onclick={() => (manualOpen = true)} data-tutorial="attendance.manual-entry"
+				><Plus size={16} /> Inserisci evento</Button
+			>
 		{/if}
 	</PageHeader>
 
@@ -107,13 +109,33 @@
 	<form method="GET" class="filter-panel">
 		<div class="min-w-44 flex-1 space-y-1">
 			<Label for="hours-from">Dal</Label>
-			<DatePicker id="hours-from" name="from" value={from} class="w-full" />
+			<DatePicker
+				id="hours-from"
+				name="from"
+				value={from}
+				class="w-full"
+				aria-label="Data iniziale"
+				data-tutorial="field.from"
+			/>
 		</div>
 		<div class="min-w-44 flex-1 space-y-1">
 			<Label for="hours-to">Al</Label>
-			<DatePicker id="hours-to" name="to" value={to} class="w-full" />
+			<DatePicker
+				id="hours-to"
+				name="to"
+				value={to}
+				class="w-full"
+				aria-label="Data finale"
+				data-tutorial="field.to"
+			/>
 		</div>
-		<Button type="submit" variant="outline">Calcola</Button>
+		<Button
+			type="submit"
+			variant="outline"
+			data-tutorial-title="Calcola"
+			data-tutorial-description="Ricalcola le ore e le sessioni per il periodo indicato dalle due date."
+			>Calcola</Button
+		>
 	</form>
 
 	<TablePanel>
@@ -130,7 +152,7 @@
 					></TableHeader
 				>
 				<TableBody>
-					{#each report.custom.sessions as session}
+					{#each report.custom.sessions as session (String(session.entryAt))}
 						<TableRow>
 							<TableCell>{formatDateTime(session.entryAt)}</TableCell>
 							<TableCell>{formatDateTime(session.exitAt)}</TableCell>

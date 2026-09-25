@@ -9,9 +9,9 @@
 	let showPassword = $state(false);
 </script>
 
-<div class="flex min-h-dvh items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
+<div class="flex min-h-dvh items-center justify-center bg-muted/50 p-4">
 	<div
-		class="w-full max-w-sm space-y-6 rounded-xl border border-blue-200 bg-card p-6 shadow-sm sm:p-8 dark:border-blue-900"
+		class="w-full max-w-sm space-y-6 rounded-xl border border-blue-200 bg-card p-6 shadow-sm sm:p-8"
 	>
 		<div class="text-center">
 			<div class="mx-auto mb-4 grid size-12 place-items-center rounded-xl bg-blue-600 text-white">
@@ -25,7 +25,7 @@
 		</div>
 
 		{#if form?.error}
-			<p class="text-center text-sm text-red-600">{form.error}</p>
+			<p class="text-center text-sm text-red-600" role="alert">{form.error}</p>
 		{/if}
 
 		<form method="POST" action="?/login" use:enhance class="space-y-4">
@@ -48,9 +48,10 @@
 						type="button"
 						variant="ghost"
 						size="icon-sm"
-						class="absolute top-1/2 right-1 -translate-y-1/2 text-gray-500 hover:text-gray-900"
+						class="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground hover:text-foreground"
 						aria-label={showPassword ? 'Nascondi password' : 'Mostra password'}
 						aria-pressed={showPassword}
+						data-tutorial={showPassword ? 'secret.hide' : 'secret.show'}
 						onclick={() => (showPassword = !showPassword)}
 					>
 						{#if showPassword}

@@ -79,7 +79,7 @@
 <Card>
 	<CardHeader>
 		<div class="flex items-center gap-2">
-			<Key size={20} class="text-gray-700" />
+			<Key size={20} class="text-foreground" />
 			<CardTitle>Gestione Chiavi MIFARE</CardTitle>
 		</div>
 		<CardDescription>Configura le chiavi di accesso per le card RFID</CardDescription>
@@ -88,7 +88,7 @@
 		<div class="flex items-start justify-between gap-4 rounded-lg border p-4">
 			<div class="flex-1 space-y-1">
 				<Label for="use-mifare" class="text-base font-medium">Usa MIFARE</Label>
-				<p class="text-sm text-gray-500">
+				<p class="text-sm text-muted-foreground">
 					Abilita la scrittura e cancellazione dei settori MIFARE. Se disabilitato, le card vengono
 					registrate solo tramite UID. La modifica viene salvata subito.
 				</p>
@@ -107,7 +107,7 @@
 					<Label for="use-single-key" class="text-base font-medium">
 						Usa chiave unica per tutte le card
 					</Label>
-					<p class="text-sm text-gray-500">
+					<p class="text-sm text-muted-foreground">
 						Se abilitato, tutte le card RFID utilizzeranno la stessa coppia di chiavi MIFARE. Questo
 						semplifica la gestione ma riduce la sicurezza. Se disabilitato, ogni card avrà una
 						coppia di chiavi univoca generata automaticamente.
@@ -133,7 +133,12 @@
 								non funzioneranno più e dovranno essere riscritte.
 							</p>
 							<div class="pt-2">
-								<Button onclick={dismissSingleKeyWarning} variant="secondary" size="sm">
+								<Button
+									onclick={dismissSingleKeyWarning}
+									variant="secondary"
+									size="sm"
+									data-tutorial="settings.single-key-cancel"
+								>
 									Ho capito, annulla
 								</Button>
 								<Button href="/cards" variant="warning" size="sm" class="ml-2">Vai alle card</Button
@@ -156,8 +161,7 @@
 							onclick={() => (regenerateOpen = true)}
 							variant="warning"
 							size="sm"
-							data-tutorial-title="Rigenera chiavi MIFARE"
-							data-tutorial-description="Apre la conferma per generare una nuova coppia di chiavi globali. Le card già scritte potrebbero non essere più leggibili."
+							data-tutorial="settings.regenerate-keys"
 						>
 							<RefreshCw size={14} class="mr-2" />
 							Rigenera chiavi

@@ -16,7 +16,7 @@
 <Card>
 	<CardHeader>
 		<div class="flex items-center gap-2">
-			<Mail size={20} class="text-gray-700" />
+			<Mail size={20} class="text-foreground" />
 			<CardTitle>Riepilogo settimanale presenze</CardTitle>
 		</div>
 		<CardDescription>
@@ -29,7 +29,7 @@
 				<Label for="weekly-attendance-summary" class="text-base font-medium">
 					Invia riepilogo settimanale
 				</Label>
-				<p class="text-sm text-gray-500">
+				<p class="text-sm text-muted-foreground">
 					Il comando schedulato puo' essere lanciato ogni giorno: inviera' le email solo il sabato,
 					per la settimana lunedi-venerdi appena conclusa, e non ripetera' invii gia' registrati.
 				</p>

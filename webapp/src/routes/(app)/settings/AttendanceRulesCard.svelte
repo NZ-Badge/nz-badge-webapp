@@ -32,7 +32,7 @@
 				<Label for="reset-entry-type" class="text-base font-medium">
 					Azzera tipo ingresso ogni giorno
 				</Label>
-				<p class="text-sm text-gray-500">
+				<p class="text-sm text-muted-foreground">
 					Se abilitato, la prima strisciata del giorno viene sempre segnata come ingresso (entry),
 					indipendentemente dallo stato precedente. Se disabilitato, la logica entry/exit continua
 					dal giorno precedente.
@@ -46,7 +46,7 @@
 				<Label for="enforce-course-date-range" class="text-base font-medium">
 					Valida le date del corso
 				</Label>
-				<p class="text-sm text-gray-500">
+				<p class="text-sm text-muted-foreground">
 					Se abilitato, le strisciate dei corsisti sono accettate solo quando la data rientra
 					nell'intervallo di almeno una loro iscrizione. La regola non si applica allo staff.
 				</p>
@@ -59,7 +59,7 @@
 				<Label for="min-interval" class="text-base font-medium">
 					Intervallo minimo tra strisciate
 				</Label>
-				<p class="text-sm text-gray-500">
+				<p class="text-sm text-muted-foreground">
 					Determina l'intervallo minimo (in minuti) tra due strisciate per la stessa card. Se un
 					utente striscia due volte entro questo intervallo, la seconda strisciata viene ignorata.
 				</p>
@@ -73,7 +73,7 @@
 					bind:value={minSwipeIntervalMinutes}
 					class="w-24"
 				/>
-				<span class="text-sm text-gray-600">minuti</span>
+				<span class="text-sm text-muted-foreground">minuti</span>
 			</div>
 		</div>
 	</CardContent>

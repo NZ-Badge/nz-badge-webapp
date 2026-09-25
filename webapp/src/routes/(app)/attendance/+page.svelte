@@ -11,9 +11,11 @@
 	import SubscriberManualEntryDialog from '$lib/components/SubscriberManualEntryDialog.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { Label } from '$lib/components/ui/label';
+	import { eventType } from '$lib/labels';
 	import { formatDateTimeIT } from '$lib/utils/date.js';
 	import { apiFetch } from '$lib/utils/http';
 	import {
@@ -156,14 +158,19 @@
 					variant="destructive"
 					size="sm"
 					onclick={() => (bulkDeleteOpen = true)}
-					data-tutorial-title="Elimina selezionati"
-					data-tutorial-description="Apre la conferma per eliminare definitivamente le presenze selezionate."
+					data-tutorial="attendance.delete-selected"
 				>
 					<Trash2 size={14} /> Elimina {selectionCount}
 				</Button>
 			{/if}
-			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
-			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
+			<Button
+				variant="outline"
+				onclick={() => (exportDialogOpen = true)}
+				data-tutorial="attendance.export">Esporta CSV</Button
+			>
+			<Button onclick={() => (manualOpen = true)} data-tutorial="attendance.manual-entry"
+				><Plus size={16} /> Inserisci evento</Button
+			>
 		</div>
 	</PageHeader>
 
@@ -182,11 +189,25 @@
 	<form method="GET" action="/attendance" class="filter-panel">
 		<div class="space-y-1">
 			<Label for="from">Dal</Label>
-			<DatePicker id="from" name="from" value={data.from} class="w-40" />
+			<DatePicker
+				id="from"
+				name="from"
+				value={data.from}
+				class="w-40"
+				aria-label="Data iniziale"
+				data-tutorial="field.from"
+			/>
 		</div>
 		<div class="space-y-1">
 			<Label for="to">Al</Label>
-			<DatePicker id="to" name="to" value={data.to} class="w-40" />
+			<DatePicker
+				id="to"
+				name="to"
+				value={data.to}
+				class="w-40"
+				aria-label="Data finale"
+				data-tutorial="field.to"
+			/>
 		</div>
 		<div class="space-y-1">
 			<Label for="subscriber">Iscritto</Label>
@@ -208,14 +229,10 @@
 				class="w-40"
 			/>
 		</div>
-		<Button type="submit" variant="outline" disabled={isLoading}>Filtra</Button>
-		<Button
-			href="/attendance"
-			variant="ghost"
-			data-tutorial-title="Azzera filtri"
-			data-tutorial-description="Rimuove i filtri e torna all’elenco degli ultimi 30 giorni."
-			>Azzera</Button
+		<Button type="submit" variant="outline" disabled={isLoading} data-tutorial="filter.apply"
+			>Filtra</Button
 		>
+		<Button href="/attendance" variant="ghost" data-tutorial="filter.reset">Azzera</Button>
 	</form>
 
 	<!-- Banner "seleziona tutti i filtrati" -->
@@ -224,8 +241,10 @@
 			<span>Tutti i {data.rows.length} record di questa pagina sono selezionati.</span>
 			{#if canDeleteByFilters}
 				<button
+					type="button"
 					class="font-medium underline hover:no-underline"
 					onclick={() => (selectAllFiltered = true)}
+					data-tutorial="attendance.select-all-filtered"
 				>
 					Seleziona tutti i {data.total} record filtrati
 				</button>
@@ -234,7 +253,12 @@
 	{:else if selectAllFiltered}
 		<div class="flex items-center gap-2 rounded-md bg-blue-50 px-4 py-2 text-sm text-blue-800">
 			<span>Tutti i {data.total} record filtrati sono selezionati.</span>
-			<button class="font-medium underline hover:no-underline" onclick={clearSelection}>
+			<button
+				type="button"
+				class="font-medium underline hover:no-underline"
+				onclick={clearSelection}
+				data-tutorial="attendance.select-clear"
+			>
 				Annulla selezione
 			</button>
 		</div>
@@ -249,13 +273,14 @@
 			<TableHeader>
 				<TableRow>
 					<TableHead class="w-10">
-						<input
-							type="checkbox"
-							class="h-4 w-4 cursor-pointer rounded border-gray-300"
-							checked={allPageSelected || selectAllFiltered}
-							indeterminate={somePageSelected && !allPageSelected && !selectAllFiltered}
-							onchange={toggleHeaderCheckbox}
+						<Checkbox
+							bind:checked={() => allPageSelected || selectAllFiltered, toggleHeaderCheckbox}
+							bind:indeterminate={
+								() => somePageSelected && !allPageSelected && !selectAllFiltered, () => {}
+							}
+							disabled={data.rows.length === 0}
 							aria-label="Seleziona tutti nella pagina"
+							data-tutorial="attendance.select-page"
 						/>
 					</TableHead>
 					<TableHead>Data/ora</TableHead>
@@ -277,14 +302,15 @@
 						data-state={selectedIds.has(row.id) || selectAllFiltered ? 'selected' : undefined}
 					>
 						<TableCell>
-							<input
-								type="checkbox"
-								class="h-4 w-4 cursor-pointer rounded border-gray-300"
-								checked={selectedIds.has(row.id) || selectAllFiltered}
-								onchange={() => {
-									if (!selectAllFiltered) toggleRow(row.id);
-								}}
+							<Checkbox
+								bind:checked={
+									() => selectedIds.has(row.id) || selectAllFiltered,
+									() => {
+										if (!selectAllFiltered) toggleRow(row.id);
+									}
+								}
 								aria-label="Seleziona record"
+								data-tutorial="attendance.select-row"
 							/>
 						</TableCell>
 						<TableCell>
@@ -302,8 +328,8 @@
 							{/if}
 						</TableCell>
 						<TableCell>
-							<Badge variant={row.eventType === 'entry' ? 'default' : 'secondary'}>
-								{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}
+							<Badge variant={eventType(row.eventType).variant}>
+								{eventType(row.eventType).label}
 							</Badge>
 						</TableCell>
 						<TableCell class="text-xs text-muted-foreground">{row.deviceId}</TableCell>
@@ -314,8 +340,7 @@
 									size="icon-sm"
 									variant="ghost"
 									aria-label="Modifica orario"
-									data-tutorial-title="Modifica orario"
-									data-tutorial-description="Apre il modulo per correggere data e ora di questa presenza."
+									data-tutorial="attendance.edit-time"
 									onclick={() => openEdit(row)}
 								>
 									<Pencil size={16} />
@@ -323,7 +348,7 @@
 								<Button
 									size="icon-sm"
 									variant="destructive-ghost"
-									aria-label={`Elimina ${row.eventType === 'entry' ? 'ingresso' : 'uscita'} di ${row.subscriberName ?? 'iscritto'}`}
+									aria-label={`Elimina ${eventType(row.eventType).lower} di ${row.subscriberName ?? 'iscritto'}`}
 									data-tutorial-title="Elimina presenza"
 									data-tutorial-description="Apre la conferma per eliminare definitivamente questo ingresso o questa uscita del corsista."
 									onclick={() => openDelete(row)}><Trash2 size={16} /></Button

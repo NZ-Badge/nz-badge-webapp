@@ -2,6 +2,7 @@
 	import { History } from '@lucide/svelte';
 	import StaffHoursSummary from '$lib/components/StaffHoursSummary.svelte';
 	import StaffAttendanceDeleteButton from '$lib/components/StaffAttendanceDeleteButton.svelte';
+	import { eventType } from '$lib/labels';
 	import { formatDateTimeIT } from '$lib/utils/date';
 	import {
 		Table,
@@ -58,7 +59,7 @@
 									/>{/if}
 							</span></TableCell
 						>
-						<TableCell>{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}</TableCell>
+						<TableCell>{eventType(row.eventType).label}</TableCell>
 						<TableCell>{sourceLabel(row.source)}</TableCell>
 						<TableCell class="w-px text-right"
 							><StaffAttendanceDeleteButton id={row.id} eventType={row.eventType} /></TableCell

@@ -42,7 +42,7 @@
 	</div>
 
 	{#if data.rows.length === 0}
-		<p class="rounded-lg border bg-white p-8 text-center text-sm text-muted-foreground">
+		<p class="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
 			Nessun corsista con date di corso che comprendono oggi.
 		</p>
 	{:else}

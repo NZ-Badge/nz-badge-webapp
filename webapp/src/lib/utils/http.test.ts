@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, apiAction, apiFetch, errorMessage } from './http';
+import { ApiError, apiFetch, errorMessage } from './http';
 
 function jsonResponse(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
@@ -61,31 +61,5 @@ describe('errorMessage', () => {
 	it('falls back for unknown values', () => {
 		expect(errorMessage('x', 'Fallback')).toBe('Fallback');
 		expect(errorMessage(new Error('Messaggio'))).toBe('Messaggio');
-	});
-});
-
-describe('apiAction', () => {
-	it('maps API errors to an action failure with field errors', async () => {
-		const fetchFn = vi.fn(async () =>
-			jsonResponse(
-				{ success: false, error: 'Validazione fallita', details: { email: ['Email non valida'] } },
-				400
-			)
-		);
-		const result = await apiAction('/api/x', { fetch: fetchFn });
-		expect(result.ok).toBe(false);
-		expect(result.failure?.status).toBe(400);
-		expect(result.failure?.data).toEqual({
-			message: 'Validazione fallita',
-			errors: { email: 'Email non valida' }
-		});
-	});
-
-	it('returns data on success', async () => {
-		const fetchFn = vi.fn(async () => jsonResponse({ success: true, data: { ok: 1 } }));
-		await expect(apiAction('/api/x', { fetch: fetchFn })).resolves.toEqual({
-			ok: true,
-			data: { ok: 1 }
-		});
 	});
 });

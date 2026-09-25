@@ -5,6 +5,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Label } from '$lib/components/ui/label';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import {
 		Table,
 		TablePanel,
@@ -39,7 +41,7 @@
 	/>
 
 	<!-- Upload form -->
-	<div class="rounded-lg border bg-white p-5 shadow-sm space-y-4">
+	<div class="space-y-4 rounded-lg border bg-card p-5 shadow-sm">
 		<h2 class="text-base font-semibold">Carica nuova release</h2>
 
 		<form
@@ -57,7 +59,7 @@
 		>
 			<div class="grid gap-4 sm:grid-cols-2">
 				<div class="space-y-1.5">
-					<label for="fw-version" class="text-sm font-medium">Versione</label>
+					<Label for="fw-version">Versione</Label>
 					<Input
 						id="fw-version"
 						name="version"
@@ -66,40 +68,38 @@
 						title="Formato: MAJOR.MINOR.PATCH"
 						required
 					/>
-					<p class="text-xs text-gray-500">Deve corrispondere a FIRMWARE_VERSION in config.h</p>
+					<p class="text-xs text-muted-foreground">
+						Deve corrispondere a FIRMWARE_VERSION in config.h
+					</p>
 				</div>
 
 				<div class="space-y-1.5">
-					<label for="fw-file" class="text-sm font-medium">File .bin</label>
-					<input
+					<Label for="fw-file">File .bin</Label>
+					<Input
 						id="fw-file"
 						name="file"
 						type="file"
 						accept=".bin"
 						required
-						class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						data-tutorial="field.firmware-file"
 					/>
-					<p class="text-xs text-gray-500">Max 2 MB consigliati</p>
+					<p class="text-xs text-muted-foreground">Max 2 MB consigliati</p>
 				</div>
 			</div>
 
 			<div class="space-y-1.5">
-				<label for="fw-notes" class="text-sm font-medium">Note di rilascio (opzionale)</label>
-				<textarea
+				<Label for="fw-notes">Note di rilascio (opzionale)</Label>
+				<Textarea
 					id="fw-notes"
 					name="notes"
 					rows={3}
 					placeholder="Descrivi le modifiche in questa versione..."
-					class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-				></textarea>
+					class="resize-none"
+					data-tutorial="field.release-notes"
+				/>
 			</div>
 
-			<Button
-				type="submit"
-				disabled={uploading}
-				data-tutorial-title="Carica release"
-				data-tutorial-description="Carica il file .bin come nuova release inattiva. Dopo il caricamento premi Attiva per distribuirla."
-			>
+			<Button type="submit" disabled={uploading} data-tutorial="firmware.upload">
 				{uploading ? 'Caricamento...' : 'Carica'}
 			</Button>
 		</form>
@@ -123,10 +123,13 @@
 				{#each data.releases as release (release.id)}
 					<TableRow>
 						<TableCell class="font-mono font-semibold">{release.version}</TableCell>
-						<TableCell class="text-sm text-gray-600">{formatDate(release.createdAt)}</TableCell>
-						<TableCell class="text-sm text-gray-600">{formatBytes(release.fileSizeBytes)}</TableCell
+						<TableCell class="text-sm text-muted-foreground"
+							>{formatDate(release.createdAt)}</TableCell
 						>
-						<TableCell class="font-mono text-xs text-gray-500"
+						<TableCell class="text-sm text-muted-foreground"
+							>{formatBytes(release.fileSizeBytes)}</TableCell
+						>
+						<TableCell class="font-mono text-xs text-muted-foreground"
 							>{release.sha256.slice(0, 12)}…</TableCell
 						>
 						<TableCell>
@@ -137,7 +140,7 @@
 							{/if}
 						</TableCell>
 						<TableCell
-							class="text-sm text-gray-600 max-w-xs truncate"
+							class="text-sm text-muted-foreground max-w-xs truncate"
 							title={release.releaseNotes ?? ''}
 						>
 							{release.releaseNotes || '—'}
@@ -158,8 +161,7 @@
 											type="submit"
 											size="sm"
 											variant="positive-ghost"
-											data-tutorial-title={`Attiva firmware ${release.version}`}
-											data-tutorial-description="Rende questa release disponibile per l’aggiornamento dei dispositivi."
+											data-tutorial="firmware.activate"
 										>
 											Attiva
 										</Button>
@@ -178,8 +180,7 @@
 											type="submit"
 											size="sm"
 											variant="warning-ghost"
-											data-tutorial-title={`Ritira firmware ${release.version}`}
-											data-tutorial-description="Interrompe la distribuzione di questa release ai dispositivi."
+											data-tutorial="firmware.retire"
 										>
 											Ritira
 										</Button>
@@ -198,7 +199,7 @@
 		<TablePagination page={1} totalPages={1} total={data.releases.length} />
 	</TablePanel>
 
-	<p class="text-xs text-gray-400">
+	<p class="text-xs text-muted-foreground">
 		Solo una release può essere attiva per tipo di device. Attivarne una disattiva automaticamente
 		le altre. Un device non scarica aggiornamenti se nessuna release è attiva.
 	</p>

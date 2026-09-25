@@ -3,12 +3,14 @@
 	import { toast } from 'svelte-sonner';
 	import { Plus, Pencil, Trash2, Shield, User, Loader2, Search, RotateCcw } from '@lucide/svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { formatDateIT } from '$lib/utils/date.js';
 	import { Input } from '$lib/components/ui/input';
 	import * as Table from '$lib/components/ui/table';
 	import { callAction } from '$lib/utils/enhance';
 	import { errorMessage } from '$lib/utils/http';
+	import { USER_ROLE_LABEL } from '$lib/labels';
 	import UserFormDialog from './UserFormDialog.svelte';
 
 	let { data } = $props();
@@ -72,8 +74,8 @@
 		}
 	}
 
-	function formatDate(dateString: string): string {
-		return formatDateIT(dateString) || '—';
+	function formatDate(value: Date | string | null): string {
+		return formatDateIT(value) || '—';
 	}
 </script>
 
@@ -84,12 +86,7 @@
 		description="Gestisci le persone che utilizzano NZBadge e scegli quali funzioni possono usare."
 	>
 		{#if data.canManageAccounts}
-			<Button
-				onclick={openCreateDialog}
-				class="gap-2"
-				data-tutorial-title="Aggiungi utente"
-				data-tutorial-description="Apre il modulo per creare un nuovo account e sceglierne il ruolo."
-			>
+			<Button onclick={openCreateDialog} class="gap-2" data-tutorial="user.create">
 				<Plus size={16} />
 				Aggiungi utente
 			</Button>
@@ -99,7 +96,7 @@
 	<!-- Search -->
 	<div class="filter-panel">
 		<div class="relative flex-1 max-w-sm">
-			<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+			<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 			<Input
 				type="text"
 				aria-label="Cerca nello staff"
@@ -108,7 +105,7 @@
 				class="pl-10"
 			/>
 		</div>
-		<div class="text-sm text-slate-500">
+		<div class="text-sm text-muted-foreground">
 			{filteredUsers.length} utent{filteredUsers.length !== 1 ? 'i' : 'e'}
 		</div>
 	</div>
@@ -141,36 +138,24 @@
 									{#if user.role === 'admin'}
 										<Shield class="h-4 w-4 text-blue-600" />
 									{:else}
-										<User class="h-4 w-4 text-slate-400" />
+										<User class="h-4 w-4 text-muted-foreground" />
 									{/if}
 									<a href="/admin/users/{user.id}" class="app-link">{user.name || '(senza nome)'}</a
 									>
 								</div>
 							</Table.Cell>
-							<Table.Cell class="text-slate-600">{user.email}</Table.Cell>
+							<Table.Cell class="text-muted-foreground">{user.email}</Table.Cell>
 							<Table.Cell>
-								<span
-									class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
-									{user.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'}"
-								>
-									{user.role === 'admin'
-										? 'Amministratore'
-										: user.role === 'staff'
-											? 'Operatore'
-											: 'Collaboratore'}
-								</span>
+								<Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
+									{USER_ROLE_LABEL[user.role] ?? user.role}
+								</Badge>
 							</Table.Cell>
 							<Table.Cell>
-								<span
-									class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium {user.status ===
-									'active'
-										? 'bg-green-100 text-green-800'
-										: 'bg-slate-100 text-slate-600'}"
-								>
+								<Badge variant={user.status === 'active' ? 'positive' : 'secondary'}>
 									{user.status === 'active' ? 'Attivo' : 'Disattivato'}
-								</span>
+								</Badge>
 							</Table.Cell>
-							<Table.Cell class="text-slate-500 text-sm">
+							<Table.Cell class="text-muted-foreground text-sm">
 								{formatDate(user.createdAt)}
 							</Table.Cell>
 							<Table.Cell class="w-px whitespace-nowrap text-right">
@@ -181,8 +166,7 @@
 											size="icon-sm"
 											onclick={() => openEditDialog(user)}
 											aria-label={`Modifica ${user.name}`}
-											data-tutorial-title={`Modifica ${user.name}`}
-											data-tutorial-description="Apre il modulo per aggiornare nome, email, ruolo e password dell’utente."
+											data-tutorial="user.edit"
 										>
 											<Pencil class="h-4 w-4" />
 										</Button>
@@ -191,8 +175,7 @@
 											size="icon-sm"
 											onclick={() => openDeactivateDialog(user)}
 											aria-label={`Disattiva ${user.name}`}
-											data-tutorial-title={`Disattiva ${user.name}`}
-											data-tutorial-description="Apre la conferma per disattivare l’accesso di questo utente."
+											data-tutorial="user.disable"
 										>
 											<Trash2 class="h-4 w-4" />
 										</Button>
@@ -204,8 +187,7 @@
 										onclick={() => reactivate(user)}
 										disabled={reactivatingUserId === user.id}
 										aria-label={`Riattiva ${user.name}`}
-										data-tutorial-title={`Riattiva ${user.name}`}
-										data-tutorial-description="Ripristina l’accesso di questo utente. Le sue tessere restano disabilitate finché non vengono riabilitate separatamente."
+										data-tutorial="user.enable"
 									>
 										{#if reactivatingUserId === user.id}
 											<Loader2 class="h-4 w-4 animate-spin" />

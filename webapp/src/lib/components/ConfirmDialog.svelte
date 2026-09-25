@@ -92,7 +92,7 @@
 		{/if}
 
 		<Dialog.Footer class="gap-2">
-			<Button variant="secondary" onclick={close} disabled={busy}>
+			<Button variant="secondary" onclick={close} disabled={busy} data-tutorial="dialog.cancel">
 				{cancelLabel}
 			</Button>
 			<Button

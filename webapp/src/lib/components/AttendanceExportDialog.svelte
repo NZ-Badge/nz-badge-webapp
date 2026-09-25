@@ -90,14 +90,26 @@
 					class="flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm"
 					class:border-primary={exportMode === 'dates'}
 				>
-					<input type="radio" name={`${listId}-mode`} value="dates" bind:group={exportMode} />
+					<input
+						type="radio"
+						class="accent-primary"
+						name={`${listId}-mode`}
+						value="dates"
+						bind:group={exportMode}
+					/>
 					<span>Range date</span>
 				</label>
 				<label
 					class="flex cursor-pointer items-center gap-2 rounded-md border p-3 text-sm"
 					class:border-primary={exportMode === 'email'}
 				>
-					<input type="radio" name={`${listId}-mode`} value="email" bind:group={exportMode} />
+					<input
+						type="radio"
+						class="accent-primary"
+						name={`${listId}-mode`}
+						value="email"
+						bind:group={exportMode}
+					/>
 					<span>Email {subjectLabel}</span>
 				</label>
 			</div>
@@ -106,11 +118,21 @@
 				<div class="grid gap-3 sm:grid-cols-2">
 					<div class="space-y-1">
 						<Label for={`${listId}-from`}>Dal</Label>
-						<DatePicker id={`${listId}-from`} bind:value={exportFrom} />
+						<DatePicker
+							id={`${listId}-from`}
+							bind:value={exportFrom}
+							aria-label="Data iniziale"
+							data-tutorial="field.from"
+						/>
 					</div>
 					<div class="space-y-1">
 						<Label for={`${listId}-to`}>Al</Label>
-						<DatePicker id={`${listId}-to`} bind:value={exportTo} />
+						<DatePicker
+							id={`${listId}-to`}
+							bind:value={exportTo}
+							aria-label="Data finale"
+							data-tutorial="field.to"
+						/>
 					</div>
 				</div>
 			{:else}
@@ -128,13 +150,20 @@
 			{/if}
 
 			{#if exportError}
-				<p class="text-sm text-red-600">{exportError}</p>
+				<p class="text-sm text-red-600" role="alert">{exportError}</p>
 			{/if}
 		</div>
 
 		<Dialog.Footer>
-			<Button type="button" variant="outline" onclick={() => (open = false)}>Annulla</Button>
-			<Button type="button" onclick={submitExport}>Esporta</Button>
+			<Button
+				type="button"
+				variant="outline"
+				onclick={() => (open = false)}
+				data-tutorial="dialog.cancel">Annulla</Button
+			>
+			<Button type="button" onclick={submitExport} data-tutorial="attendance.export-confirm"
+				>Esporta</Button
+			>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

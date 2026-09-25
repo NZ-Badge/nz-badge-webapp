@@ -12,6 +12,8 @@
 	import { Input } from '$lib/components/ui/input';
 	import { DatePicker } from '$lib/components/ui/date-picker/index.js';
 	import { Label } from '$lib/components/ui/label';
+	import { NativeSelect, NativeSelectOption } from '$lib/components/ui/native-select';
+	import { eventType } from '$lib/labels';
 	import { formatDateTimeIT } from '$lib/utils/date.js';
 	import { apiFetch } from '$lib/utils/http';
 	import {
@@ -81,8 +83,14 @@
 		description="Consulta gli ingressi e le uscite del personale. Usa i filtri per trovare una persona o controllare un periodo."
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<Button variant="outline" onclick={() => (exportDialogOpen = true)}>Esporta CSV</Button>
-			<Button onclick={() => (manualOpen = true)}><Plus size={16} /> Inserisci evento</Button>
+			<Button
+				variant="outline"
+				onclick={() => (exportDialogOpen = true)}
+				data-tutorial="attendance.export">Esporta CSV</Button
+			>
+			<Button onclick={() => (manualOpen = true)} data-tutorial="attendance.manual-entry"
+				><Plus size={16} /> Inserisci evento</Button
+			>
 		</div>
 	</PageHeader>
 
@@ -99,15 +107,26 @@
 
 	<form method="GET" action="/staff-attendance" class="filter-panel">
 		<div class="space-y-1">
-			<Label for="from">Dal</Label><DatePicker
+			<Label for="from">Dal</Label>
+			<DatePicker
 				id="from"
 				name="from"
 				value={data.from}
 				class="w-40"
+				aria-label="Data iniziale"
+				data-tutorial="field.from"
 			/>
 		</div>
 		<div class="space-y-1">
-			<Label for="to">Al</Label><DatePicker id="to" name="to" value={data.to} class="w-40" />
+			<Label for="to">Al</Label>
+			<DatePicker
+				id="to"
+				name="to"
+				value={data.to}
+				class="w-40"
+				aria-label="Data finale"
+				data-tutorial="field.to"
+			/>
 		</div>
 		{#if data.canManage}<div class="space-y-1">
 				<Label for="user">Utente</Label><Input
@@ -119,15 +138,13 @@
 				/>
 			</div>{/if}
 		<div class="space-y-1">
-			<Label for="source">Sorgente</Label><select
-				id="source"
-				name="source"
-				value={data.source}
-				class="h-10 rounded-md border bg-background px-3 text-sm"
-				><option value="">Tutte</option><option value="card">Card RFID</option><option
-					value="manual">Manuale</option
-				><option value="simulation">Pulsante Home</option></select
-			>
+			<Label for="source">Sorgente</Label>
+			<NativeSelect id="source" name="source" value={data.source} data-tutorial="field.source">
+				<NativeSelectOption value="">Tutte</NativeSelectOption>
+				<NativeSelectOption value="card">Card RFID</NativeSelectOption>
+				<NativeSelectOption value="manual">Manuale</NativeSelectOption>
+				<NativeSelectOption value="simulation">Pulsante Home</NativeSelectOption>
+			</NativeSelect>
 		</div>
 		<div class="space-y-1">
 			<Label for="device">Dispositivo</Label><Input
@@ -138,14 +155,10 @@
 				class="w-40"
 			/>
 		</div>
-		<Button type="submit" variant="outline" disabled={isLoading}>Filtra</Button>
-		<Button
-			href="/staff-attendance"
-			variant="ghost"
-			data-tutorial-title="Azzera filtri"
-			data-tutorial-description="Rimuove tutti i filtri e mostra l’elenco completo degli ingressi."
-			>Azzera</Button
+		<Button type="submit" variant="outline" disabled={isLoading} data-tutorial="filter.apply"
+			>Filtra</Button
 		>
+		<Button href="/staff-attendance" variant="ghost" data-tutorial="filter.reset">Azzera</Button>
 	</form>
 
 	<TablePanel aria-busy={isLoading}>
@@ -185,8 +198,8 @@
 								<div class="text-xs text-muted-foreground">{row.userEmail}</div></TableCell
 							>{/if}
 						<TableCell
-							><Badge variant={row.eventType === 'entry' ? 'default' : 'secondary'}
-								>{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}</Badge
+							><Badge variant={eventType(row.eventType).variant}
+								>{eventType(row.eventType).label}</Badge
 							></TableCell
 						>
 						<TableCell>{sourceLabel(row.source)}</TableCell><TableCell
@@ -198,13 +211,12 @@
 										size="icon-sm"
 										variant="ghost"
 										aria-label="Modifica orario"
-										data-tutorial-title="Modifica orario"
-										data-tutorial-description="Apre il modulo per correggere data e ora di questa strisciata."
+										data-tutorial="attendance.edit-time"
 										onclick={() => openEdit(row)}><Pencil size={16} /></Button
 									><Button
 										size="icon-sm"
 										variant="destructive-ghost"
-										aria-label={`Elimina ${row.eventType === 'entry' ? 'ingresso' : 'uscita'} di ${row.userName}`}
+										aria-label={`Elimina ${eventType(row.eventType).lower} di ${row.userName}`}
 										data-tutorial-title="Elimina strisciata"
 										data-tutorial-description="Apre la conferma per eliminare definitivamente questo ingresso o questa uscita del collaboratore."
 										onclick={() => openDelete(row)}><Trash2 size={16} /></Button

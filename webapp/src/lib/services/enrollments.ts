@@ -110,6 +110,76 @@ export async function getEnrollmentApiConfig(): Promise<EnrollmentApiConfig> {
 	return { url: url || null, key: key || null };
 }
 
+export interface EnrollmentApiTestResult {
+	success: boolean;
+	message: string;
+}
+
+const ENROLLMENT_API_TEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Check that the enrollment API answers with the given URL/key. Values not provided (e.g. a
+ * key not typed in the form) fall back to the saved configuration. Connection problems are
+ * reported as `success: false`; unexpected errors are thrown.
+ */
+export async function testEnrollmentApiConnection(
+	override: { url?: string | null; key?: string | null } = {}
+): Promise<EnrollmentApiTestResult> {
+	let apiUrl = override.url?.trim() || null;
+	let apiKey = override.key?.trim() || null;
+	if (!apiUrl || !apiKey) {
+		const saved = await getEnrollmentApiConfig();
+		apiUrl = apiUrl || saved.url;
+		apiKey = apiKey || saved.key;
+	}
+	if (!apiUrl || !apiKey) {
+		return {
+			success: false,
+			message: 'URL API e API Key devono essere configurati prima di testare la connessione'
+		};
+	}
+
+	try {
+		const testUrl = new URL(`${apiUrl}/api/v1/enrollments`);
+		testUrl.searchParams.set('limit', '1');
+		const response = await fetch(testUrl.toString(), {
+			method: 'GET',
+			headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+			signal: AbortSignal.timeout(ENROLLMENT_API_TEST_TIMEOUT_MS)
+		});
+		if (response.ok) {
+			return { success: true, message: `Connessione riuscita! Status: ${response.status}` };
+		}
+		if (response.status === 401) {
+			return { success: false, message: 'Autenticazione fallita: API key non valida' };
+		}
+		return {
+			success: false,
+			message: `Errore HTTP ${response.status}: ${response.statusText}`
+		};
+	} catch (err) {
+		if (err instanceof Error) {
+			if (
+				err.name === 'AbortError' ||
+				err.name === 'TimeoutError' ||
+				err.message.includes('timeout')
+			) {
+				return {
+					success: false,
+					message: 'Timeout: il server non ha risposto entro 10 secondi'
+				};
+			}
+			if (err.message.includes('fetch') || err.message.includes('network')) {
+				return { success: false, message: `Errore di connessione: ${err.message}` };
+			}
+			if (err instanceof TypeError && err.message.includes('URL')) {
+				return { success: false, message: 'URL API non valido' };
+			}
+		}
+		throw err;
+	}
+}
+
 // ── Sync lock ─────────────────────────────────────────────────────────────────
 
 /** Timeout of each request to the external enrollment API. */

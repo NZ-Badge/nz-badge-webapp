@@ -104,7 +104,7 @@
 			{#if filteredOptions.length === 0}
 				<p class="px-3 py-2 text-sm text-muted-foreground">Nessun risultato.</p>
 			{:else}
-				{#each filteredOptions as option, index}
+				{#each filteredOptions as option, index (`${option.id ?? ''}:${option.email}`)}
 					<button
 						id={`${id}-option-${index}`}
 						type="button"

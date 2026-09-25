@@ -28,6 +28,7 @@
 		TableRow
 	} from '$lib/components/ui/table';
 	import { Button } from '$lib/components/ui/button';
+	import { eventType } from '$lib/labels';
 	import { formatDateIT, formatDateTimeIT } from '$lib/utils/date.js';
 	import { apiFetch, errorMessage } from '$lib/utils/http';
 
@@ -85,16 +86,18 @@
 				<div>
 					<h2 class="font-semibold">Registra la tua presenza</h2>
 					<p class="text-sm text-muted-foreground">
-						Il prossimo evento previsto è <strong
-							>{data.nextEventType === 'entry' ? 'Ingresso' : 'Uscita'}</strong
-						>.
+						Il prossimo evento previsto è <strong>{eventType(data.nextEventType).label}</strong>.
 					</p>
 				</div>
-				<Button class="w-full" onclick={simulateSwipe} disabled={simulateBusy}
+				<Button
+					class="w-full"
+					onclick={simulateSwipe}
+					disabled={simulateBusy}
+					data-tutorial="attendance.register-self"
 					><ScanLine size={17} />
 					{simulateBusy
 						? 'Registrazione…'
-						: `Registra ${data.nextEventType === 'entry' ? 'ingresso' : 'uscita'}`}</Button
+						: `Registra ${eventType(data.nextEventType).lower}`}</Button
 				>
 			</CardContent>
 		</Card>
@@ -106,8 +109,11 @@
 						Inserisci un ingresso o un’uscita, anche con una data passata.
 					</p>
 				</div>
-				<Button class="w-full" variant="outline" onclick={() => (manualOpen = true)}
-					><Plus size={17} /> Inserisci evento</Button
+				<Button
+					class="w-full"
+					variant="outline"
+					onclick={() => (manualOpen = true)}
+					data-tutorial="attendance.manual-entry"><Plus size={17} /> Inserisci evento</Button
 				>
 				<a href="/my-attendance" class="app-link block text-center text-sm"
 					>Apri il riepilogo delle ore →</a
@@ -140,7 +146,7 @@
 											><title>Inserimento retrodatato</title></History
 										>{/if}</span
 								></TableCell
-							><TableCell>{row.eventType === 'entry' ? 'Ingresso' : 'Uscita'}</TableCell><TableCell
+							><TableCell>{eventType(row.eventType).label}</TableCell><TableCell
 								>{sourceLabel(row.source)}</TableCell
 							><TableCell class="w-px text-right"
 								><StaffAttendanceDeleteButton id={row.id} eventType={row.eventType} /></TableCell
@@ -210,8 +216,10 @@
 			{#each kpis as kpi (kpi.title)}
 				<Card class="h-full">
 					<CardContent class="grid h-full grid-cols-[1fr_56px] items-center gap-3 px-4 py-1.5">
-						<div class="truncate text-sm font-medium text-gray-700">{kpi.title}</div>
-						<div class="text-right text-base font-bold leading-none text-gray-950">{kpi.value}</div>
+						<div class="truncate text-sm font-medium text-foreground">{kpi.title}</div>
+						<div class="text-right text-base font-bold leading-none text-foreground">
+							{kpi.value}
+						</div>
 					</CardContent>
 				</Card>
 			{/each}
