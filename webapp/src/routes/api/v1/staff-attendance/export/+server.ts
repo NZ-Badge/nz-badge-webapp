@@ -1,21 +1,14 @@
-import { json } from '@sveltejs/kit';
 import { and, asc, eq, gte, lt, type SQL } from 'drizzle-orm';
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/db';
 import { staffAttendance, users } from '$lib/db/schema';
 import { AuthError, isStaffManager } from '$lib/services/auth';
-import { TIMEZONE } from '$lib/utils/date';
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+import { authErrorResponse, badRequest, forbidden, serverError } from '$lib/utils/api';
+import { toCsv } from '$lib/utils/csv';
+import { isDateKey, romeDayRange, TIMEZONE } from '$lib/utils/date';
 
 type ExportFilters = { from?: string; to?: string; email?: string };
-
-function addOneDay(dateKey: string): string {
-	const date = new Date(`${dateKey}T12:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + 1);
-	return date.toISOString().slice(0, 10);
-}
 
 function parseExportFilters(
 	url: URL
@@ -33,18 +26,13 @@ function parseExportFilters(
 	}
 	if (hasDateRange) {
 		if (!from || !to) return { ok: false, message: 'Il range richiede entrambe le date.' };
-		if (!DATE_PATTERN.test(from) || !DATE_PATTERN.test(to) || from > to) {
+		if (!isDateKey(from) || !isDateKey(to) || from > to) {
 			return { ok: false, message: 'Range di date non valido.' };
 		}
 		return { ok: true, filters: { from, to } };
 	}
 	if (!email?.includes('@')) return { ok: false, message: 'Email non valida.' };
 	return { ok: true, filters: { email } };
-}
-
-function csvEscape(value: unknown): string {
-	const text = value === null || value === undefined ? '' : String(value);
-	return `"${text.replace(/"/g, '""')}"`;
 }
 
 function filenameSuffix(value: string): string {
@@ -59,28 +47,17 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	try {
 		const actor = await locals.verifyUser();
 		if (!isStaffManager(actor)) {
-			return json({ error: 'Operazione non consentita' }, { status: 403 });
+			return forbidden('Operazione non consentita');
 		}
 		const parsed = parseExportFilters(url);
-		if (!parsed.ok) return json({ error: parsed.message }, { status: 400 });
+		if (!parsed.ok) return badRequest(parsed.message);
 
 		const conditions: SQL[] = [];
 		if (parsed.filters.email) conditions.push(eq(users.email, parsed.filters.email));
-		if (parsed.filters.from) {
-			conditions.push(
-				gte(
-					staffAttendance.readTimestamp,
-					fromZonedTime(`${parsed.filters.from}T00:00:00`, TIMEZONE)
-				)
-			);
-		}
-		if (parsed.filters.to) {
-			conditions.push(
-				lt(
-					staffAttendance.readTimestamp,
-					fromZonedTime(`${addOneDay(parsed.filters.to)}T00:00:00`, TIMEZONE)
-				)
-			);
+		if (parsed.filters.from && parsed.filters.to) {
+			const { start, end } = romeDayRange(parsed.filters.from, parsed.filters.to);
+			conditions.push(gte(staffAttendance.readTimestamp, start));
+			conditions.push(lt(staffAttendance.readTimestamp, end));
 		}
 
 		const rows = await db
@@ -111,36 +88,30 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			'retrodatato',
 			'nota'
 		];
-		const lines = rows.map((row) =>
-			[
-				row.name,
-				row.email,
-				row.eventType === 'entry' ? 'Ingresso' : 'Uscita',
-				formatInTimeZone(row.readTimestamp, TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
-				sourceLabel(row.source),
-				row.deviceId,
-				row.offlineQueued ? 'Sì' : 'No',
-				row.isBackdated ? 'Sì' : 'No',
-				row.note
-			]
-				.map(csvEscape)
-				.join(',')
-		);
+		const lines = rows.map((row) => [
+			row.name,
+			row.email,
+			row.eventType === 'entry' ? 'Ingresso' : 'Uscita',
+			formatInTimeZone(row.readTimestamp, TIMEZONE, 'yyyy-MM-dd HH:mm:ss'),
+			sourceLabel(row.source),
+			row.deviceId,
+			row.offlineQueued ? 'Sì' : 'No',
+			row.isBackdated ? 'Sì' : 'No',
+			row.note
+		]);
 
 		const suffix = parsed.filters.email
 			? filenameSuffix(parsed.filters.email)
 			: `${parsed.filters.from!.replaceAll('-', '')}-${parsed.filters.to!.replaceAll('-', '')}`;
-		return new Response([headers.join(','), ...lines].join('\n') + '\n', {
+		return new Response(toCsv(headers, lines), {
 			headers: {
 				'Content-Type': 'text/csv; charset=utf-8',
 				'Content-Disposition': `attachment; filename="staff-attendance-${suffix}.csv"`
 			}
 		});
 	} catch (error) {
-		if (error instanceof AuthError) {
-			return json({ error: error.message }, { status: error.code === 'UNAUTHORIZED' ? 401 : 403 });
-		}
+		if (error instanceof AuthError) return authErrorResponse(error);
 		console.error('[staff-attendance/export] request failed:', error);
-		return json({ error: 'Errore interno' }, { status: 500 });
+		return serverError('Errore interno');
 	}
 };

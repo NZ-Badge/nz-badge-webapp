@@ -1,6 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { ok, unauthorized, notFound, serverError, badRequest } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import { ok, notFound, serverError, badRequest, authErrorResponse } from '$lib/utils/api';
 import { softDeleteCard } from '$lib/services/card-writer';
 
 export async function POST(event: RequestEvent): Promise<Response> {
@@ -8,7 +7,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const id = Number(event.params.id);

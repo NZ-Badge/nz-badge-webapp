@@ -2,26 +2,18 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { eq, and, gte, lte, inArray, asc, SQL } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { attendance, enrollments, subscribers } from '$lib/db/schema';
-import { badRequest, unauthorized, serverError } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
-import { TIMEZONE } from '$lib/utils/date';
-import { formatInTimeZone } from 'date-fns-tz';
+import { badRequest, authErrorResponse } from '$lib/utils/api';
+import { toCsv } from '$lib/utils/csv';
+import { isDateKey, romeDateKey } from '$lib/utils/date';
 import {
 	buildSubscriberCourseAttendanceReportRows,
 	type SubscriberCourseAttendanceReportInput
 } from '$lib/services/subscriber-course-attendance';
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
 function dateKey(value: Date | string | null): string {
 	if (!value) return '';
 	if (typeof value === 'string') return value.slice(0, 10);
-	return formatInTimeZone(value, TIMEZONE, 'yyyy-MM-dd');
-}
-
-function csvEscape(value: unknown): string {
-	const str = value === null || value === undefined ? '' : String(value);
-	return `"${str.replace(/"/g, '""')}"`;
+	return romeDateKey(value);
 }
 
 function compactDateKey(value: string): string {
@@ -65,7 +57,7 @@ function parseExportFilters(
 	if (hasDateRange) {
 		if (!from || !to)
 			return { ok: false, message: 'Il range richiede sia data inizio sia data fine.' };
-		if (!DATE_PATTERN.test(from) || !DATE_PATTERN.test(to)) {
+		if (!isDateKey(from) || !isDateKey(to)) {
 			return { ok: false, message: 'Formato data non valido.' };
 		}
 		if (new Date(from).getTime() > new Date(to).getTime()) {
@@ -99,7 +91,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const parsed = parseExportFilters(event.url);
@@ -168,31 +160,20 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const reportRows = buildSubscriberCourseAttendanceReportRows([
 		...reportInputsBySubscriber.values()
 	]);
-	const encoder = new TextEncoder();
+	const csv = toCsv(
+		CSV_HEADERS,
+		reportRows.map((row) => [
+			row.name,
+			row.email,
+			row.course,
+			dateKey(row.startDate),
+			dateKey(row.endDate),
+			row.totalLabel,
+			row.anomalyCount
+		])
+	);
 
-	const stream = new ReadableStream({
-		async start(controller) {
-			controller.enqueue(encoder.encode(CSV_HEADERS.join(',') + '\n'));
-
-			for (const row of reportRows) {
-				const line =
-					[
-						csvEscape(row.name),
-						csvEscape(row.email),
-						csvEscape(row.course),
-						csvEscape(dateKey(row.startDate)),
-						csvEscape(dateKey(row.endDate)),
-						csvEscape(row.totalLabel),
-						csvEscape(row.anomalyCount)
-					].join(',') + '\n';
-				controller.enqueue(encoder.encode(line));
-			}
-
-			controller.close();
-		}
-	});
-
-	return new Response(stream, {
+	return new Response(csv, {
 		status: 200,
 		headers: {
 			'Content-Type': 'text/csv; charset=utf-8',

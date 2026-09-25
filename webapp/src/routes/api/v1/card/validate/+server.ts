@@ -3,13 +3,13 @@ import { cardValidateSchema } from '$lib/utils/validation';
 import {
 	ok,
 	badRequest,
-	unauthorized,
 	serverError,
 	formatZodError,
-	conflict
+	conflict,
+	authErrorResponse
 } from '$lib/utils/api';
 import { confirmCardWrite, CardWriterError } from '$lib/services/card-writer';
-import { AuthError, requireStaffManager } from '$lib/services/auth';
+import { requireStaffManager } from '$lib/services/auth';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	let adminUser;
@@ -17,7 +17,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		adminUser = await event.locals.verifyStaffOrAdmin();
 		requireStaffManager(adminUser);
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;

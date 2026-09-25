@@ -1,6 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { ok, badRequest, unauthorized, forbidden, serverError, conflict } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import { ok, badRequest, serverError, conflict, authErrorResponse } from '$lib/utils/api';
 import { logAudit } from '$lib/services/audit';
 import { getMifareKeyConfig, regenerateGlobalKeys } from '$lib/services/mifare-keys';
 import {
@@ -33,11 +32,6 @@ const settingUpdateSchema = z.object({
 	enrollment_api_key: z.string().trim().max(1024).nullable().optional()
 });
 
-function authFailure(err: unknown): Response {
-	if (!(err instanceof AuthError)) return serverError();
-	return err.code === 'FORBIDDEN' ? forbidden(err.message) : unauthorized(err.message);
-}
-
 /**
  * GET /api/v1/settings
  * Restituisce i settings (segreti mascherati) e lo stato della configurazione MIFARE.
@@ -47,7 +41,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return authFailure(err);
+		return authErrorResponse(err);
 	}
 
 	try {
@@ -78,7 +72,7 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 	try {
 		user = await event.locals.verifyAdminOnly();
 	} catch (err) {
-		return authFailure(err);
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;

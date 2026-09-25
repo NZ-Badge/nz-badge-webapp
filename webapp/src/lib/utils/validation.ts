@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateKeySchema } from '$lib/utils/date';
 
 // UID pattern: uppercase hex pairs separated by colons, 4–7 bytes
 // e.g. "AA:BB:CC:DD" (4 bytes) up to "AA:BB:CC:DD:EE:FF:GG" (7 bytes)
@@ -99,14 +100,8 @@ export const cardDisableSchema = z.object({
 
 // 10. attendanceQuerySchema (query params — use z.coerce for numbers)
 export const attendanceQuerySchema = z.object({
-	from: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional(),
-	to: z
-		.string()
-		.regex(/^\d{4}-\d{2}-\d{2}$/)
-		.optional(),
+	from: dateKeySchema.optional(),
+	to: dateKeySchema.optional(),
 	device_id: z.string().optional(),
 	subscriber_id: z.coerce.number().int().positive().optional(),
 	page: z.coerce.number().int().positive().default(1),

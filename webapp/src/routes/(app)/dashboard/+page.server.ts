@@ -16,7 +16,7 @@ import {
 	getEnrollmentSortTime
 } from '$lib/services/subscriber-list';
 import { formatInTimeZone } from 'date-fns-tz';
-import { TIMEZONE, nowInRome } from '$lib/utils/date';
+import { TIMEZONE, romeDateKey } from '$lib/utils/date';
 import {
 	determineNextStaffEventType,
 	loadStaffAttendanceSettings
@@ -24,7 +24,7 @@ import {
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = await requirePageUser(locals);
-	const now = nowInRome();
+	const now = new Date();
 
 	if (user.role === 'collaborator') {
 		const [recentStaffAttendance, attendanceSettings] = await Promise.all([
@@ -58,7 +58,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}
 
 	// Query aggregate in parallelo per performance
-	const today = new Date(`${formatInTimeZone(new Date(), TIMEZONE, 'yyyy-MM-dd')}T00:00:00.000Z`);
+	const today = new Date(`${romeDateKey(now)}T00:00:00.000Z`);
 	const [
 		[{ activeSubscribers }],
 		[{ todayAttendance }],

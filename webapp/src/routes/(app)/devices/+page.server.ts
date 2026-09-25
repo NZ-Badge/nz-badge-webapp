@@ -5,6 +5,7 @@ import { fail } from '@sveltejs/kit';
 import crypto from 'crypto';
 import type { PageServerLoad, Actions } from './$types';
 import { hashDeviceToken, requireAdmin, requirePageAdmin } from '$lib/services/auth';
+import { parsePagination } from '$lib/utils/pagination';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -12,7 +13,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	// Only admin can access device management
 	await requirePageAdmin(locals);
 
-	const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
+	const { page, offset } = parsePagination(url, ITEMS_PER_PAGE);
 	const q = url.searchParams.get('q')?.trim() ?? '';
 
 	// Build query with conditional where
@@ -29,7 +30,6 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	// Pagination
 	const total = allDevices.length;
 	const totalPages = Math.ceil(total / ITEMS_PER_PAGE);
-	const offset = (page - 1) * ITEMS_PER_PAGE;
 	const devices = allDevices.slice(offset, offset + ITEMS_PER_PAGE);
 
 	return {

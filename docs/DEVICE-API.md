@@ -17,6 +17,8 @@ Il backend cerca `X-Device-ID` in `device_registry`, verifica che il device sia 
 
 Gli endpoint reader restituiscono `401` se gli header mancano, il device non esiste o e' disabilitato, oppure il token non e' valido.
 
+Dopo 5 tentativi di autenticazione falliti in 5 minuti per lo stesso `X-Device-ID`, gli endpoint attendance e `firmware/check` restituiscono `429` con `Retry-After: 60` finche' la finestra non scade (`firmware/download` risponde ancora `401`). Un'autenticazione riuscita azzera il contatore.
+
 ### Flussi hardware assistiti dalla UI
 
 Gli endpoint di scrittura, cancellazione, lookup e pairing card richiedono il cookie di sessione dell'applicazione, non il bearer token del device. `verifyAdmin()` accetta i ruoli `admin` e `staff`; i Collaboratori non possono usare questi endpoint.
@@ -34,14 +36,14 @@ Gli errori generati dagli helper API hanno questa forma:
 
 Codici rilevanti per i reader:
 
-| HTTP  | Significato                                                 |
-| ----- | ----------------------------------------------------------- |
-| `400` | JSON o payload non valido                                   |
-| `401` | autenticazione device fallita                               |
-| `404` | risorsa non trovata, per esempio firmware non disponibile   |
-| `429` | rate limit dell'endpoint superato; include `Retry-After: 1` |
-| `500` | errore interno                                              |
-| `503` | database non raggiungibile negli health check               |
+| HTTP  | Significato                                                                                  |
+| ----- | -------------------------------------------------------------------------------------------- |
+| `400` | JSON o payload non valido                                                                    |
+| `401` | autenticazione device fallita                                                                |
+| `404` | risorsa non trovata, per esempio firmware non disponibile                                    |
+| `429` | rate limit superato: endpoint (`Retry-After: 1`) o autenticazione device (`Retry-After: 60`) |
+| `500` | errore interno                                                                               |
+| `503` | database non raggiungibile negli health check                                                |
 
 Un evento di presenza rifiutato per una regola applicativa non produce un errore HTTP: viene descritto nella normale risposta attendance tramite `rejected` e `rejection_reason`.
 

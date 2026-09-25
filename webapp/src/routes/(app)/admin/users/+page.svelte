@@ -95,7 +95,7 @@
 			}
 
 			const data = await response.json();
-			users = data.users;
+			users = data.data.users;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Impossibile caricare gli utenti';
 		} finally {
@@ -189,7 +189,7 @@
 				throw new Error(data.error || 'Impossibile creare l’utente');
 			}
 
-			users = [...users, data.user];
+			users = [...users, data.data.user];
 			isCreateDialogOpen = false;
 			showSuccess('Utente creato con successo');
 		} catch (err) {
@@ -229,7 +229,7 @@
 				throw new Error(data.error || 'Impossibile aggiornare l’utente');
 			}
 
-			users = users.map((u) => (u.id === selectedUser!.id ? data.user : u));
+			users = users.map((u) => (u.id === selectedUser!.id ? data.data.user : u));
 			isEditDialogOpen = false;
 			showSuccess('Utente aggiornato con successo');
 		} catch (err) {
@@ -282,7 +282,7 @@
 				throw new Error(responseData.error || 'Impossibile riattivare l’utente');
 			}
 
-			users = users.map((entry) => (entry.id === user.id ? responseData.user : entry));
+			users = users.map((entry) => (entry.id === user.id ? responseData.data.user : entry));
 			showSuccess('Utente riattivato con successo');
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Impossibile riattivare l’utente';

@@ -1,5 +1,4 @@
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
-import { TIMEZONE } from '$lib/utils/date';
+import { romeDateKey, romeDayRange } from '$lib/utils/date';
 import {
 	calculateAttendanceHours,
 	type AttendanceHoursIssue,
@@ -73,13 +72,7 @@ export interface SubscriberCourseAttendanceReportRow {
 function toCourseDateKey(value: Date | string | null): string | null {
 	if (!value) return null;
 	if (typeof value === 'string') return value.slice(0, 10);
-	return formatInTimeZone(value, TIMEZONE, 'yyyy-MM-dd');
-}
-
-function addDaysToDateKey(dateKey: string, days: number): string {
-	const date = new Date(`${dateKey}T00:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + days);
-	return date.toISOString().slice(0, 10);
+	return romeDateKey(value);
 }
 
 function formatDateKey(dateKey: string): string {
@@ -95,8 +88,9 @@ export function getEnrollmentAttendancePeriod(
 
 	if (!startDateKey || !endDateKey) return null;
 
-	const start = fromZonedTime(`${startDateKey}T00:00:00.000`, TIMEZONE).getTime();
-	const end = fromZonedTime(`${addDaysToDateKey(endDateKey, 1)}T00:00:00.000`, TIMEZONE).getTime();
+	const range = romeDayRange(startDateKey, endDateKey);
+	const start = range.start.getTime();
+	const end = range.end.getTime();
 
 	if (end <= start) return null;
 

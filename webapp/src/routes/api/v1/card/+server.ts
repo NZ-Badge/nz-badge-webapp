@@ -3,14 +3,13 @@ import { eq, and, count, isNotNull } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { cardRfid, subscribers } from '$lib/db/schema';
 import { cardQuerySchema } from '$lib/utils/validation';
-import { ok, badRequest, unauthorized, serverError, formatZodError } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import { ok, badRequest, serverError, formatZodError, authErrorResponse } from '$lib/utils/api';
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const parsed = cardQuerySchema.safeParse(Object.fromEntries(event.url.searchParams));

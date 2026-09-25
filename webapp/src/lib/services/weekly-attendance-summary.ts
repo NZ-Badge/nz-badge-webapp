@@ -1,13 +1,13 @@
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { attendance, subscribers, weeklyAttendanceSummaryLog } from '../db/schema';
 import * as schema from '../db/schema';
 import { calculateAttendanceHours } from './attendance-hours';
 import { readSettings } from './settings-schema';
-import { TIMEZONE } from '../utils/date';
+import { addDaysToDateKey, romeDateKey, romeDayStart, TIMEZONE } from '../utils/date';
 
 type AppDb = MySql2Database<typeof schema>;
 
@@ -54,16 +54,6 @@ export interface WeeklyAttendanceSummaryRunResult {
 	errors: number;
 }
 
-function addDays(dateKey: string, days: number): string {
-	const date = new Date(`${dateKey}T00:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + days);
-	return date.toISOString().slice(0, 10);
-}
-
-function getRomeDateKey(date: Date): string {
-	return formatInTimeZone(date, TIMEZONE, 'yyyy-MM-dd');
-}
-
 function getRomeIsoDay(date: Date): number {
 	return Number(formatInTimeZone(date, TIMEZONE, 'i'));
 }
@@ -74,15 +64,15 @@ function getWeekWindow(referenceDate: Date): {
 	start: Date;
 	end: Date;
 } {
-	const saturdayDateKey = getRomeDateKey(referenceDate);
-	const weekStartDate = addDays(saturdayDateKey, -5);
-	const weekEndDate = addDays(saturdayDateKey, -1);
+	const saturdayDateKey = romeDateKey(referenceDate);
+	const weekStartDate = addDaysToDateKey(saturdayDateKey, -5);
+	const weekEndDate = addDaysToDateKey(saturdayDateKey, -1);
 
 	return {
 		weekStartDate,
 		weekEndDate,
-		start: fromZonedTime(`${weekStartDate}T00:00:00.000`, TIMEZONE),
-		end: fromZonedTime(`${saturdayDateKey}T00:00:00.000`, TIMEZONE)
+		start: romeDayStart(weekStartDate),
+		end: romeDayStart(saturdayDateKey)
 	};
 }
 

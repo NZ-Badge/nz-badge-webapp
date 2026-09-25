@@ -8,6 +8,9 @@ import {
 	getStaffAttendanceReport,
 	normalizeStaffAttendanceRange
 } from '$lib/services/staff-attendance';
+import { clampPagination, parsePagination } from '$lib/utils/pagination';
+
+const PAGE_SIZE = 50;
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = await requirePageUser(locals);
@@ -18,14 +21,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		monthRange
 	);
 	const report = await getStaffAttendanceReport(user.id, range);
-	const pageSize = 50;
-	const requestedPage = Math.max(1, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
+	const requested = parsePagination(url, PAGE_SIZE);
 	const [{ total }] = await db
 		.select({ total: count() })
 		.from(staffAttendance)
 		.where(eq(staffAttendance.userId, user.id));
-	const totalPages = Math.ceil(total / pageSize);
-	const page = Math.min(requestedPage, Math.max(1, totalPages));
+	const totalPages = Math.ceil(total / PAGE_SIZE);
+	const { page, offset } = clampPagination(requested, total);
 	const swipes = await db
 		.select({
 			id: staffAttendance.id,
@@ -37,8 +39,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		.from(staffAttendance)
 		.where(eq(staffAttendance.userId, user.id))
 		.orderBy(desc(staffAttendance.readTimestamp), desc(staffAttendance.id))
-		.limit(pageSize)
-		.offset((page - 1) * pageSize);
+		.limit(PAGE_SIZE)
+		.offset(offset);
 
 	return {
 		targetUser: { id: user.id, name: user.name, email: user.email },

@@ -3,13 +3,12 @@ import { attendanceBatchSchema } from '$lib/utils/validation';
 import {
 	multiStatus,
 	badRequest,
-	unauthorized,
 	tooManyRequests,
 	serverError,
-	formatZodError
+	formatZodError,
+	authErrorResponse
 } from '$lib/utils/api';
 import { processBatchAttendance } from '$lib/services/attendance';
-import { AuthError } from '$lib/services/auth';
 import { createDeviceRateLimiter } from '$lib/services/device-rate-limit';
 
 // Per-device rate limiter: max 10 requests per 1-second rolling window
@@ -20,7 +19,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		device = await event.locals.verifyDevice();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const deviceId = event.request.headers.get('X-Device-ID') ?? device.deviceId;

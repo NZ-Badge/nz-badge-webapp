@@ -1,4 +1,5 @@
-import { formatInTimeZone, fromZonedTime, toDate } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { z } from 'zod';
 
 export const TIMEZONE = 'Europe/Rome';
 
@@ -15,6 +16,11 @@ export function isDateKey(value: string): boolean {
 	const date = new Date(`${value}T00:00:00.000Z`);
 	return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
+
+/** Schema Zod per una data yyyy-MM-dd esistente. */
+export const dateKeySchema = /* @__PURE__ */ z
+	.string()
+	.refine(isDateKey, { message: 'Data non valida' });
 
 /** Aggiunge (o sottrae) giorni di calendario a una chiave yyyy-MM-dd. */
 export function addDaysToDateKey(dateKey: string, days: number): string {
@@ -37,21 +43,6 @@ export function romeDayRange(fromKey: string, toKey: string = fromKey): { start:
 }
 
 /**
- * Restituisce la data/ora corrente in timezone Europe/Rome
- */
-export function nowInRome(): Date {
-	return toDate(new Date(), { timeZone: TIMEZONE });
-}
-
-/**
- * Converte un timestamp (stringa o numero) in una data con timezone Europe/Rome
- */
-export function parseToRomeDate(timestamp: string | number | Date): Date {
-	const date = typeof timestamp === 'object' ? timestamp : new Date(timestamp);
-	return toDate(date, { timeZone: TIMEZONE });
-}
-
-/**
  * Formatta una data in formato ISO con timezone Europe/Rome
  * Usato principalmente per server_time nelle risposte API
  */
@@ -60,8 +51,8 @@ export function formatToRomeISO(date: Date = new Date()): string {
 }
 
 /**
- * Converte una data in formato Date per il salvataggio nel database.
- * Il valore viene salvato come UTC; la conversione a Europe/Rome avviene solo al display.
+ * @deprecated No-op: i Date vanno passati al database cosi' come sono (UTC).
+ * Resta solo finche' `services/attendance.ts` non viene aggiornato; non usarla nel nuovo codice.
  */
 export function toDatabaseDateTime(date: Date | string | number): Date {
 	return date instanceof Date ? date : new Date(date as string | number);

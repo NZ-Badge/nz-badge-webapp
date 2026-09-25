@@ -1,7 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { z } from 'zod';
-import { ok, unauthorized, badRequest, serverError, formatZodError } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import { ok, badRequest, serverError, formatZodError, authErrorResponse } from '$lib/utils/api';
 import { confirmCardErase } from '$lib/services/card-writer';
 
 const schema = z.object({
@@ -13,7 +12,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;

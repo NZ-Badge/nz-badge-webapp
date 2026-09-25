@@ -3,12 +3,20 @@
  * Provides CRUD operations for user accounts
  */
 
-import { json, error } from '@sveltejs/kit';
 import { db } from '$lib/db';
 import { cardRfid, users, type NewUser, type User } from '$lib/db/schema';
 import { and, eq, count as countFn } from 'drizzle-orm';
-import { hashPassword, requireAdmin, requireStaffManager, AuthError } from '$lib/services/auth';
+import { hashPassword, requireAdmin, requireStaffManager } from '$lib/services/auth';
 import { logAudit } from '$lib/services/audit';
+import {
+	ok,
+	created,
+	badRequest,
+	forbidden,
+	notFound,
+	conflict,
+	authErrorResponse
+} from '$lib/utils/api';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 
@@ -59,16 +67,22 @@ export const GET: RequestHandler = async ({ locals }) => {
 	try {
 		const user = await locals.verifyStaffOrAdmin();
 		requireStaffManager(user);
-
-		const allUsers = await db.select().from(users);
-		return json({ users: allUsers.map(sanitizeUser) });
 	} catch (err) {
-		if (err instanceof AuthError) {
-			error(err.code === 'UNAUTHORIZED' ? 401 : 403, err.message);
-		}
-		throw err;
+		return authErrorResponse(err);
 	}
+
+	const allUsers = await db.select().from(users);
+	return ok({ users: allUsers.map(sanitizeUser) });
 };
+
+/** Legge il body JSON della richiesta; `undefined` se non e' JSON valido. */
+async function readJson(request: Request): Promise<unknown> {
+	try {
+		return await request.json();
+	} catch {
+		return undefined;
+	}
+}
 
 /**
  * POST /api/v1/users - Create new user (admin only)
@@ -77,47 +91,39 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
 		const user = await locals.verifyStaffOrAdmin();
 		requireAdmin(user);
-
-		const body = await request.json();
-		const validation = userCreateSchema.safeParse(body);
-
-		if (!validation.success) {
-			return json(
-				{ error: 'Validazione fallita', details: validation.error.flatten().fieldErrors },
-				{ status: 400 }
-			);
-		}
-
-		const { name, email, role, password } = validation.data;
-
-		// Check if email already exists
-		const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-		if (existingUser) {
-			return json({ error: 'Email già esistente' }, { status: 409 });
-		}
-
-		// Hash password
-		const passwordHash = await hashPassword(password);
-
-		// Create user
-		const result = await db.insert(users).values({
-			name,
-			email,
-			role,
-			status: 'active',
-			passwordHash
-		});
-
-		const newUserId = Number(result[0].insertId);
-		const [newUser] = await db.select().from(users).where(eq(users.id, newUserId)).limit(1);
-
-		return json({ user: sanitizeUser(newUser) }, { status: 201 });
 	} catch (err) {
-		if (err instanceof AuthError) {
-			error(err.code === 'UNAUTHORIZED' ? 401 : 403, err.message);
-		}
-		throw err;
+		return authErrorResponse(err);
 	}
+
+	const validation = userCreateSchema.safeParse(await readJson(request));
+	if (!validation.success) {
+		return badRequest('Validazione fallita', validation.error.flatten().fieldErrors);
+	}
+
+	const { name, email, role, password } = validation.data;
+
+	// Check if email already exists
+	const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+	if (existingUser) {
+		return conflict('Email già esistente');
+	}
+
+	// Hash password
+	const passwordHash = await hashPassword(password);
+
+	// Create user
+	const result = await db.insert(users).values({
+		name,
+		email,
+		role,
+		status: 'active',
+		passwordHash
+	});
+
+	const newUserId = Number(result[0].insertId);
+	const [newUser] = await db.select().from(users).where(eq(users.id, newUserId)).limit(1);
+
+	return created({ user: sanitizeUser(newUser) });
 };
 
 /**
@@ -125,80 +131,70 @@ export const POST: RequestHandler = async ({ request, locals }) => {
  * Cannot update self role to prevent locking out the last admin
  */
 export const PATCH: RequestHandler = async ({ request, locals }) => {
+	let currentUser;
 	try {
-		const currentUser = await locals.verifyStaffOrAdmin();
+		currentUser = await locals.verifyStaffOrAdmin();
 		requireAdmin(currentUser);
-
-		const body = await request.json();
-		const validation = userUpdateSchema.safeParse(body);
-
-		if (!validation.success) {
-			return json(
-				{ error: 'Validazione fallita', details: validation.error.flatten().fieldErrors },
-				{ status: 400 }
-			);
-		}
-
-		const { id, name, email, role, password } = validation.data;
-
-		// Check if user exists
-		const [targetUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-		if (!targetUser) {
-			return json({ error: 'Utente non trovato' }, { status: 404 });
-		}
-		if (targetUser.status !== 'active') {
-			return json({ error: 'Non puoi modificare un utente disattivato' }, { status: 409 });
-		}
-
-		// Prevent changing own role (to avoid locking yourself out)
-		if (id === currentUser.id && role && role !== currentUser.role) {
-			return json({ error: 'Non puoi modificare il tuo ruolo' }, { status: 403 });
-		}
-
-		// Check if updating to an existing email
-		if (email && email !== targetUser.email) {
-			const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-			if (existingUser) {
-				return json({ error: 'Email già esistente' }, { status: 409 });
-			}
-		}
-
-		// Check if this is the last admin and trying to change role
-		if (role && role !== 'admin' && targetUser.role === 'admin') {
-			const adminCount = await db
-				.select({ count: countFn() })
-				.from(users)
-				.where(and(eq(users.role, 'admin'), eq(users.status, 'active')));
-
-			const count = Number(adminCount[0]?.count || 0);
-			if (count <= 1) {
-				return json(
-					{ error: 'Non puoi modificare il ruolo dell’ultimo amministratore' },
-					{ status: 403 }
-				);
-			}
-		}
-
-		// Build update object
-		const updateData: Partial<NewUser> = {};
-		if (name !== undefined) updateData.name = name;
-		if (email !== undefined) updateData.email = email;
-		if (role !== undefined) updateData.role = role;
-		if (password !== undefined) {
-			updateData.passwordHash = await hashPassword(password);
-		}
-
-		// Update user
-		await db.update(users).set(updateData).where(eq(users.id, id));
-
-		const [updatedUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-		return json({ user: sanitizeUser(updatedUser) });
 	} catch (err) {
-		if (err instanceof AuthError) {
-			error(err.code === 'UNAUTHORIZED' ? 401 : 403, err.message);
-		}
-		throw err;
+		return authErrorResponse(err);
 	}
+
+	const validation = userUpdateSchema.safeParse(await readJson(request));
+	if (!validation.success) {
+		return badRequest('Validazione fallita', validation.error.flatten().fieldErrors);
+	}
+
+	const { id, name, email, role, password } = validation.data;
+
+	// Check if user exists
+	const [targetUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+	if (!targetUser) {
+		return notFound('Utente non trovato');
+	}
+	if (targetUser.status !== 'active') {
+		return conflict('Non puoi modificare un utente disattivato');
+	}
+
+	// Prevent changing own role (to avoid locking yourself out)
+	if (id === currentUser.id && role && role !== currentUser.role) {
+		return forbidden('Non puoi modificare il tuo ruolo');
+	}
+
+	// Check if updating to an existing email
+	if (email && email !== targetUser.email) {
+		const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+		if (existingUser) {
+			return conflict('Email già esistente');
+		}
+	}
+
+	// Check if this is the last admin and trying to change role
+	if (role && role !== 'admin' && targetUser.role === 'admin') {
+		const adminCount = await db
+			.select({ count: countFn() })
+			.from(users)
+			.where(and(eq(users.role, 'admin'), eq(users.status, 'active')));
+
+		const count = Number(adminCount[0]?.count || 0);
+		if (count <= 1) {
+			return forbidden('Non puoi modificare il ruolo dell’ultimo amministratore');
+		}
+	}
+
+	// Build update object
+	const updateData: Partial<NewUser> = {};
+	if (name !== undefined) updateData.name = name;
+	if (email !== undefined) updateData.email = email;
+	if (role !== undefined) updateData.role = role;
+	if (password !== undefined) {
+		updateData.passwordHash = await hashPassword(password);
+	}
+
+	// Update user
+	await db.update(users).set(updateData).where(eq(users.id, id));
+
+	const [updatedUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+	return ok({ user: sanitizeUser(updatedUser) });
 };
 
 /**
@@ -206,72 +202,68 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
  * Cannot delete self or the last admin
  */
 export const DELETE: RequestHandler = async ({ request, locals }) => {
+	let currentUser;
 	try {
-		const currentUser = await locals.verifyStaffOrAdmin();
+		currentUser = await locals.verifyStaffOrAdmin();
 		requireAdmin(currentUser);
-
-		const body = await request.json();
-		const validation = userIdSchema.safeParse(body);
-
-		if (!validation.success) {
-			return json({ error: 'ID utente non valido' }, { status: 400 });
-		}
-
-		const { id } = validation.data;
-
-		// Cannot delete self
-		if (id === currentUser.id) {
-			return json({ error: 'Non puoi eliminare il tuo account' }, { status: 403 });
-		}
-
-		// Check if user exists
-		const [targetUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-		if (!targetUser) {
-			return json({ error: 'Utente non trovato' }, { status: 404 });
-		}
-
-		// Check if this is the last admin
-		if (targetUser.role === 'admin') {
-			const adminCount = await db
-				.select({ count: countFn() })
-				.from(users)
-				.where(and(eq(users.role, 'admin'), eq(users.status, 'active')));
-
-			const count = Number(adminCount[0]?.count || 0);
-			if (count <= 1) {
-				return json({ error: 'Non puoi eliminare l’ultimo amministratore' }, { status: 403 });
-			}
-		}
-
-		if (targetUser.status !== 'active') {
-			return json({ error: 'L’utente è già disattivato' }, { status: 409 });
-		}
-
-		await db.transaction(async (tx) => {
-			await tx
-				.update(users)
-				.set({ status: 'deleted', deletedAt: new Date() })
-				.where(eq(users.id, id));
-			await tx
-				.update(cardRfid)
-				.set({ status: 'disabled' })
-				.where(and(eq(cardRfid.userId, id), eq(cardRfid.status, 'active')));
-		});
-
-		await logAudit({
-			userId: currentUser.id,
-			action: 'DELETE',
-			entityType: 'user',
-			entityId: id,
-			dataBefore: { status: targetUser.status, role: targetUser.role },
-			dataAfter: { status: 'deleted', deletedAt: new Date().toISOString() }
-		});
-
-		return json({ success: true, message: 'Utente disattivato' });
 	} catch (err) {
-		if (err instanceof AuthError) {
-			error(err.code === 'UNAUTHORIZED' ? 401 : 403, err.message);
-		}
-		throw err;
+		return authErrorResponse(err);
 	}
+
+	const validation = userIdSchema.safeParse(await readJson(request));
+	if (!validation.success) {
+		return badRequest('ID utente non valido');
+	}
+
+	const { id } = validation.data;
+
+	// Cannot delete self
+	if (id === currentUser.id) {
+		return forbidden('Non puoi eliminare il tuo account');
+	}
+
+	// Check if user exists
+	const [targetUser] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+	if (!targetUser) {
+		return notFound('Utente non trovato');
+	}
+
+	// Check if this is the last admin
+	if (targetUser.role === 'admin') {
+		const adminCount = await db
+			.select({ count: countFn() })
+			.from(users)
+			.where(and(eq(users.role, 'admin'), eq(users.status, 'active')));
+
+		const count = Number(adminCount[0]?.count || 0);
+		if (count <= 1) {
+			return forbidden('Non puoi eliminare l’ultimo amministratore');
+		}
+	}
+
+	if (targetUser.status !== 'active') {
+		return conflict('L’utente è già disattivato');
+	}
+
+	await db.transaction(async (tx) => {
+		await tx
+			.update(users)
+			.set({ status: 'deleted', deletedAt: new Date() })
+			.where(eq(users.id, id));
+		await tx
+			.update(cardRfid)
+			.set({ status: 'disabled' })
+			.where(and(eq(cardRfid.userId, id), eq(cardRfid.status, 'active')));
+	});
+
+	await logAudit({
+		userId: currentUser.id,
+		action: 'DELETE',
+		entityType: 'user',
+		entityId: id,
+		dataBefore: { status: targetUser.status, role: targetUser.role },
+		dataAfter: { status: 'deleted', deletedAt: new Date().toISOString() }
+	});
+
+	return ok({ message: 'Utente disattivato' });
 };

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdtemp, open, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
@@ -11,28 +11,34 @@ import { env } from '$env/dynamic/private';
 import { json } from '@sveltejs/kit';
 import { AuthError, requireAdmin } from '$lib/services/auth';
 import { invalidateSettingsCache } from '$lib/services/settings';
+import { logAudit } from '$lib/services/audit';
+import { parseDatabaseUrl, resolveBackupDir, saveDatabaseDump } from '$lib/services/database-dump';
 import type { RequestHandler } from './$types';
 
 const MAX_COMPRESSED_BYTES = 100 * 1024 * 1024;
 const MAX_SQL_BYTES = 1024 * 1024 * 1024;
 
+// Un solo import alla volta per processo: due DROP/import sovrapposti lascerebbero il
+// database in uno stato indefinito. (Con piu' repliche serve comunque un lock condiviso.)
+let importInProgress = false;
+
 function databaseConfig() {
-	if (!env.DATABASE_URL) throw new Error('DATABASE_URL missing');
-	const url = new URL(env.DATABASE_URL);
-	const database = decodeURIComponent(url.pathname.slice(1));
+	const connection = parseDatabaseUrl(env.DATABASE_URL);
+	const database = connection.database;
 	if (!/^[a-zA-Z0-9_-]+$/.test(database)) throw new Error('Invalid database name');
 	return {
 		database,
+		connection,
 		args: [
 			'--no-defaults',
 			'--protocol=TCP',
-			`--host=${url.hostname}`,
-			`--port=${url.port || '3306'}`,
-			`--user=${decodeURIComponent(url.username)}`,
+			`--host=${connection.host}`,
+			`--port=${connection.port}`,
+			`--user=${connection.user}`,
 			'--default-character-set=utf8mb4',
 			'--binary-mode'
 		],
-		env: { ...process.env, MYSQL_PWD: decodeURIComponent(url.password) }
+		env: { ...process.env, MYSQL_PWD: connection.password }
 	};
 }
 
@@ -87,8 +93,11 @@ async function verifyDumpDatabase(path: string, database: string) {
 }
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
+	let userId: number | undefined;
 	try {
-		requireAdmin(await locals.verifyStaffOrAdmin());
+		const user = await locals.verifyStaffOrAdmin();
+		requireAdmin(user);
+		userId = user.id;
 	} catch (err) {
 		if (err instanceof AuthError) {
 			return json(
@@ -120,9 +129,29 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		return json({ error: 'Importazione non disponibile' }, { status: 500 });
 	}
 
+	if (importInProgress) {
+		return json(
+			{ error: 'Un’importazione è già in corso. Attendi che termini prima di riprovare.' },
+			{ status: 409, headers: { 'Cache-Control': 'no-store' } }
+		);
+	}
+	importInProgress = true;
+	try {
+		return await importBackup(config, request.body, userId);
+	} finally {
+		importInProgress = false;
+	}
+};
+
+async function importBackup(
+	config: ReturnType<typeof databaseConfig>,
+	body: ReadableStream<Uint8Array>,
+	userId: number | undefined
+): Promise<Response> {
 	const directory = await mkdtemp(join(tmpdir(), 'nz-badge-import-'));
 	const sqlPath = join(directory, 'backup.sql');
 	let replacing = false;
+	let safetyBackupPath: string | null = null;
 	try {
 		let compressedBytes = 0;
 		let sqlBytes = 0;
@@ -142,7 +171,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 			}
 		});
 		await pipeline(
-			Readable.fromWeb(request.body as unknown as NodeReadableStream),
+			Readable.fromWeb(body as unknown as NodeReadableStream),
 			compressedLimit,
 			createGunzip(),
 			sqlLimit,
@@ -152,15 +181,38 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		await verifyDumpDatabase(sqlPath, config.database);
 		await runMysql([...config.args, '--execute', 'SELECT 1;'], config.env);
 
+		// Safety dump of the current database: without it the import does not go ahead.
+		try {
+			safetyBackupPath = await saveDatabaseDump(
+				config.connection,
+				resolveBackupDir(env.DB_BACKUP_DIR)
+			);
+		} catch (err) {
+			console.error(
+				'[DB IMPORT] Safety backup failed:',
+				err instanceof Error ? err.message : 'unknown error'
+			);
+			return json(
+				{
+					error:
+						'Impossibile creare il backup di sicurezza del database attuale. Nessun dato è stato modificato.'
+				},
+				{ status: 500, headers: { 'Cache-Control': 'no-store' } }
+			);
+		}
+
 		// DDL is not transactional in MySQL. The verified archive is ready before this point.
 		replacing = true;
 		const quoted = `\`${config.database.replaceAll('`', '``')}\``;
 		await runMysql([...config.args, '--execute', `DROP DATABASE IF EXISTS ${quoted};`], config.env);
 		await runMysql(config.args, config.env, sqlPath);
 		invalidateSettingsCache();
+		// Written after the import, so the entry lives in the restored audit_log.
+		await logImportAudit(userId, true, safetyBackupPath);
 		return json({ success: true }, { headers: { 'Cache-Control': 'no-store' } });
 	} catch (err) {
 		console.error('[DB IMPORT] Failed:', err instanceof Error ? err.message : 'unknown error');
+		if (replacing) await logImportAudit(userId, false, safetyBackupPath);
 		return json(
 			{
 				error: replacing
@@ -172,4 +224,20 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
-};
+}
+
+async function logImportAudit(
+	userId: number | undefined,
+	success: boolean,
+	safetyBackupPath: string | null
+): Promise<void> {
+	await logAudit({
+		userId,
+		action: 'DB_IMPORT',
+		entityType: 'database',
+		dataAfter: {
+			success,
+			safetyBackupFile: safetyBackupPath ? basename(safetyBackupPath) : null
+		}
+	});
+}

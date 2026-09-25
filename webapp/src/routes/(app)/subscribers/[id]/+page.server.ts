@@ -11,6 +11,7 @@ import {
 	subscriberInputFromForm,
 	updateSubscriber
 } from '$lib/services/subscribers';
+import { isDateKey } from '$lib/utils/date';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	await requirePageStaff(locals);
@@ -129,7 +130,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'ID iscrizione mancante', action: 'updateEnrollmentEndDate' });
 		}
 
-		if (rawEndDate && !/^\d{4}-\d{2}-\d{2}$/.test(rawEndDate)) {
+		if (rawEndDate && !isDateKey(rawEndDate)) {
 			return fail(400, {
 				error: 'Data fine non valida',
 				action: 'updateEnrollmentEndDate',

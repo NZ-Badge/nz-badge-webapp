@@ -2,15 +2,14 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { db } from '$lib/db';
 import { firmwareReleases, deviceRegistry } from '$lib/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { badRequest, unauthorized, serverError } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import { badRequest, authErrorResponse, rawJson } from '$lib/utils/api';
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	let device;
 	try {
 		device = await event.locals.verifyDevice();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const currentVersion = event.url.searchParams.get('version');
@@ -33,25 +32,17 @@ export async function GET(event: RequestEvent): Promise<Response> {
 		)
 		.limit(1);
 
+	// Contratto device (docs/DEVICE-API.md): risposta senza l'involucro { success, data }.
 	if (!active || !isNewerVersion(active.version, currentVersion)) {
-		return new Response(JSON.stringify({ update_available: false }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' }
-		});
+		return rawJson({ update_available: false });
 	}
 
-	return new Response(
-		JSON.stringify({
-			update_available: true,
-			version: active.version,
-			url: `/api/v1/firmware/download/${active.version}`,
-			sha256: active.sha256
-		}),
-		{
-			status: 200,
-			headers: { 'Content-Type': 'application/json' }
-		}
-	);
+	return rawJson({
+		update_available: true,
+		version: active.version,
+		url: `/api/v1/firmware/download/${active.version}`,
+		sha256: active.sha256
+	});
 }
 
 // Confronto semver MAJOR.MINOR.PATCH — senza dipendenze esterne

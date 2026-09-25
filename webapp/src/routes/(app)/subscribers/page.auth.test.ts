@@ -7,7 +7,12 @@ const db = vi.hoisted(() => ({
 	delete: vi.fn()
 }));
 vi.mock('$lib/db', () => ({ db }));
-vi.mock('$lib/services/subscriber-list', () => ({ enrichSubscribersForList: vi.fn() }));
+vi.mock('$lib/services/subscriber-list', () => ({
+	enrichSubscribersForList: vi.fn(),
+	listSubscribersPage: vi.fn(),
+	parseSortDirection: vi.fn(),
+	parseSubscriberListSortField: vi.fn()
+}));
 vi.mock('$lib/services/subscriber-course-attendance', () => ({
 	buildSubscriberCourseAttendanceSummaries: vi.fn()
 }));

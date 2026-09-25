@@ -3,10 +3,11 @@ import { fail } from '@sveltejs/kit';
 import { db } from '$lib/db';
 import { firmwareReleases } from '$lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
-import { writeFileSync, mkdirSync } from 'fs';
+import { mkdir, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { createHash } from 'crypto';
 import { requireAdmin, requirePageAdmin } from '$lib/services/auth';
+import { logAudit } from '$lib/services/audit';
 
 const FIRMWARE_DIR = join(process.cwd(), 'localfiles', 'firmware', 'reader-station');
 
@@ -63,27 +64,35 @@ export const actions: Actions = {
 		const relPath = `firmware/reader-station/${version}.bin`;
 		const absPath = join(process.cwd(), 'localfiles', relPath);
 
-		mkdirSync(FIRMWARE_DIR, { recursive: true });
-		writeFileSync(absPath, buffer);
+		await mkdir(FIRMWARE_DIR, { recursive: true });
+		await writeFile(absPath, buffer);
 
-		await db.insert(firmwareReleases).values({
-			version,
-			deviceType: 'reader-station',
-			filePath: relPath,
-			fileSizeBytes: buffer.length,
-			sha256,
-			isActive: false,
-			releaseNotes: notes || null
-		});
+		try {
+			await db.insert(firmwareReleases).values({
+				version,
+				deviceType: 'reader-station',
+				filePath: relPath,
+				fileSizeBytes: buffer.length,
+				sha256,
+				isActive: false,
+				releaseNotes: notes || null
+			});
+		} catch (err) {
+			// Non lasciare sul disco un file senza release (es. versione caricata in parallelo)
+			await unlink(absPath).catch(() => undefined);
+			throw err;
+		}
 
 		return { action: 'upload', success: true, version };
 	},
 
 	activate: async ({ request, locals }) => {
 		// Verify admin
+		let userId: number;
 		try {
 			const user = await locals.verifyStaffOrAdmin();
 			requireAdmin(user);
+			userId = user.id;
 		} catch {
 			return fail(401, { action: 'activate', error: 'Non autorizzato' });
 		}
@@ -92,13 +101,43 @@ export const actions: Actions = {
 		const id = parseInt(formData.get('id') as string, 10);
 		if (isNaN(id)) return fail(400, { action: 'activate', error: 'ID non valido' });
 
-		// Disattiva tutte le release reader-station, poi attiva quella selezionata
-		await db
-			.update(firmwareReleases)
-			.set({ isActive: false })
-			.where(eq(firmwareReleases.deviceType, 'reader-station'));
+		// In un'unica transazione: blocca la release, disattiva tutte quelle dello stesso tipo
+		// e attiva quella selezionata, cosi' i device non vedono mai zero o due release attive.
+		const activated = await db.transaction(async (tx) => {
+			const [release] = await tx
+				.select({
+					id: firmwareReleases.id,
+					version: firmwareReleases.version,
+					deviceType: firmwareReleases.deviceType
+				})
+				.from(firmwareReleases)
+				.where(eq(firmwareReleases.id, id))
+				.limit(1)
+				.for('update');
+			if (!release) return null;
 
-		await db.update(firmwareReleases).set({ isActive: true }).where(eq(firmwareReleases.id, id));
+			await tx
+				.update(firmwareReleases)
+				.set({ isActive: false })
+				.where(eq(firmwareReleases.deviceType, release.deviceType));
+
+			await tx.update(firmwareReleases).set({ isActive: true }).where(eq(firmwareReleases.id, id));
+
+			await logAudit(
+				{
+					userId,
+					action: 'FIRMWARE_ACTIVATE',
+					entityType: 'firmware',
+					entityId: release.id,
+					dataAfter: { version: release.version, deviceType: release.deviceType }
+				},
+				tx
+			);
+
+			return release;
+		});
+
+		if (!activated) return fail(404, { action: 'activate', error: 'Release non trovata' });
 
 		return { action: 'activate', success: true };
 	},

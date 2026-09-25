@@ -1,30 +1,23 @@
 import type { PageServerLoad } from './$types';
 import { and, count, desc, eq, gte, like, lt, sql } from 'drizzle-orm';
-import { fromZonedTime } from 'date-fns-tz';
 import { db } from '$lib/db';
 import { staffAttendance, users } from '$lib/db/schema';
 import { isStaffManager, requirePageStaff } from '$lib/services/auth';
 import { getCurrentMonthDateRange } from '$lib/services/staff-attendance';
-import { TIMEZONE } from '$lib/utils/date';
+import { addDaysToDateKey, isDateKey, romeDayStart } from '$lib/utils/date';
+import { parsePagination } from '$lib/utils/pagination';
 
 const PAGE_SIZE = 50;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function addOneDay(dateKey: string): string {
-	const date = new Date(`${dateKey}T12:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + 1);
-	return date.toISOString().slice(0, 10);
-}
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const actor = await requirePageStaff(locals);
 	const canManage = isStaffManager(actor);
 	const exportDefaultRange = getCurrentMonthDateRange();
-	const page = Math.max(1, Number.parseInt(url.searchParams.get('page') ?? '1', 10) || 1);
-	const from = DATE_PATTERN.test(url.searchParams.get('from') ?? '')
-		? url.searchParams.get('from')!
-		: '';
-	const to = DATE_PATTERN.test(url.searchParams.get('to') ?? '') ? url.searchParams.get('to')! : '';
+	const { page, offset } = parsePagination(url, PAGE_SIZE);
+	const rawFrom = url.searchParams.get('from') ?? '';
+	const rawTo = url.searchParams.get('to') ?? '';
+	const from = isDateKey(rawFrom) ? rawFrom : '';
+	const to = isDateKey(rawTo) ? rawTo : '';
 	const userQuery = canManage ? (url.searchParams.get('user') ?? '').trim().slice(0, 100) : '';
 	const device = (url.searchParams.get('device') ?? '').trim().slice(0, 50);
 	const rawSource = url.searchParams.get('source') ?? '';
@@ -35,12 +28,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const filters = [];
 	if (!canManage) filters.push(eq(staffAttendance.userId, actor.id));
 	if (from) {
-		filters.push(gte(staffAttendance.readTimestamp, fromZonedTime(`${from}T00:00:00`, TIMEZONE)));
+		filters.push(gte(staffAttendance.readTimestamp, romeDayStart(from)));
 	}
 	if (to) {
-		filters.push(
-			lt(staffAttendance.readTimestamp, fromZonedTime(`${addOneDay(to)}T00:00:00`, TIMEZONE))
-		);
+		filters.push(lt(staffAttendance.readTimestamp, romeDayStart(addDaysToDateKey(to, 1))));
 	}
 	if (userQuery) {
 		filters.push(sql`CONCAT(${users.name}, ' ', ${users.email}) LIKE ${`%${userQuery}%`}`);
@@ -70,7 +61,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			.where(whereClause)
 			.orderBy(desc(staffAttendance.readTimestamp), desc(staffAttendance.id))
 			.limit(PAGE_SIZE)
-			.offset((page - 1) * PAGE_SIZE),
+			.offset(offset),
 		db
 			.select({ total: count() })
 			.from(staffAttendance)

@@ -2,14 +2,13 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { cardRfid, subscribers, users } from '$lib/db/schema';
-import { ok, badRequest, unauthorized, serverError } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import { ok, badRequest, serverError, authErrorResponse } from '$lib/utils/api';
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const uid = event.url.searchParams.get('uid');

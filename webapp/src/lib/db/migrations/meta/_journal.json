@@ -148,6 +148,13 @@
 			"when": 1788393600000,
 			"tag": "0019_optional_course_date_validation",
 			"breakpoints": true
+		},
+		{
+			"idx": 21,
+			"version": "7",
+			"when": 1790294400000,
+			"tag": "0020_attendance_enrollment_indexes",
+			"breakpoints": true
 		}
 	]
 }

@@ -14,6 +14,7 @@ import { db } from '$lib/db';
 import { cardRfid, subscribers, type Subscriber, type User } from '$lib/db/schema';
 import type { DbTransaction } from '$lib/db/types';
 import { logAudit } from './audit';
+import { dateKeySchema } from '$lib/utils/date';
 
 export const SUBSCRIBER_STATUSES = ['active', 'completed', 'suspended', 'cancelled'] as const;
 export type SubscriberStatus = (typeof SUBSCRIBER_STATUSES)[number];
@@ -29,7 +30,7 @@ export class SubscriberServiceError extends Error {
 	}
 }
 
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateKey = dateKeySchema;
 // `undefined` = unchanged, `null` = cleared.
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 

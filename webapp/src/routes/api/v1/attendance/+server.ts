@@ -4,12 +4,12 @@ import { attendanceSingleSchema } from '$lib/utils/validation';
 import {
 	ok,
 	badRequest,
-	unauthorized,
 	notFound,
 	forbidden,
 	tooManyRequests,
 	serverError,
-	formatZodError
+	formatZodError,
+	authErrorResponse
 } from '$lib/utils/api';
 import { processSingleAttendance } from '$lib/services/attendance';
 import {
@@ -36,7 +36,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		device = await event.locals.verifyDevice();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	// Rate limit
@@ -81,7 +81,7 @@ export async function PATCH(event: RequestEvent): Promise<Response> {
 	try {
 		actor = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;
@@ -117,7 +117,7 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 	try {
 		actor = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;

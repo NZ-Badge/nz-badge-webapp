@@ -5,6 +5,7 @@ import { attendance, subscribers } from '$lib/db/schema';
 import { addDaysToDateKey, isDateKey, romeDateKey } from '$lib/utils/date';
 import { buildSubscriberAttendanceFilterConditions } from '$lib/services/subscriber-attendance-admin';
 import { eq, and, count, sql, asc } from 'drizzle-orm';
+import { parsePagination } from '$lib/utils/pagination';
 
 const PAGE_SIZE = 50;
 const DEFAULT_LOOKBACK_DAYS = 30;
@@ -15,7 +16,7 @@ function dateInputValueDaysAgo(daysAgo: number): string {
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	await requirePageStaff(locals);
-	const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
+	const { page, offset } = parsePagination(url, PAGE_SIZE);
 	const from = url.searchParams.get('from')?.trim() || dateInputValueDaysAgo(DEFAULT_LOOKBACK_DAYS);
 	const to = url.searchParams.get('to')?.trim() || dateInputValueDaysAgo(0);
 	const subscriber = url.searchParams.get('subscriber')?.trim() ?? '';
@@ -49,7 +50,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			.where(whereClause)
 			.orderBy(sql`${attendance.readTimestamp} DESC`)
 			.limit(PAGE_SIZE)
-			.offset((page - 1) * PAGE_SIZE),
+			.offset(offset),
 		db
 			.select({ total: count() })
 			.from(attendance)

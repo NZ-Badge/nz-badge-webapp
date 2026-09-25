@@ -1,13 +1,12 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { ok, unauthorized, serverError } from '$lib/utils/api';
+import { ok, serverError, authErrorResponse } from '$lib/utils/api';
 import { syncEnrollments } from '$lib/services/enrollments';
-import { AuthError } from '$lib/services/auth';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	try {

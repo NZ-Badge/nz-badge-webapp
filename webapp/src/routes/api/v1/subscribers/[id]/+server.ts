@@ -5,13 +5,12 @@ import { subscribers, cardRfid } from '$lib/db/schema';
 import {
 	ok,
 	badRequest,
-	unauthorized,
 	notFound,
 	conflict,
 	serverError,
-	formatZodError
+	formatZodError,
+	authErrorResponse
 } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
 import {
 	removeSubscriber,
 	SubscriberServiceError,
@@ -32,7 +31,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const id = Number(event.params.id);
@@ -50,7 +49,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 	try {
 		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const id = Number(event.params.id);
@@ -75,7 +74,7 @@ export async function DELETE(event: RequestEvent): Promise<Response> {
 	try {
 		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const id = Number(event.params.id);

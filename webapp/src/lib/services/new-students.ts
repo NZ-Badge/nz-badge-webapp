@@ -1,32 +1,17 @@
 import { db } from '$lib/db';
 import { enrollments, subscribers } from '$lib/db/schema';
-import { formatDateIT, TIMEZONE } from '$lib/utils/date';
+import { addDaysToDateKey, dateKeySchema, formatDateIT, romeDateKey } from '$lib/utils/date';
+import { toCsv } from '$lib/utils/csv';
 import { and, asc, count, eq, gte, lt } from 'drizzle-orm';
-import { formatInTimeZone } from 'date-fns-tz';
-import { z } from 'zod';
-
-function addDays(key: string, days: number): string {
-	const date = new Date(`${key}T12:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + days);
-	return date.toISOString().slice(0, 10);
-}
-
-const dateKeySchema = z
-	.string()
-	.regex(/^\d{4}-\d{2}-\d{2}$/)
-	.refine((value) => {
-		const date = new Date(`${value}T12:00:00.000Z`);
-		return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-	});
 
 export function selectedDateRange(from: string | null, to: string | null, now = new Date()) {
-	const today = formatInTimeZone(now, TIMEZONE, 'yyyy-MM-dd');
+	const today = romeDateKey(now);
 	const date = new Date(`${today}T12:00:00.000Z`);
-	const weekStart = addDays(today, -(date.getUTCDay() + 6) % 7);
+	const weekStart = addDaysToDateKey(today, -(date.getUTCDay() + 6) % 7);
 	const start = from === null ? weekStart : dateKeySchema.parse(from);
-	const end = to === null ? addDays(weekStart, 6) : dateKeySchema.parse(to);
+	const end = to === null ? addDaysToDateKey(weekStart, 6) : dateKeySchema.parse(to);
 	if (start > end) throw new RangeError('La data Da deve precedere o coincidere con la data A.');
-	return { start, end, next: addDays(end, 1) };
+	return { start, end, next: addDaysToDateKey(end, 1) };
 }
 
 function inDateRange(start: string, next: string) {
@@ -81,25 +66,30 @@ export async function getNewStudents(
 	}));
 }
 
-function csvCell(value: string): string {
-	// Spreadsheet programs can execute formulas in imported text cells.
-	const safe = /^[\s]*[=+@-]/.test(value) ? `'${value}` : value;
-	return `"${safe.replaceAll('"', '""')}"`;
-}
+const NEW_STUDENTS_CSV_HEADERS = [
+	'Nome',
+	'Cognome',
+	'Email',
+	'Telefono',
+	'Corso',
+	'Edizione',
+	'Inizio',
+	'Fine'
+];
 
 export function newStudentsCsv(rows: Awaited<ReturnType<typeof getNewStudents>>): string {
-	const lines = [['Nome', 'Cognome', 'Email', 'Telefono', 'Corso', 'Edizione', 'Inizio', 'Fine']];
-	for (const row of rows) {
-		lines.push([
+	return toCsv(
+		NEW_STUDENTS_CSV_HEADERS,
+		rows.map((row) => [
 			row.firstName,
 			row.lastName,
 			row.email,
-			row.phone ?? '',
-			row.productTitle ?? '',
-			row.variantTitle ?? '',
+			row.phone,
+			row.productTitle,
+			row.variantTitle,
 			formatDateIT(row.startDate),
 			formatDateIT(row.endDate)
-		]);
-	}
-	return `\uFEFF${lines.map((line) => line.map(csvCell).join(';')).join('\r\n')}\r\n`;
+		]),
+		{ separator: ';', bom: true, lineEnding: '\r\n' }
+	);
 }

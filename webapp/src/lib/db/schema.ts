@@ -106,7 +106,9 @@ export const enrollments = mysqlTable(
 		index('idx_enrollment_status').on(t.status),
 		index('idx_enrollment_subscriber').on(t.subscriberId),
 		index('idx_enrollment_order').on(t.orderId),
-		index('idx_enrollment_variant').on(t.variantId)
+		index('idx_enrollment_variant').on(t.variantId),
+		index('idx_enrollment_start_end').on(t.startDate, t.endDate),
+		index('idx_enrollment_end_date').on(t.endDate)
 	]
 );
 
@@ -150,7 +152,7 @@ export const cardRfid = mysqlTable(
 		writtenByDevice: varchar('written_by_device', { length: 100 })
 	},
 	(t) => [
-		index('idx_uid').on(t.uid),
+		// `uid` is already indexed by its UNIQUE constraint (idx_uid dropped in 0020)
 		index('idx_status').on(t.status),
 		index('idx_subscriber').on(t.subscriberId),
 		index('idx_card_user').on(t.userId)
@@ -181,7 +183,9 @@ export const attendance = mysqlTable(
 		index('idx_card_uid').on(t.cardUid),
 		index('idx_timestamp').on(t.readTimestamp),
 		index('idx_device').on(t.deviceId),
-		index('idx_subscriber').on(t.subscriberId)
+		index('idx_subscriber').on(t.subscriberId),
+		index('idx_attendance_card_time').on(t.cardUid, t.readTimestamp),
+		index('idx_attendance_subscriber_time').on(t.subscriberId, t.readTimestamp)
 	]
 );
 

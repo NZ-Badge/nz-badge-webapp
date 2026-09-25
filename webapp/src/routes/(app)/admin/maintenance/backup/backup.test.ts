@@ -50,7 +50,8 @@ describe('database backup download', () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it('only allows administrators', async () => {
-		await expect(GET(event('staff'))).rejects.toMatchObject({ status: 403 });
+		const response = await GET(event('staff'));
+		expect(response.status).toBe(403);
 		expect(spawn).not.toHaveBeenCalled();
 	});
 

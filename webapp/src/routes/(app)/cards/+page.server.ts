@@ -3,6 +3,7 @@ import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { cardRfid, subscribers, users } from '$lib/db/schema';
 import { and, eq, count, isNotNull, ne, or, like, asc, desc, sql } from 'drizzle-orm';
+import { parsePagination } from '$lib/utils/pagination';
 
 const PAGE_SIZE = 25;
 const SORT_FIELDS = ['subscriber', 'writeDate', 'expirationDate'] as const;
@@ -20,7 +21,7 @@ function parseSortDirection(value: string | null): SortDirection {
 
 export const load: PageServerLoad = async ({ url, locals }) => {
 	await requirePageStaff(locals);
-	const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
+	const { page, offset } = parsePagination(url, PAGE_SIZE);
 	const status = url.searchParams.get('status') ?? '';
 	const tab = url.searchParams.get('tab') ?? 'active';
 	const q = url.searchParams.get('q')?.trim() ?? '';
@@ -51,7 +52,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				.leftJoin(users, eq(cardRfid.userId, users.id))
 				.where(whereClause)
 				.limit(PAGE_SIZE)
-				.offset((page - 1) * PAGE_SIZE),
+				.offset(offset),
 			db.select({ total: count() }).from(cardRfid).where(whereClause)
 		]);
 
@@ -115,7 +116,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 			.where(whereClause)
 			.orderBy(...orderBy)
 			.limit(PAGE_SIZE)
-			.offset((page - 1) * PAGE_SIZE),
+			.offset(offset),
 		db
 			.select({ total: count() })
 			.from(cardRfid)

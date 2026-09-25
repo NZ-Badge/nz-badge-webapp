@@ -3,7 +3,6 @@ import {
 	attendance,
 	cardRfid,
 	enrollments,
-	settings,
 	staffAttendance,
 	type CardRfid,
 	type Subscriber,
@@ -29,7 +28,6 @@ const state = vi.hoisted(() => ({ current: null as unknown as FakeDbState }));
 
 function resolveSelect(table: unknown, fields: Record<string, unknown> | undefined): unknown[] {
 	const s = state.current;
-	if (table === settings) return s.settings;
 	if (table === cardRfid) return s.cardRow ? [s.cardRow] : [];
 	if (table === enrollments) return s.inCourse ? [{ id: 1 }] : [];
 	if (table === attendance || table === staffAttendance) {
@@ -71,6 +69,11 @@ function createFakeTx() {
 		}
 	};
 }
+
+vi.mock('$lib/services/settings', async () => {
+	const { parseSettingRows } = await import('$lib/services/settings-schema');
+	return { getSettings: async () => parseSettingRows(state.current.settings) };
+});
 
 vi.mock('$lib/db', () => ({
 	db: {

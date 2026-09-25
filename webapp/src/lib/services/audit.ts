@@ -30,7 +30,9 @@ export type AuditAction =
 	| 'SYNC_SHOPIFY'
 	| 'SETTINGS_UPDATE'
 	| 'DEVICE_REGISTER'
-	| 'DEVICE_DISABLE';
+	| 'DEVICE_DISABLE'
+	| 'FIRMWARE_ACTIVATE'
+	| 'DB_IMPORT';
 
 // Entity types that can be audited
 export type AuditEntityType =
@@ -41,7 +43,9 @@ export type AuditEntityType =
 	| 'user'
 	| 'device'
 	| 'setting'
-	| 'sync_log';
+	| 'sync_log'
+	| 'firmware'
+	| 'database';
 
 /**
  * Audit log entry structure
@@ -159,13 +163,23 @@ export async function logAudit(entry: AuditEntry, database: DbOrTx = db): Promis
 	}
 }
 
+/** IP and user agent of a request, for services that call `logAudit` directly. */
+export function getAuditRequestInfo(event: RequestEvent): {
+	ipAddress: string;
+	userAgent: string | undefined;
+} {
+	return {
+		ipAddress: getClientIp(event),
+		userAgent: event.request.headers.get('user-agent') ?? undefined
+	};
+}
+
 /**
  * Create audit logger bound to a request event
  * Automatically extracts user info, IP, and user agent
  */
 export function createAuditLogger(event: RequestEvent, userId?: number) {
-	const ipAddress = getClientIp(event);
-	const userAgent = event.request.headers.get('user-agent') ?? undefined;
+	const { ipAddress, userAgent } = getAuditRequestInfo(event);
 
 	return {
 		log: (entry: Omit<AuditEntry, 'ipAddress' | 'userAgent'>) =>

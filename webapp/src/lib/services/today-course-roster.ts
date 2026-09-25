@@ -1,5 +1,4 @@
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
-import { TIMEZONE } from '$lib/utils/date';
+import { romeDateKey, romeDayRange } from '$lib/utils/date';
 
 export interface TodayEnrollment {
 	id: number;
@@ -18,14 +17,8 @@ export interface TodaySwipe {
 }
 
 export function getRomeDay(now: Date): { dateKey: string; start: Date; end: Date } {
-	const dateKey = formatInTimeZone(now, TIMEZONE, 'yyyy-MM-dd');
-	const next = new Date(`${dateKey}T00:00:00.000Z`);
-	next.setUTCDate(next.getUTCDate() + 1);
-	return {
-		dateKey,
-		start: fromZonedTime(`${dateKey}T00:00:00`, TIMEZONE),
-		end: fromZonedTime(`${next.toISOString().slice(0, 10)}T00:00:00`, TIMEZONE)
-	};
+	const dateKey = romeDateKey(now);
+	return { dateKey, ...romeDayRange(dateKey) };
 }
 
 export function buildTodayRoster(enrollments: TodayEnrollment[], swipes: TodaySwipe[]) {

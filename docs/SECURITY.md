@@ -57,6 +57,9 @@ Codice rilevante:
 - i dati staff applicano anche controlli “proprio utente oppure Amministratore/Operatore” lato
   server; nascondere i comandi nella UI non e' considerato un controllo sufficiente
 - i device non possono accedere agli endpoint admin e viceversa
+- gli errori di autenticazione delle API passano da `authErrorResponse()` in
+  `src/lib/utils/api.ts`: `401` sessione/token mancante o non valido, `403` ruolo o account non
+  ammesso, `429` rate limit dell'autenticazione device
 
 ## Header e CSP
 

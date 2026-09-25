@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lt, lte } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { fromZonedTime } from 'date-fns-tz';
 import { db } from '$lib/db';
 import * as schema from '$lib/db/schema';
 import { staffAttendance, users } from '$lib/db/schema';
@@ -8,7 +8,7 @@ import type { User } from '$lib/db/schema';
 import { calculateAttendanceHours, formatAttendanceMinutes } from './attendance-hours';
 import { logAudit } from './audit';
 import { getSettings } from './settings';
-import { TIMEZONE, toDatabaseDateTime } from '$lib/utils/date';
+import { addDaysToDateKey, isDateKey, romeDateKey, romeDayRange, TIMEZONE } from '$lib/utils/date';
 import { isStaffManager, requireSelfOrStaffManager } from './auth';
 
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -57,34 +57,24 @@ export class StaffAttendanceError extends Error {
 	}
 }
 
-function addDays(dateKey: string, days: number): string {
-	const date = new Date(`${dateKey}T12:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + days);
-	return date.toISOString().slice(0, 10);
-}
-
 function compareDateKeys(a: string, b: string): number {
 	return a.localeCompare(b);
 }
 
-export function getRomeDateKey(value: Date | string): string {
-	return formatInTimeZone(new Date(value), TIMEZONE, 'yyyy-MM-dd');
-}
-
 export function getCurrentWeekDateRange(now: Date = new Date()): { from: string; to: string } {
-	const today = getRomeDateKey(now);
+	const today = romeDateKey(now);
 	const weekday = new Date(`${today}T12:00:00.000Z`).getUTCDay();
 	const daysFromMonday = weekday === 0 ? 6 : weekday - 1;
-	const from = addDays(today, -daysFromMonday);
-	return { from, to: addDays(from, 6) };
+	const from = addDaysToDateKey(today, -daysFromMonday);
+	return { from, to: addDaysToDateKey(from, 6) };
 }
 
 export function getCurrentMonthDateRange(now: Date = new Date()): { from: string; to: string } {
-	const today = getRomeDateKey(now);
+	const today = romeDateKey(now);
 	const from = `${today.slice(0, 7)}-01`;
 	const firstOfNextMonth = new Date(`${from}T12:00:00.000Z`);
 	firstOfNextMonth.setUTCMonth(firstOfNextMonth.getUTCMonth() + 1);
-	return { from, to: addDays(firstOfNextMonth.toISOString().slice(0, 10), -1) };
+	return { from, to: addDaysToDateKey(firstOfNextMonth.toISOString().slice(0, 10), -1) };
 }
 
 export function normalizeStaffAttendanceRange(
@@ -92,9 +82,8 @@ export function normalizeStaffAttendanceRange(
 	to: string | null | undefined,
 	fallback: { from: string; to: string }
 ): { from: string; to: string } {
-	const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-	const normalizedFrom = from && datePattern.test(from) ? from : fallback.from;
-	const normalizedTo = to && datePattern.test(to) ? to : fallback.to;
+	const normalizedFrom = from && isDateKey(from) ? from : fallback.from;
+	const normalizedTo = to && isDateKey(to) ? to : fallback.to;
 
 	if (compareDateKeys(normalizedFrom, normalizedTo) > 0) {
 		throw new StaffAttendanceError(
@@ -110,10 +99,7 @@ export function getStaffAttendanceRangeBounds(range: { from: string; to: string 
 	start: Date;
 	end: Date;
 } {
-	return {
-		start: fromZonedTime(`${range.from}T00:00:00.000`, TIMEZONE),
-		end: fromZonedTime(`${addDays(range.to, 1)}T00:00:00.000`, TIMEZONE)
-	};
+	return romeDayRange(range.from, range.to);
 }
 
 export function parseRomeLocalDateTime(value: string): Date {
@@ -188,9 +174,7 @@ export function determineNextStaffEventTypeFromPrevious(
 	if (!previous || previous.eventType === 'exit') return 'entry';
 	if (!resetEntryTypeDaily) return 'exit';
 
-	return getRomeDateKey(previous.readTimestamp) === getRomeDateKey(currentTimestamp)
-		? 'exit'
-		: 'entry';
+	return romeDateKey(previous.readTimestamp) === romeDateKey(currentTimestamp) ? 'exit' : 'entry';
 }
 
 export function isManualAttendanceBackdated(readTimestamp: Date, now: Date = new Date()): boolean {
@@ -214,7 +198,7 @@ export async function determineNextStaffEventType(
 		.where(
 			and(
 				eq(staffAttendance.userId, userId),
-				lt(staffAttendance.readTimestamp, toDatabaseDateTime(currentTimestamp))
+				lt(staffAttendance.readTimestamp, new Date(currentTimestamp))
 			)
 		)
 		.orderBy(desc(staffAttendance.readTimestamp), desc(staffAttendance.id))

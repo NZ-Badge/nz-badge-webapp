@@ -3,7 +3,7 @@ import mysql from 'mysql2/promise';
 import { fromZonedTime } from 'date-fns-tz';
 import * as schema from '../src/lib/db/schema';
 import { sendWeeklyAttendanceSummaries } from '../src/lib/services/weekly-attendance-summary';
-import { TIMEZONE } from '../src/lib/utils/date';
+import { isDateKey, TIMEZONE } from '../src/lib/utils/date';
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -30,7 +30,7 @@ function parseArgs(args: string[]): { force: boolean; dryRun: boolean; reference
 
 		if (arg.startsWith('--date=')) {
 			const dateKey = arg.slice('--date='.length);
-			if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+			if (!isDateKey(dateKey)) {
 				throw new Error('--date deve usare il formato YYYY-MM-DD');
 			}
 			referenceDate = fromZonedTime(`${dateKey}T12:00:00.000`, TIMEZONE);

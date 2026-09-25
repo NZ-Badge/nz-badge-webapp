@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNotNull, like, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
 import { attendance, cardRfid, enrollments, subscribers } from '../src/lib/db/schema';
+import { addDaysToDateKey } from '../src/lib/utils/date';
 
 const DEMO_DEVICE_ID = 'TEST-SEED-ATTENDANCE';
 const DEMO_NOTE_PREFIX = 'demo_attendance_seed:';
@@ -34,12 +35,6 @@ function toDateKey(value: Date | string): string {
 	return value.toISOString().slice(0, 10);
 }
 
-function addDays(dateKey: string, days: number): string {
-	const date = new Date(`${dateKey}T00:00:00.000Z`);
-	date.setUTCDate(date.getUTCDate() + days);
-	return date.toISOString().slice(0, 10);
-}
-
 function atLocalCourseTime(dateKey: string, hours: number, minutes = 0): Date {
 	return new Date(
 		`${dateKey}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00.000`
@@ -48,9 +43,9 @@ function atLocalCourseTime(dateKey: string, hours: number, minutes = 0): Date {
 
 function buildSessions(startDate: Date | string, enrollmentIndex: number) {
 	const startDateKey = toDateKey(startDate);
-	const firstDay = addDays(startDateKey, Math.min(enrollmentIndex, 2));
-	const secondDay = addDays(firstDay, 1);
-	const thirdDay = addDays(firstDay, 2);
+	const firstDay = addDaysToDateKey(startDateKey, Math.min(enrollmentIndex, 2));
+	const secondDay = addDaysToDateKey(firstDay, 1);
+	const thirdDay = addDaysToDateKey(firstDay, 2);
 
 	return [
 		{
@@ -152,7 +147,7 @@ try {
 
 		const effectiveEndDate = enrollment.endDate
 			? toDateKey(enrollment.endDate)
-			: addDays(toDateKey(enrollment.startDate), DEFAULT_COURSE_DAYS - 1);
+			: addDaysToDateKey(toDateKey(enrollment.startDate), DEFAULT_COURSE_DAYS - 1);
 
 		if (!enrollment.endDate) {
 			await db

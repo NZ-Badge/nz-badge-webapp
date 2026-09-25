@@ -61,14 +61,8 @@
 		try {
 			const response = await fetch('/api/v1/staff-attendance/simulate', { method: 'POST' });
 			const body = await response.json().catch(() => ({}));
-			if (!response.ok) {
-				if (body.ignored)
-					throw new Error(
-						'Strisciata troppo vicina alla precedente. Riprova dopo l’intervallo configurato.'
-					);
-				throw new Error(body.error ?? 'Registrazione non riuscita');
-			}
-			simulateMessage = `${body.nextType === 'entry' ? 'Ingresso' : 'Uscita'} registrato correttamente.`;
+			if (!response.ok) throw new Error(body.error ?? 'Registrazione non riuscita');
+			simulateMessage = `${body.data?.nextType === 'entry' ? 'Ingresso' : 'Uscita'} registrato correttamente.`;
 			await invalidateAll();
 		} catch (err) {
 			simulateError = true;

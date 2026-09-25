@@ -1,15 +1,15 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { cardWriteSchema } from '$lib/utils/validation';
-import { ok, badRequest, unauthorized, serverError, formatZodError } from '$lib/utils/api';
+import { ok, badRequest, serverError, formatZodError, authErrorResponse } from '$lib/utils/api';
 import { authorizeCardWrite, authorizeUserCardWrite } from '$lib/services/card-writer';
-import { AuthError, requireStaffManager } from '$lib/services/auth';
+import { requireStaffManager } from '$lib/services/auth';
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		const user = await event.locals.verifyStaffOrAdmin();
 		requireStaffManager(user);
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;

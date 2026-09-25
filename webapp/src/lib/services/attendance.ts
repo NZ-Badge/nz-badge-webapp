@@ -8,13 +8,13 @@ import {
 	enrollments,
 	staffAttendance,
 	subscribers,
-	settings,
 	users
 } from '$lib/db/schema';
 import type { CardRfid, Subscriber, User } from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
 import { formatToRomeISO, romeDateKey, toDatabaseDateTime } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
+import { getSettings } from '$lib/services/settings';
 import {
 	determineNextStaffEventType,
 	isWithinStaffMinInterval
@@ -95,31 +95,15 @@ export interface BatchAttendanceResult {
 }
 
 /**
- * Carica i settings di configurazione per le presenze
+ * Carica i settings di configurazione per le presenze dal service `settings`
+ * (tipizzato e con cache TTL, invalidata a ogni salvataggio).
  */
-async function loadAttendanceSettings(tx?: DbOrTx): Promise<AttendanceSettings> {
-	const dbInstance = tx ?? db;
-
-	const allSettings = await dbInstance.select().from(settings);
-
-	let resetEntryTypeDaily = true; // default
-	let minSwipeIntervalMinutes = 15; // default
-	let enforceCourseDateRange = true; // default
-
-	for (const setting of allSettings) {
-		if (setting.key === 'reset_entry_type_daily') {
-			resetEntryTypeDaily = setting.value === 'true';
-		} else if (setting.key === 'min_swipe_interval_minutes') {
-			minSwipeIntervalMinutes = parseInt(setting.value, 10) || 15;
-		} else if (setting.key === 'enforce_course_date_range') {
-			enforceCourseDateRange = setting.value === 'true';
-		}
-	}
-
+async function loadAttendanceSettings(): Promise<AttendanceSettings> {
+	const appSettings = await getSettings();
 	return {
-		resetEntryTypeDaily,
-		minSwipeIntervalMinutes,
-		enforceCourseDateRange
+		resetEntryTypeDaily: appSettings.reset_entry_type_daily,
+		minSwipeIntervalMinutes: appSettings.min_swipe_interval_minutes,
+		enforceCourseDateRange: appSettings.enforce_course_date_range
 	};
 }
 
@@ -600,9 +584,10 @@ export async function processSingleAttendance(
 	let accepted = 0;
 	let rejected = 0;
 
+	// Settings letti una sola volta (dalla cache del service) prima di aprire la transazione
+	const attendanceSettings = await loadAttendanceSettings();
+
 	await db.transaction(async (tx) => {
-		// Carica i settings una sola volta per la transazione
-		const attendanceSettings = await loadAttendanceSettings(tx);
 		const ctx: AttendanceProcessingContext = {
 			deviceId,
 			now,
@@ -640,9 +625,10 @@ export async function processBatchAttendance(
 	let accepted = 0;
 	let rejected = 0;
 
+	// Settings letti una sola volta (dalla cache del service) prima di aprire la transazione
+	const attendanceSettings = await loadAttendanceSettings();
+
 	await db.transaction(async (tx) => {
-		// Carica i settings una sola volta per la transazione
-		const attendanceSettings = await loadAttendanceSettings(tx);
 		const ctx: AttendanceProcessingContext = {
 			deviceId,
 			now,

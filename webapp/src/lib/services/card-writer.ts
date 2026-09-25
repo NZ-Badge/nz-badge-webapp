@@ -321,143 +321,179 @@ export async function confirmCardWrite(
 				}
 			: { subscriberId: null, userId: session.owner.id, expirationDate: null };
 
-	if (session.owner.type === 'user') {
-		const [targetUser] = await db
-			.select({ status: users.status })
-			.from(users)
-			.where(eq(users.id, session.owner.id))
-			.limit(1);
-		if (!targetUser || targetUser.status !== 'active') {
-			writeSessions.delete(sessionToken);
-			throw new CardWriterError('User is no longer active', 'INVALID_STATE');
-		}
-		const [activeCard] = await db
-			.select({ id: cardRfid.id })
-			.from(cardRfid)
-			.where(
-				and(
-					eq(cardRfid.userId, session.owner.id),
-					eq(cardRfid.type, 'rfid'),
-					eq(cardRfid.status, 'active')
-				)
-			)
-			.limit(1);
-		if (activeCard) {
-			writeSessions.delete(sessionToken);
-			throw new CardWriterError('User already has an active RFID card', 'INVALID_STATE');
-		}
-	}
-
-	// Check if card UID already exists
-	const [existingCard] = await db
-		.select()
-		.from(cardRfid)
-		.where(eq(cardRfid.uid, normalizedUid))
-		.limit(1);
-
-	if (existingCard) {
-		if (existingCard.status === 'deleted') {
-			if (!allowReuseDeleted) {
-				throw new CardWriterError(
-					`Card with UID ${normalizedUid} is present in deleted history`,
-					'UID_IN_DELETED_HISTORY'
-				);
+	try {
+		const result = await db.transaction(async (tx) => {
+			if (session.owner.type === 'user') {
+				// Lock the owner row first: concurrent confirmations for the same user are
+				// serialized here, so the "one active RFID per user" check below is reliable.
+				const [targetUser] = await tx
+					.select({ status: users.status })
+					.from(users)
+					.where(eq(users.id, session.owner.id))
+					.limit(1)
+					.for('update');
+				if (!targetUser || targetUser.status !== 'active') {
+					throw new CardWriterError('User is no longer active', 'INVALID_STATE');
+				}
+				const [activeCard] = await tx
+					.select({ id: cardRfid.id })
+					.from(cardRfid)
+					.where(
+						and(
+							eq(cardRfid.userId, session.owner.id),
+							eq(cardRfid.type, 'rfid'),
+							eq(cardRfid.status, 'active')
+						)
+					)
+					.limit(1)
+					.for('update');
+				if (activeCard) {
+					throw new CardWriterError('User already has an active RFID card', 'INVALID_STATE');
+				}
 			}
 
-			await db
-				.update(cardRfid)
-				.set({
-					...ownerValues,
-					uid: normalizedUid,
-					type: 'rfid',
-					keyA: session.keyA,
-					keyB: session.keyB,
-					sector: 4,
-					writeDate: new Date(),
-					status: 'active',
-					deletedAt: null,
-					writtenByUserId: adminUser.id
-				})
-				.where(eq(cardRfid.id, existingCard.id));
+			// Check if card UID already exists
+			const [existingCard] = await tx
+				.select()
+				.from(cardRfid)
+				.where(eq(cardRfid.uid, normalizedUid))
+				.limit(1)
+				.for('update');
 
-			writeSessions.delete(sessionToken);
-
-			await logAudit({
-				userId: adminUser.id,
-				action: 'CARD_WRITE',
-				entityType: 'card',
-				entityId: existingCard.id,
-				dataBefore: {
-					status: existingCard.status,
-					subscriberId: existingCard.subscriberId,
-					deletedAt: existingCard.deletedAt?.toISOString() ?? null
-				},
-				dataAfter: {
-					uid: normalizedUid,
-					ownerType: session.owner.type,
-					ownerId: session.owner.id,
-					expirationDate:
-						session.owner.type === 'subscriber' ? session.validUntil.toISOString() : null,
-					status: 'active',
-					deletedAt: null
-				},
-				metadata: {
-					sector: 4,
-					reusedDeletedRecord: true,
-					singleKeyMode: session.keyA === session.keyB
+			if (existingCard) {
+				if (existingCard.status !== 'deleted') {
+					throw new CardWriterError(
+						`Card with UID ${normalizedUid} is already assigned`,
+						'UID_ALREADY_EXISTS'
+					);
 				}
+				if (!allowReuseDeleted) {
+					throw new CardWriterError(
+						`Card with UID ${normalizedUid} is present in deleted history`,
+						'UID_IN_DELETED_HISTORY'
+					);
+				}
+
+				await tx
+					.update(cardRfid)
+					.set({
+						...ownerValues,
+						uid: normalizedUid,
+						type: 'rfid',
+						keyA: session.keyA,
+						keyB: session.keyB,
+						sector: 4,
+						writeDate: new Date(),
+						status: 'active',
+						deletedAt: null,
+						writtenByUserId: adminUser.id
+					})
+					.where(eq(cardRfid.id, existingCard.id));
+
+				await logAudit(
+					{
+						userId: adminUser.id,
+						action: 'CARD_WRITE',
+						entityType: 'card',
+						entityId: existingCard.id,
+						dataBefore: {
+							status: existingCard.status,
+							subscriberId: existingCard.subscriberId,
+							deletedAt: existingCard.deletedAt?.toISOString() ?? null
+						},
+						dataAfter: {
+							uid: normalizedUid,
+							ownerType: session.owner.type,
+							ownerId: session.owner.id,
+							expirationDate:
+								session.owner.type === 'subscriber' ? session.validUntil.toISOString() : null,
+							status: 'active',
+							deletedAt: null
+						},
+						metadata: {
+							sector: 4,
+							reusedDeletedRecord: true,
+							singleKeyMode: session.keyA === session.keyB
+						}
+					},
+					tx
+				);
+
+				return { id: existingCard.id, uid: normalizedUid };
+			}
+
+			// Insert card record
+			const [created] = await tx.insert(cardRfid).values({
+				...ownerValues,
+				uid: normalizedUid,
+				type: 'rfid',
+				keyA: session.keyA,
+				keyB: session.keyB,
+				sector: 4,
+				writeDate: new Date(),
+				status: 'active',
+				writtenByUserId: adminUser.id
 			});
 
-			return { id: existingCard.id, uid: normalizedUid };
-		}
+			if (!created.insertId) {
+				throw new CardWriterError('Failed to create card record', 'VALIDATION_ERROR');
+			}
+
+			const cardId = Number(created.insertId);
+
+			await logAudit(
+				{
+					userId: adminUser.id,
+					action: 'CARD_WRITE',
+					entityType: 'card',
+					entityId: cardId,
+					dataAfter: {
+						uid: normalizedUid,
+						ownerType: session.owner.type,
+						ownerId: session.owner.id,
+						expirationDate:
+							session.owner.type === 'subscriber' ? session.validUntil.toISOString() : null
+					},
+					metadata: {
+						sector: 4,
+						singleKeyMode: session.keyA === session.keyB
+					}
+				},
+				tx
+			);
+
+			return { id: cardId, uid: normalizedUid };
+		});
 
 		writeSessions.delete(sessionToken);
-		throw new CardWriterError(
-			`Card with UID ${normalizedUid} is already assigned`,
-			'UID_ALREADY_EXISTS'
-		);
-	}
-
-	// Insert card record
-	const [created] = await db.insert(cardRfid).values({
-		...ownerValues,
-		uid: normalizedUid,
-		type: 'rfid',
-		keyA: session.keyA,
-		keyB: session.keyB,
-		sector: 4,
-		writeDate: new Date(),
-		status: 'active',
-		writtenByUserId: adminUser.id
-	});
-
-	if (!created.insertId) {
-		writeSessions.delete(sessionToken);
-		throw new CardWriterError('Failed to create card record', 'VALIDATION_ERROR');
-	}
-
-	const cardId = Number(created.insertId);
-	writeSessions.delete(sessionToken);
-
-	// Audit log
-	await logAudit({
-		userId: adminUser.id,
-		action: 'CARD_WRITE',
-		entityType: 'card',
-		entityId: cardId,
-		dataAfter: {
-			uid: normalizedUid,
-			ownerType: session.owner.type,
-			ownerId: session.owner.id,
-			expirationDate: session.owner.type === 'subscriber' ? session.validUntil.toISOString() : null
-		},
-		metadata: {
-			sector: 4,
-			singleKeyMode: session.keyA === session.keyB
+		return result;
+	} catch (err) {
+		// A concurrent confirmation may have inserted the same UID between our check and insert.
+		if (isDuplicateEntryError(err)) {
+			writeSessions.delete(sessionToken);
+			throw new CardWriterError(
+				`Card with UID ${normalizedUid} is already assigned`,
+				'UID_ALREADY_EXISTS'
+			);
 		}
-	});
+		// Permanent failures consume the session; UID_IN_DELETED_HISTORY keeps it so the
+		// operator can retry confirming the reuse of the deleted record.
+		if (err instanceof CardWriterError && err.code !== 'UID_IN_DELETED_HISTORY') {
+			writeSessions.delete(sessionToken);
+		}
+		throw err;
+	}
+}
 
-	return { id: cardId, uid: normalizedUid };
+function isDuplicateEntryError(err: unknown): boolean {
+	let current: unknown = err;
+	for (let depth = 0; current && depth < 3; depth++) {
+		if (typeof current === 'object' && (current as { code?: unknown }).code === 'ER_DUP_ENTRY') {
+			return true;
+		}
+		current = (current as { cause?: unknown }).cause;
+	}
+	return false;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────

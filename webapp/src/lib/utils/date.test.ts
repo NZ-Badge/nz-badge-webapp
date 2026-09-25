@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	addDaysToDateKey,
+	dateKeySchema,
 	isDateKey,
 	romeDateKey,
 	romeDayRange,
@@ -124,5 +125,13 @@ describe('addDaysToDateKey / isDateKey', () => {
 		expect(isDateKey('2026-02-28')).toBe(true);
 		expect(isDateKey('2026-02-30')).toBe(false);
 		expect(isDateKey('11/03/2026')).toBe(false);
+	});
+});
+
+describe('dateKeySchema', () => {
+	it('accepts only existing yyyy-MM-dd dates', () => {
+		expect(dateKeySchema.safeParse('2026-02-28').success).toBe(true);
+		expect(dateKeySchema.safeParse('2026-02-30').success).toBe(false);
+		expect(dateKeySchema.safeParse('28/02/2026').success).toBe(false);
 	});
 });

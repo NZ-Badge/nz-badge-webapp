@@ -390,5 +390,5 @@ Le directory `tests/unit` e `tests/e2e` esistono ma al momento contengono solo p
 
 - `/status` e `/api/v1/health` eseguono health check con ping DB
 - le protezioni HTTP (header/CSP) vengono applicate in `src/hooks.server.ts`
-- i rate limiter presenti lato API sono in-memory, quindi valgono per singola istanza di processo
+- l'applicazione va eseguita con **una sola replica** (`replicas: 1`): rate limiter, sessioni di scrittura/cancellazione card (`card-writer.ts`), sessioni di pairing NFC (`nfc-pairing.ts`) e cache delle impostazioni sono in memoria di processo. Con piu' repliche una scrittura card o un pairing avviati su un pod fallirebbero se confermati su un altro; per scalare vanno spostati su DB (tabella con TTL) o Redis
 - questo repository non include oggi una configurazione `ddev`; la documentazione operativa e' pensata per esecuzione Node/MySQL standard

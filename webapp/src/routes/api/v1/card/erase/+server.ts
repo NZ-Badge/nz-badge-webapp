@@ -3,13 +3,12 @@ import { z } from 'zod';
 import {
 	ok,
 	badRequest,
-	unauthorized,
 	notFound,
 	serverError,
-	formatZodError
+	formatZodError,
+	authErrorResponse
 } from '$lib/utils/api';
 import { authorizeCardErase } from '$lib/services/card-writer';
-import { AuthError } from '$lib/services/auth';
 
 const cardEraseSchema = z.object({
 	card_id: z.number().int().positive()
@@ -19,7 +18,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;

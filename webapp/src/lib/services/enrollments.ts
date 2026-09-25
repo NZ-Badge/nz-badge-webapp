@@ -1,6 +1,14 @@
 import { randomBytes } from 'node:crypto';
+import type { RowDataPacket } from 'mysql2/promise';
 import { db } from '$lib/db';
-import { enrollments, enrollmentSyncLog, subscribers } from '$lib/db/schema';
+import {
+	enrollments,
+	enrollmentSyncLog,
+	subscribers,
+	type NewEnrollment,
+	type NewSubscriber
+} from '$lib/db/schema';
+import type { DbTransaction } from '$lib/db/types';
 import { getSetting, getSettings, setSettings } from './settings';
 import { eq } from 'drizzle-orm';
 
@@ -99,8 +107,85 @@ export async function getEnrollmentApiConfig(): Promise<EnrollmentApiConfig> {
 	return { url: url || null, key: key || null };
 }
 
+// ── Sync lock ─────────────────────────────────────────────────────────────────
+
+/** Timeout of each request to the external enrollment API. */
+export const ENROLLMENT_API_TIMEOUT_MS = 30_000;
+
+export class EnrollmentSyncInProgressError extends Error {
+	constructor() {
+		super('Una sincronizzazione delle iscrizioni è già in corso. Riprova tra qualche minuto.');
+		this.name = 'EnrollmentSyncInProgressError';
+	}
+}
+
+let syncInProcess = false;
+
+/**
+ * Runs `fn` while holding the enrollment sync lock.
+ *
+ * Uses a MySQL named lock (`GET_LOCK`) on a dedicated pool connection, so it also works
+ * with several replicas and is released automatically by the server if the process dies
+ * (a `running` row in `enrollment_sync_log` would stay stale after a crash). The name is
+ * prefixed with the current schema so different databases on the same server do not clash.
+ * An in-process flag avoids borrowing a pool connection for a sync that would be refused.
+ */
+async function withEnrollmentSyncLock<T>(fn: () => Promise<T>): Promise<T> {
+	if (syncInProcess) throw new EnrollmentSyncInProgressError();
+	syncInProcess = true;
+
+	try {
+		const connection = await db.$client.getConnection();
+		try {
+			const [rows] = await connection.query<RowDataPacket[]>(
+				"SELECT GET_LOCK(CONCAT(DATABASE(), ':enrollment_sync'), 0) AS acquired"
+			);
+			if (Number(rows[0]?.acquired) !== 1) throw new EnrollmentSyncInProgressError();
+
+			try {
+				return await fn();
+			} finally {
+				await connection
+					.query("SELECT RELEASE_LOCK(CONCAT(DATABASE(), ':enrollment_sync'))")
+					.catch((err) => console.error('[enrollments] failed to release sync lock', err));
+			}
+		} finally {
+			connection.release();
+		}
+	} finally {
+		syncInProcess = false;
+	}
+}
+
+async function fetchEnrollmentPage(url: URL, apiKey: string): Promise<ApiResponse> {
+	let response: Response;
+	try {
+		response = await fetch(url.toString(), {
+			headers: { Authorization: `Bearer ${apiKey}` },
+			signal: AbortSignal.timeout(ENROLLMENT_API_TIMEOUT_MS)
+		});
+	} catch (err) {
+		if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+			throw new Error(
+				`Timeout API iscrizioni: nessuna risposta entro ${ENROLLMENT_API_TIMEOUT_MS / 1000} secondi`
+			);
+		}
+		throw err;
+	}
+
+	if (!response.ok) {
+		throw new Error(`Errore API: ${response.status} ${response.statusText}`);
+	}
+
+	return (await response.json()) as ApiResponse;
+}
+
 // ── Core sync logic ───────────────────────────────────────────────────────────
 
+/**
+ * Imports the COMPLETED enrollments from the external API.
+ * Throws `EnrollmentSyncInProgressError` if another sync (in any replica) is running.
+ */
 export async function syncEnrollments(
 	triggeredBy: 'manual' | 'scheduled' = 'manual'
 ): Promise<SyncResult> {
@@ -110,6 +195,14 @@ export async function syncEnrollments(
 		throw new Error('URL e chiave API iscrizioni devono essere configurati nelle impostazioni');
 	}
 
+	return withEnrollmentSyncLock(() => runEnrollmentSync(apiUrl, apiKey, triggeredBy));
+}
+
+async function runEnrollmentSync(
+	apiUrl: string,
+	apiKey: string,
+	triggeredBy: 'manual' | 'scheduled'
+): Promise<SyncResult> {
 	// Create sync log entry
 	const [logEntry] = await db
 		.insert(enrollmentSyncLog)
@@ -135,15 +228,7 @@ export async function syncEnrollments(
 			url.searchParams.set('page', String(page));
 			url.searchParams.set('limit', String(limit));
 
-			const response = await fetch(url.toString(), {
-				headers: { Authorization: `Bearer ${apiKey}` }
-			});
-
-			if (!response.ok) {
-				throw new Error(`Errore API: ${response.status} ${response.statusText}`);
-			}
-
-			const body = (await response.json()) as ApiResponse;
+			const body = await fetchEnrollmentPage(url, apiKey);
 			totalPages = body.meta.pages;
 			result.enrollmentsFound += body.data.length;
 
@@ -262,6 +347,9 @@ export async function processWebhookEnrollment(item: ApiEnrollment): Promise<Syn
  *
  * When `participants[]` is empty (PENDING or legacy flat-field enrollments),
  * the original single-row behaviour is preserved using `externalId = item.id`.
+ *
+ * Each row (subscriber + enrollment) is written in its own transaction, so a failure
+ * never leaves an orphan subscriber behind; counters are updated only after commit.
  */
 export async function processEnrollment(
 	item: ApiEnrollment,
@@ -272,11 +360,11 @@ export async function processEnrollment(
 
 	if (participants.length > 0) {
 		for (const p of participants) {
-			await processSingleParticipant(item, p, result, upsert);
+			await upsertEnrollmentRow(buildParticipantTarget(item, p), result, upsert);
 		}
 	} else {
 		// Backward compat / PENDING: use flat deprecated fields + externalId = item.id
-		await processFlatEnrollment(item, result, upsert);
+		await upsertEnrollmentRow(buildFlatTarget(item), result, upsert);
 	}
 }
 
@@ -308,165 +396,49 @@ function getInternalLineItemId(item: ApiEnrollment): string | null {
 	return item.internalLineItemId ?? item.lineItemId;
 }
 
-async function createSubscriberFromParticipant(
+/** Enrollment columns written on both insert and update (i.e. all but identity/creation). */
+export type EnrollmentRowValues = Omit<
+	NewEnrollment,
+	'id' | 'externalId' | 'subscriberId' | 'externalCreatedAt' | 'createdAt' | 'updatedAt'
+>;
+
+/** Subscriber anagrafica copied from the enrollment on create and update. */
+export type SubscriberRowValues = Pick<
+	NewSubscriber,
+	| 'firstName'
+	| 'lastName'
+	| 'email'
+	| 'phone'
+	| 'taxId'
+	| 'courseName'
+	| 'courseStartDate'
+	| 'courseEndDate'
+>;
+
+interface EnrollmentPerson {
+	customerEmail: string;
+	firstName: string | null;
+	lastName: string | null;
+	phone: string | null;
+	fiscalCode: string | null;
+	quantity: number;
+}
+
+export interface EnrollmentTarget {
+	externalId: string;
+	enrollment: EnrollmentRowValues;
+	externalCreatedAt: Date;
+	subscriber: SubscriberRowValues;
+	/** Legacy flat enrollments reuse an existing subscriber with the same email on first import. */
+	matchSubscriberByEmail: boolean;
+}
+
+/** Single mapping from the API payload to the `enrollments` columns. */
+export function buildEnrollmentValues(
 	item: ApiEnrollment,
-	participant: ApiParticipant
-): Promise<number> {
-	const [newSub] = await db
-		.insert(subscribers)
-		.values({
-			firstName: participant.firstName,
-			lastName: participant.lastName,
-			email: participant.email ?? item.customerEmail,
-			phone: getParticipantPhone(item, participant),
-			taxId: getParticipantFiscalCode(item, participant),
-			courseName: getCourseName(item),
-			courseStartDate: getCourseStartDate(item),
-			courseEndDate: getCourseEndDate(item),
-			status: 'active'
-		})
-		.$returningId();
-
-	return newSub.id;
-}
-
-async function updateSubscriberFromParticipant(
-	subscriberId: number,
-	item: ApiEnrollment,
-	participant: ApiParticipant
-): Promise<void> {
-	await db
-		.update(subscribers)
-		.set({
-			firstName: participant.firstName,
-			lastName: participant.lastName,
-			email: participant.email ?? item.customerEmail,
-			phone: getParticipantPhone(item, participant),
-			taxId: getParticipantFiscalCode(item, participant),
-			courseName: getCourseName(item),
-			courseStartDate: getCourseStartDate(item),
-			courseEndDate: getCourseEndDate(item)
-		})
-		.where(eq(subscribers.id, subscriberId));
-}
-
-async function createSubscriberFromFlatEnrollment(item: ApiEnrollment): Promise<number> {
-	const [newSub] = await db
-		.insert(subscribers)
-		.values({
-			firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
-			lastName: item.lastName ?? (item.customerDisplayName?.split(' ').slice(1).join(' ') || ''),
-			email: item.customerEmail,
-			phone: item.phone ?? null,
-			taxId: item.fiscalCode ?? null,
-			courseName: getCourseName(item),
-			courseStartDate: getCourseStartDate(item),
-			courseEndDate: getCourseEndDate(item),
-			status: 'active'
-		})
-		.$returningId();
-
-	return newSub.id;
-}
-
-async function updateSubscriberFromFlatEnrollment(
-	subscriberId: number,
-	item: ApiEnrollment
-): Promise<void> {
-	await db
-		.update(subscribers)
-		.set({
-			firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
-			lastName: item.lastName ?? (item.customerDisplayName?.split(' ').slice(1).join(' ') || ''),
-			email: item.customerEmail,
-			phone: item.phone ?? null,
-			taxId: item.fiscalCode ?? null,
-			courseName: getCourseName(item),
-			courseStartDate: getCourseStartDate(item),
-			courseEndDate: getCourseEndDate(item)
-		})
-		.where(eq(subscribers.id, subscriberId));
-}
-
-async function processSingleParticipant(
-	item: ApiEnrollment,
-	participant: ApiParticipant,
-	result: SyncResult,
-	upsert: boolean
-): Promise<void> {
-	const externalId = `${item.id}_${participant.index}`;
-
-	// Check if this enrollment row already exists to recover its subscriberId (re-sync safety)
-	const [existingEnrollment] = await db
-		.select({ id: enrollments.id, subscriberId: enrollments.subscriberId })
-		.from(enrollments)
-		.where(eq(enrollments.externalId, externalId))
-		.limit(1);
-
-	let subscriberId: number | null = null;
-
-	if (existingEnrollment) {
-		if (!upsert) return;
-		// Reuse the subscriber already linked to this enrollment row
-		subscriberId = existingEnrollment.subscriberId ?? null;
-		if (!subscriberId) {
-			subscriberId = await createSubscriberFromParticipant(item, participant);
-			result.subscribersCreated++;
-		}
-	} else {
-		// First sync: always create a fresh subscriber for this participant
-		// (each participant has their own email from the participants array)
-		subscriberId = await createSubscriberFromParticipant(item, participant);
-		result.subscribersCreated++;
-	}
-
-	if (existingEnrollment) {
-		if (subscriberId) {
-			await updateSubscriberFromParticipant(subscriberId, item, participant);
-		}
-
-		// upsert: aggiorna dati anagrafici e corso
-		await db
-			.update(enrollments)
-			.set({
-				subscriberId,
-				orderId: item.orderId,
-				orderName: item.orderName ?? null,
-				lineItemId: item.lineItemId,
-				shopifyLineItemId: getShopifyLineItemId(item),
-				internalLineItemId: getInternalLineItemId(item),
-				productId: item.productId ?? null,
-				variantId: item.variantId ?? null,
-				productTitle: item.productTitle ?? null,
-				variantTitle: item.variantTitle ?? null,
-				quantity: 1,
-				customerEmail: participant.email ?? item.customerEmail,
-				customerDisplayName: item.customerDisplayName ?? null,
-				firstName: participant.firstName,
-				lastName: participant.lastName,
-				phone: getParticipantPhone(item, participant),
-				fiscalCode: getParticipantFiscalCode(item, participant),
-				vatNumber: item.vatNumber ?? null,
-				startDate: getCourseStartDate(item),
-				endDate: getCourseEndDate(item),
-				courseDurationDays: item.enrollmentType?.duration ?? null,
-				courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
-				enrollmentTypeId: item.enrollmentType?.id ?? null,
-				enrollmentTypeName: item.enrollmentType?.name ?? null,
-				enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
-				notes: item.notes ?? null,
-				submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
-				status: item.status,
-				externalUpdatedAt: new Date(item.updatedAt)
-			})
-			.where(eq(enrollments.externalId, externalId));
-
-		return;
-	}
-
-	await db.insert(enrollments).values({
-		externalId,
-		subscriberId,
+	person: EnrollmentPerson
+): EnrollmentRowValues {
+	return {
 		orderId: item.orderId,
 		orderName: item.orderName ?? null,
 		lineItemId: item.lineItemId,
@@ -476,13 +448,13 @@ async function processSingleParticipant(
 		variantId: item.variantId ?? null,
 		productTitle: item.productTitle ?? null,
 		variantTitle: item.variantTitle ?? null,
-		quantity: 1,
-		customerEmail: participant.email ?? item.customerEmail,
+		quantity: person.quantity,
+		customerEmail: person.customerEmail,
 		customerDisplayName: item.customerDisplayName ?? null,
-		firstName: participant.firstName,
-		lastName: participant.lastName,
-		phone: getParticipantPhone(item, participant),
-		fiscalCode: getParticipantFiscalCode(item, participant),
+		firstName: person.firstName,
+		lastName: person.lastName,
+		phone: person.phone,
+		fiscalCode: person.fiscalCode,
 		vatNumber: item.vatNumber ?? null,
 		startDate: getCourseStartDate(item),
 		endDate: getCourseEndDate(item),
@@ -494,126 +466,147 @@ async function processSingleParticipant(
 		notes: item.notes ?? null,
 		submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
 		status: item.status,
-		externalCreatedAt: new Date(item.createdAt),
 		externalUpdatedAt: new Date(item.updatedAt)
-	});
-
-	result.enrollmentsCreated++;
+	};
 }
 
-async function processFlatEnrollment(
+export function buildParticipantTarget(
 	item: ApiEnrollment,
-	result: SyncResult,
-	upsert: boolean
-): Promise<void> {
-	let subscriberId: number | null = null;
+	participant: ApiParticipant
+): EnrollmentTarget {
+	const email = participant.email ?? item.customerEmail;
+	const phone = getParticipantPhone(item, participant);
+	const fiscalCode = getParticipantFiscalCode(item, participant);
 
-	const [existing] = await db
-		.select({ id: enrollments.id, subscriberId: enrollments.subscriberId })
-		.from(enrollments)
-		.where(eq(enrollments.externalId, item.id))
-		.limit(1);
+	return {
+		externalId: `${item.id}_${participant.index}`,
+		enrollment: buildEnrollmentValues(item, {
+			customerEmail: email,
+			firstName: participant.firstName,
+			lastName: participant.lastName,
+			phone,
+			fiscalCode,
+			quantity: 1
+		}),
+		externalCreatedAt: new Date(item.createdAt),
+		subscriber: {
+			firstName: participant.firstName,
+			lastName: participant.lastName,
+			email,
+			phone,
+			taxId: fiscalCode,
+			courseName: getCourseName(item),
+			courseStartDate: getCourseStartDate(item),
+			courseEndDate: getCourseEndDate(item)
+		},
+		// First sync: always a fresh subscriber for each participant
+		matchSubscriberByEmail: false
+	};
+}
 
-	if (existing) {
-		if (!upsert) return;
-
-		subscriberId = existing.subscriberId ?? null;
-		if (!subscriberId) {
-			subscriberId = await createSubscriberFromFlatEnrollment(item);
-			result.subscribersCreated++;
-		}
-
-		if (subscriberId) {
-			await updateSubscriberFromFlatEnrollment(subscriberId, item);
-		}
-
-		await db
-			.update(enrollments)
-			.set({
-				subscriberId,
-				orderId: item.orderId,
-				orderName: item.orderName ?? null,
-				lineItemId: item.lineItemId,
-				shopifyLineItemId: getShopifyLineItemId(item),
-				internalLineItemId: getInternalLineItemId(item),
-				productId: item.productId ?? null,
-				variantId: item.variantId ?? null,
-				productTitle: item.productTitle ?? null,
-				variantTitle: item.variantTitle ?? null,
-				quantity: item.quantity,
-				customerEmail: item.customerEmail,
-				customerDisplayName: item.customerDisplayName ?? null,
-				firstName: item.firstName ?? null,
-				lastName: item.lastName ?? null,
-				phone: item.phone ?? null,
-				fiscalCode: item.fiscalCode ?? null,
-				vatNumber: item.vatNumber ?? null,
-				startDate: getCourseStartDate(item),
-				endDate: getCourseEndDate(item),
-				courseDurationDays: item.enrollmentType?.duration ?? null,
-				courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
-				enrollmentTypeId: item.enrollmentType?.id ?? null,
-				enrollmentTypeName: item.enrollmentType?.name ?? null,
-				enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
-				notes: item.notes ?? null,
-				submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
-				status: item.status,
-				externalUpdatedAt: new Date(item.updatedAt)
-			})
-			.where(eq(enrollments.externalId, item.id));
-
-		return;
-	}
-
-	const [existingSub] = await db
-		.select({ id: subscribers.id })
-		.from(subscribers)
-		.where(eq(subscribers.email, item.customerEmail))
-		.limit(1);
-
-	if (existingSub) {
-		subscriberId = existingSub.id;
-		if (upsert) {
-			await updateSubscriberFromFlatEnrollment(subscriberId, item);
-		}
-	} else {
-		subscriberId = await createSubscriberFromFlatEnrollment(item);
-		result.subscribersCreated++;
-	}
-
-	await db.insert(enrollments).values({
+export function buildFlatTarget(item: ApiEnrollment): EnrollmentTarget {
+	return {
 		externalId: item.id,
-		subscriberId,
-		orderId: item.orderId,
-		orderName: item.orderName ?? null,
-		lineItemId: item.lineItemId,
-		shopifyLineItemId: getShopifyLineItemId(item),
-		internalLineItemId: getInternalLineItemId(item),
-		productId: item.productId ?? null,
-		variantId: item.variantId ?? null,
-		productTitle: item.productTitle ?? null,
-		variantTitle: item.variantTitle ?? null,
-		quantity: item.quantity,
-		customerEmail: item.customerEmail,
-		customerDisplayName: item.customerDisplayName ?? null,
-		firstName: item.firstName ?? null,
-		lastName: item.lastName ?? null,
-		phone: item.phone ?? null,
-		fiscalCode: item.fiscalCode ?? null,
-		vatNumber: item.vatNumber ?? null,
-		startDate: getCourseStartDate(item),
-		endDate: getCourseEndDate(item),
-		courseDurationDays: item.enrollmentType?.duration ?? null,
-		courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
-		enrollmentTypeId: item.enrollmentType?.id ?? null,
-		enrollmentTypeName: item.enrollmentType?.name ?? null,
-		enrollmentTypeCourseType: item.enrollmentType?.courseType ?? null,
-		notes: item.notes ?? null,
-		submittedAt: item.submittedAt ? new Date(item.submittedAt) : null,
-		status: item.status,
+		enrollment: buildEnrollmentValues(item, {
+			customerEmail: item.customerEmail,
+			firstName: item.firstName ?? null,
+			lastName: item.lastName ?? null,
+			phone: item.phone ?? null,
+			fiscalCode: item.fiscalCode ?? null,
+			quantity: item.quantity
+		}),
 		externalCreatedAt: new Date(item.createdAt),
-		externalUpdatedAt: new Date(item.updatedAt)
+		subscriber: {
+			firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
+			lastName: item.lastName ?? (item.customerDisplayName?.split(' ').slice(1).join(' ') || ''),
+			email: item.customerEmail,
+			phone: item.phone ?? null,
+			taxId: item.fiscalCode ?? null,
+			courseName: getCourseName(item),
+			courseStartDate: getCourseStartDate(item),
+			courseEndDate: getCourseEndDate(item)
+		},
+		matchSubscriberByEmail: true
+	};
+}
+
+async function createSubscriber(tx: DbTransaction, values: SubscriberRowValues): Promise<number> {
+	const [newSub] = await tx
+		.insert(subscribers)
+		.values({ ...values, status: 'active' })
+		.$returningId();
+	return newSub.id;
+}
+
+async function updateSubscriber(
+	tx: DbTransaction,
+	subscriberId: number,
+	values: SubscriberRowValues
+): Promise<void> {
+	await tx.update(subscribers).set(values).where(eq(subscribers.id, subscriberId));
+}
+
+/**
+ * Creates or (with `upsert`) updates one enrollment row and its subscriber atomically.
+ *
+ * The existing row is read `FOR UPDATE`, so a webhook and a sync touching the same
+ * `externalId` are serialized; the insert uses `ON DUPLICATE KEY UPDATE` on the unique
+ * `external_id` as a last line of defence against a concurrent first insert.
+ */
+async function upsertEnrollmentRow(
+	target: EnrollmentTarget,
+	result: SyncResult,
+	upsert: boolean
+): Promise<void> {
+	const counters = await db.transaction(async (tx) => {
+		const created = { enrollments: 0, subscribers: 0 };
+
+		const [existing] = await tx
+			.select({ id: enrollments.id, subscriberId: enrollments.subscriberId })
+			.from(enrollments)
+			.where(eq(enrollments.externalId, target.externalId))
+			.limit(1)
+			.for('update');
+
+		if (existing && !upsert) return created;
+
+		let subscriberId: number | null = existing?.subscriberId ?? null;
+
+		if (subscriberId) {
+			// Reuse the subscriber already linked to this enrollment row
+			await updateSubscriber(tx, subscriberId, target.subscriber);
+		} else if (!existing && target.matchSubscriberByEmail) {
+			const [existingSub] = await tx
+				.select({ id: subscribers.id })
+				.from(subscribers)
+				.where(eq(subscribers.email, target.subscriber.email))
+				.limit(1);
+
+			if (existingSub) {
+				subscriberId = existingSub.id;
+				if (upsert) await updateSubscriber(tx, subscriberId, target.subscriber);
+			}
+		}
+
+		if (!subscriberId) {
+			subscriberId = await createSubscriber(tx, target.subscriber);
+			created.subscribers++;
+		}
+
+		const values = { ...target.enrollment, subscriberId };
+		await tx
+			.insert(enrollments)
+			.values({
+				...values,
+				externalId: target.externalId,
+				externalCreatedAt: target.externalCreatedAt
+			})
+			.onDuplicateKeyUpdate({ set: values });
+
+		if (!existing) created.enrollments++;
+		return created;
 	});
 
-	result.enrollmentsCreated++;
+	result.enrollmentsCreated += counters.enrollments;
+	result.subscribersCreated += counters.subscribers;
 }

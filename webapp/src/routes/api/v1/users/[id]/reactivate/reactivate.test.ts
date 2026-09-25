@@ -80,8 +80,8 @@ describe('POST /api/v1/users/:id/reactivate', () => {
 				entityId: 7
 			})
 		);
-		expect(body.user).toMatchObject({ id: 7, status: 'active', deletedAt: null });
-		expect(body.user).not.toHaveProperty('passwordHash');
+		expect(body.data.user).toMatchObject({ id: 7, status: 'active', deletedAt: null });
+		expect(body.data.user).not.toHaveProperty('passwordHash');
 	});
 
 	it('rejects an account that is already active', async () => {

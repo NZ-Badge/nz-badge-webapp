@@ -1,7 +1,7 @@
-import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { AuthError } from '$lib/services/auth';
+import { authErrorResponse, badRequest, created, notFound, serverError } from '$lib/utils/api';
 import {
 	createManualSubscriberAttendance,
 	parseSubscriberAttendanceDateTime,
@@ -16,25 +16,26 @@ const manualSchema = z.object({
 });
 
 function errorResponse(error: unknown): Response {
-	if (error instanceof AuthError) {
-		return json({ error: error.message }, { status: error.code === 'UNAUTHORIZED' ? 401 : 403 });
-	}
+	if (error instanceof AuthError) return authErrorResponse(error);
 	if (error instanceof SubscriberAttendanceAdminError) {
-		return json({ error: error.message }, { status: error.code === 'NOT_FOUND' ? 404 : 400 });
+		return error.code === 'NOT_FOUND' ? notFound(error.message) : badRequest(error.message);
 	}
 	console.error('[attendance/manual] request failed:', error);
-	return json({ error: 'Errore interno' }, { status: 500 });
+	return serverError('Errore interno');
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	try {
 		const actor = await locals.verifyStaffOrAdmin();
-		const parsed = manualSchema.safeParse(await request.json());
+		let body: unknown;
+		try {
+			body = await request.json();
+		} catch {
+			return badRequest('JSON non valido');
+		}
+		const parsed = manualSchema.safeParse(body);
 		if (!parsed.success) {
-			return json(
-				{ error: 'Dati non validi', details: parsed.error.flatten().fieldErrors },
-				{ status: 400 }
-			);
+			return badRequest('Dati non validi', parsed.error.flatten().fieldErrors);
 		}
 
 		const event = await createManualSubscriberAttendance({
@@ -44,7 +45,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			readTimestamp: parseSubscriberAttendanceDateTime(parsed.data.readTimestamp),
 			note: parsed.data.note
 		});
-		return json({ event }, { status: 201 });
+		return created({ event });
 	} catch (error) {
 		return errorResponse(error);
 	}

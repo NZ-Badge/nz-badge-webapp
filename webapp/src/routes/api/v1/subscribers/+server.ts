@@ -3,15 +3,21 @@ import { eq, and, like, or, count, SQL } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { subscribers } from '$lib/db/schema';
 import { subscribersQuerySchema } from '$lib/utils/validation';
-import { ok, created, badRequest, unauthorized, serverError, formatZodError } from '$lib/utils/api';
-import { AuthError } from '$lib/services/auth';
+import {
+	ok,
+	created,
+	badRequest,
+	serverError,
+	formatZodError,
+	authErrorResponse
+} from '$lib/utils/api';
 import { createSubscriber, SubscriberServiceError } from '$lib/services/subscribers';
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	try {
 		await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	const parsed = subscribersQuerySchema.safeParse(Object.fromEntries(event.url.searchParams));
@@ -52,7 +58,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		adminUser = await event.locals.verifyStaffOrAdmin();
 	} catch (err) {
-		return err instanceof AuthError ? unauthorized(err.message) : serverError();
+		return authErrorResponse(err);
 	}
 
 	let body: unknown;
