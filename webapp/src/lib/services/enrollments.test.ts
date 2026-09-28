@@ -75,6 +75,7 @@ import {
 	buildFlatTarget,
 	buildParticipantTarget,
 	EnrollmentSyncInProgressError,
+	processEnrollment,
 	syncEnrollments,
 	type ApiEnrollment
 } from './enrollments';
@@ -215,6 +216,23 @@ describe('syncEnrollments', () => {
 		const enrollmentInserts = mocks.state.inserts.filter((entry) => entry.table === enrollments);
 		expect(enrollmentInserts.map((entry) => entry.values.subscriberId)).toEqual([55, 100]);
 		expect(mocks.state.inserts.filter((entry) => entry.table === subscribers)).toHaveLength(1);
+	});
+
+	it('reattaches an existing unlinked enrollment to a matching subscriber on webhook upsert', async () => {
+		mocks.state.selectResults.push([{ id: 15, subscriberId: null }], [{ id: 7 }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(
+			apiEnrollment({ participants: [apiEnrollment().participants[0]] }),
+			result,
+			true
+		);
+
+		expect(result).toMatchObject({ enrollmentsCreated: 0, subscribersCreated: 0 });
+		expect(mocks.state.inserts.filter((entry) => entry.table === subscribers)).toHaveLength(0);
+		expect(
+			mocks.state.inserts.filter((entry) => entry.table === enrollments)[0].values.subscriberId
+		).toBe(7);
 	});
 
 	it('skips rows that already exist when not upserting', async () => {

@@ -683,8 +683,8 @@ async function upsertEnrollmentRow(
 		if (subscriberId) {
 			// Reuse the subscriber already linked to this enrollment row
 			await updateSubscriber(tx, subscriberId, target.subscriber);
-		} else if (!existing) {
-			// New course for a person already known: attach it instead of duplicating the subscriber
+		} else {
+			// An existing unlinked enrollment may also belong to a known subscriber.
 			subscriberId = await findMatchingSubscriber(tx, target);
 			if (subscriberId && upsert) await updateSubscriber(tx, subscriberId, target.subscriber);
 		}
