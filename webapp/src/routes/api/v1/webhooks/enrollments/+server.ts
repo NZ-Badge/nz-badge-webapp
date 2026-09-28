@@ -4,9 +4,38 @@ import { z } from 'zod';
 import { ok, badRequest, unauthorized, serverError } from '$lib/utils/api';
 import { getWebhookSecret, processWebhookEnrollment } from '$lib/services/enrollments';
 import type { ApiEnrollment } from '$lib/services/enrollments';
+import {
+	createWebhookLog,
+	finishWebhookLog,
+	serializeWebhookPayload,
+	type WebhookLogStatus
+} from '$lib/services/enrollment-webhook-log';
 import { createLogger } from '$lib/server/logger';
 
 const log = createLogger('api/webhooks/enrollments');
+
+async function startLog(payload: string, externalId?: string): Promise<number | null> {
+	try {
+		return await createWebhookLog(payload, externalId);
+	} catch {
+		log.error('Could not record authenticated webhook');
+		return null;
+	}
+}
+
+async function finishLog(
+	id: number | null,
+	status: WebhookLogStatus,
+	httpStatus: number,
+	externalId?: string
+): Promise<void> {
+	if (id === null) return;
+	try {
+		await finishWebhookLog(id, status, httpStatus, externalId);
+	} catch {
+		log.error('Could not update webhook log', { logId: id });
+	}
+}
 
 const participantSchema = z.object({
 	index: z.number().int().positive(),
@@ -83,16 +112,24 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		return unauthorized('Secret non valido');
 	}
 
-	// Parsing body
+	// Record only authenticated payloads; never store the secret header.
 	let body: unknown;
 	try {
-		body = await event.request.json();
+		body = JSON.parse(await event.request.text());
 	} catch {
+		const logId = await startLog('[JSON non valido: corpo non archiviato]');
+		await finishLog(logId, 'invalid_json', 400);
 		return badRequest('JSON non valido');
 	}
+	const externalId =
+		body && typeof body === 'object' && 'id' in body && typeof body.id === 'string'
+			? body.id
+			: undefined;
+	const logId = await startLog(serializeWebhookPayload(body), externalId);
 
 	const parsed = enrollmentSchema.safeParse(body);
 	if (!parsed.success) {
+		await finishLog(logId, 'invalid_payload', 400);
 		return badRequest('Payload non valido', parsed.error.issues);
 	}
 
@@ -100,8 +137,10 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	try {
 		const result = await processWebhookEnrollment(item);
+		await finishLog(logId, item.status === 'PENDING' ? 'ignored' : 'processed', 200, item.id);
 		return ok(result);
 	} catch (err) {
+		await finishLog(logId, 'failed', 500, item.id);
 		log.error('Webhook processing failed', { err });
 		return serverError();
 	}

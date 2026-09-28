@@ -10,6 +10,7 @@ Entrambi i flussi convergono in `src/lib/services/enrollments.ts` e aggiornano:
 - `enrollments`
 - `subscribers`
 - `enrollment_sync_log`
+- `enrollment_webhook_log` (solo per richieste webhook autenticate)
 
 ## Configurazione
 
@@ -65,6 +66,19 @@ Header richiesti:
 Il secret viene confrontato con `timingSafeEqual`.
 
 Se il secret non e' stato ancora generato, il server restituisce `401`.
+
+Le richieste con secret valido vengono registrate in `enrollment_webhook_log` prima
+dell'elaborazione, con data di ricezione, payload, identificativo esterno ed esito finale
+(`processed`, `ignored`, `invalid_json`, `invalid_payload` o `failed`). Se il processo si
+interrompe prima dell'esito, la voce resta `received`. Le richieste senza secret valido non
+vengono registrate. L'header `X-Webhook-Secret` non viene salvato; i campi del JSON che
+contengono credenziali sono oscurati, mentre per JSON non valido si conserva solo un segnaposto.
+Se la scrittura del registro fallisce, il webhook continua comunque a essere elaborato.
+
+Gli Amministratori consultano i payload in **Amministrazione → Manutenzione → Webhook**,
+con 25 voci per pagina. Possono eliminare una voce o svuotare il registro dopo conferma;
+queste operazioni non eliminano iscrizioni e sono annotate in `audit_log`. Il registro contiene
+dati personali ed e' incluso nei backup del database.
 
 ## Payload accettato
 

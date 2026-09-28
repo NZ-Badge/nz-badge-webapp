@@ -58,9 +58,14 @@ disattivazione o riattivazione degli account resta riservata agli Amministratori
 Gli Amministratori possono scaricare da **Amministrazione → Manutenzione** un backup completo
 del database in formato `.sql.gz`. Il download include struttura, dati, trigger, routine ed eventi
 del database configurato in `DATABASE_URL`; usa `mariadb-dump` o `mysqldump` e comprime il flusso con gzip.
+
 Il server deve avere uno dei due client installato (`mariadb-dump` e' incluso nell'immagine Docker).
 Il file contiene dati riservati: conservarlo in modo sicuro. Se il dump fallisce durante il
 download, il trasferimento viene interrotto e il file non è valido.
+
+Nella stessa pagina, il tab **Webhook** mostra data, esito e payload dei webhook iscrizioni
+autenticati. Il registro e' paginato; gli Amministratori possono eliminare una voce o svuotarlo
+dopo conferma. Queste azioni non modificano le iscrizioni e vengono annotate nell'audit log.
 
 La stessa pagina permette di importare un backup `.sql.gz` fidato del database configurato in
 `DATABASE_URL` (massimo 100 MB compressi). L'importazione richiede una conferma esplicita,

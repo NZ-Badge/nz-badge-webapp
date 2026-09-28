@@ -49,7 +49,8 @@ export type AuditEntityType =
 	| 'setting'
 	| 'sync_log'
 	| 'firmware'
-	| 'database';
+	| 'database'
+	| 'webhook_log';
 
 /**
  * Audit log entry structure

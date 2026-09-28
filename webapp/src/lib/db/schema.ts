@@ -8,6 +8,7 @@ import {
 	boolean,
 	mysqlEnum,
 	json,
+	longtext,
 	binary,
 	date,
 	datetime,
@@ -110,6 +111,29 @@ export const enrollments = mysqlTable(
 		index('idx_enrollment_start_end').on(t.startDate, t.endDate),
 		index('idx_enrollment_end_date').on(t.endDate)
 	]
+);
+
+// ── enrollment_webhook_log ───────────────────────────────────────────────────
+export const enrollmentWebhookLog = mysqlTable(
+	'enrollment_webhook_log',
+	{
+		id: int().primaryKey().autoincrement(),
+		receivedAt: timestamp('received_at').notNull().defaultNow(),
+		externalId: varchar('external_id', { length: 50 }),
+		status: mysqlEnum('status', [
+			'received',
+			'processed',
+			'ignored',
+			'invalid_json',
+			'invalid_payload',
+			'failed'
+		])
+			.notNull()
+			.default('received'),
+		httpStatus: int('http_status'),
+		payload: longtext().notNull()
+	},
+	(t) => [index('idx_enrollment_webhook_log_received').on(t.receivedAt, t.id)]
 );
 
 // ── enrollment_sync_log ───────────────────────────────────────────────────────
