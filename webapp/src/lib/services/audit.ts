@@ -35,7 +35,8 @@ export type AuditAction =
 	| 'DEVICE_REGISTER'
 	| 'DEVICE_DISABLE'
 	| 'FIRMWARE_ACTIVATE'
-	| 'DB_IMPORT';
+	| 'DB_IMPORT'
+	| 'SUBSCRIBER_MERGE';
 
 // Entity types that can be audited
 export type AuditEntityType =

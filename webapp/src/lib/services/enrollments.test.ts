@@ -27,7 +27,8 @@ const mocks = vi.hoisted(() => {
 					return Promise.resolve(rows);
 				})
 			});
-			const where = vi.fn(() => ({ limit: vi.fn(() => limited) }));
+			const limit = vi.fn(() => limited);
+			const where = vi.fn(() => ({ limit, orderBy: vi.fn(() => ({ limit })) }));
 			return { from: vi.fn(() => ({ where })) };
 		}),
 		insert: vi.fn((table: unknown) => ({
@@ -72,6 +73,7 @@ vi.mock('./settings', () => ({
 
 import {
 	buildFlatTarget,
+	buildParticipantTarget,
 	EnrollmentSyncInProgressError,
 	syncEnrollments,
 	type ApiEnrollment
@@ -203,6 +205,18 @@ describe('syncEnrollments', () => {
 		expect(result).toMatchObject({ enrollmentsCreated: 1, subscribersCreated: 1, errors: 1 });
 	});
 
+	it('attaches a new course to the subscriber already known for that participant', async () => {
+		// enr-1_0: no enrollment row yet, matching subscriber 55; enr-1_1: no row, no match
+		mocks.state.selectResults.push([], [{ id: 55 }], [], []);
+
+		const result = await syncEnrollments('manual');
+
+		expect(result).toMatchObject({ enrollmentsCreated: 2, subscribersCreated: 1 });
+		const enrollmentInserts = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+		expect(enrollmentInserts.map((entry) => entry.values.subscriberId)).toEqual([55, 100]);
+		expect(mocks.state.inserts.filter((entry) => entry.table === subscribers)).toHaveLength(1);
+	});
+
 	it('skips rows that already exist when not upserting', async () => {
 		mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }], [{ id: 8, subscriberId: 80 }]);
 
@@ -213,6 +227,21 @@ describe('syncEnrollments', () => {
 	});
 });
 
+describe('buildParticipantTarget', () => {
+	it('matches participants as a person, not by the shared buyer email', () => {
+		const item = apiEnrollment();
+		const target = buildParticipantTarget(item, item.participants[1]);
+
+		expect(target.externalId).toBe('enr-1_1');
+		expect(target.subscriberMatch).toBe('person');
+		expect(target.subscriber).toMatchObject({
+			firstName: 'Luca',
+			lastName: 'Bianchi',
+			email: 'buyer@example.com'
+		});
+	});
+});
+
 describe('buildFlatTarget', () => {
 	it('maps legacy flat fields and reuses subscribers by email', () => {
 		const target = buildFlatTarget(
@@ -220,7 +249,7 @@ describe('buildFlatTarget', () => {
 		);
 
 		expect(target.externalId).toBe('enr-1');
-		expect(target.matchSubscriberByEmail).toBe(true);
+		expect(target.subscriberMatch).toBe('email');
 		expect(target.enrollment).toMatchObject({ quantity: 2, fiscalCode: 'RSSMRA', firstName: null });
 		expect(target.subscriber).toMatchObject({
 			firstName: 'Anna',

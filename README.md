@@ -222,6 +222,7 @@ npm run dev
 | `npm run db:migrate`                     | Comando Drizzle Kit migrate                                    |
 | `npm run db:migrate:run`                 | Esegue le migration SQL presenti in `src/lib/db/migrations`    |
 | `npm run db:seed`                        | Crea il primo utente admin                                     |
+| `npm run db:merge-duplicate-subscribers` | Anteprima/unione degli iscritti duplicati (vedi sotto)         |
 | `npm run jobs:weekly-attendance-summary` | Invia il riepilogo settimanale presenze, se abilitato e dovuto |
 
 ### Job riepilogo settimanale presenze
@@ -245,6 +246,27 @@ Opzioni utili per test manuali:
 
 ```bash
 npm run jobs:weekly-attendance-summary -- --dry-run --force --date=2026-05-30
+```
+
+### Unione iscritti duplicati
+
+Le sync precedenti creavano un iscritto per ogni corso acquistato da un partecipante. Lo script
+riunisce i duplicati: stesso nome e cognome e stesso codice fiscale o email, lo stesso criterio
+usato ora dalla sync. Senza opzioni mostra solo l'anteprima; con `--apply` sposta iscrizioni,
+card, presenze e riepiloghi settimanali sull'iscritto mantenuto, completa i dati mancanti, elimina
+i duplicati e registra `SUBSCRIBER_MERGE` in `audit_log`. Ogni gruppo viene unito in una propria
+transazione.
+
+Viene mantenuto l'iscritto con una card attiva, poi quello non annullato, poi quello con piu'
+iscrizioni, poi il primo creato. I gruppi con piu' card RFID o abbinamenti NFC attivi, oppure con
+codici fiscali diversi, vengono solo segnalati e vanno risolti a mano (per esempio disabilitando
+una delle card) prima di rilanciare lo script.
+
+```bash
+# fare prima un backup del database
+DATABASE_URL=... npm run db:merge-duplicate-subscribers                   # anteprima
+DATABASE_URL=... npm run db:merge-duplicate-subscribers -- --apply        # unione
+DATABASE_URL=... npm run db:merge-duplicate-subscribers -- --apply --only=12,57 --user-id=1
 ```
 
 ## Struttura del progetto

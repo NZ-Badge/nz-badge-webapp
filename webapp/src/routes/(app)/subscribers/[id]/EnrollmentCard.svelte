@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { Activity, CalendarDays, CircleCheck, Clock, TriangleAlert } from '@lucide/svelte';
+	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { DatePicker } from '$lib/components/ui/date-picker';
 	import { formatDateIT } from '$lib/utils/date.js';
@@ -26,6 +27,8 @@
 	const otherIssues = $derived(Math.max(0, (summary?.issues.length ?? 0) - resolvableIssues));
 	const lastSession = $derived(summary?.sessions.at(-1));
 	const errorId = $derived(`end-date-error-${enrollment.id}`);
+	const expired = $derived(enrollment.courseState === 'expired');
+	const titleId = $derived(`enrollment-title-${enrollment.id}`);
 </script>
 
 {#snippet notice(tone: 'warning' | 'danger' | 'positive' | 'muted', title: string, text: string)}
@@ -52,12 +55,25 @@
 	</div>
 {/snippet}
 
-<article class="overflow-hidden rounded-xl border bg-card shadow-xs">
+<article
+	class="overflow-hidden rounded-xl border shadow-xs {expired
+		? 'border-dashed bg-muted/40 text-muted-foreground'
+		: 'bg-card'}"
+	aria-labelledby={titleId}
+	data-course-state={enrollment.courseState}
+>
 	<header class="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
 		<div class="min-w-0">
-			<h3 class="text-base leading-snug font-semibold">
-				{enrollment.productTitle ?? 'Corso senza titolo'}
-			</h3>
+			<div class="flex flex-wrap items-center gap-2">
+				<h3 id={titleId} class="text-base leading-snug font-semibold">
+					{enrollment.productTitle ?? 'Corso senza titolo'}
+				</h3>
+				{#if expired}
+					<Badge variant="secondary">Scaduto · disabilitato</Badge>
+				{:else}
+					<Badge variant="positive">Attivo</Badge>
+				{/if}
+			</div>
 			{#if enrollment.variantTitle}
 				<p class="mt-1 text-sm text-muted-foreground">{enrollment.variantTitle}</p>
 			{/if}

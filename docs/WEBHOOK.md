@@ -131,7 +131,9 @@ Vincoli rilevanti:
 - l'iscrizione viene identificata da `external_id`
 - una chiamata webhook crea comunque un record in `enrollment_sync_log` con `triggered_by = 'webhook'`
 - se l'iscrizione esiste gia', viene aggiornata
-- quando `participants[]` e' valorizzato, il servizio puo' associare o creare subscriber separati
+- quando `participants[]` e' valorizzato, ogni partecipante viene associato a un subscriber esistente
+  con stesso nome e cognome e stesso codice fiscale o email; altrimenti ne viene creato uno nuovo.
+  Una persona iscritta a piu' corsi resta quindi un solo subscriber con piu' iscrizioni
 - i campi root `phone`, `fiscalCode` e `vatNumber` sono dati comuni dell'iscrizione
 - i campi `participants[].phone` e `participants[].fiscalCode`, se presenti nello storico, sono usati solo come fallback
 

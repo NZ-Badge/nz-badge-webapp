@@ -25,6 +25,7 @@
 		"db:migrate:run": "tsx scripts/migrate.ts",
 		"db:seed": "tsx scripts/seed.ts",
 		"db:seed:attendance-demo": "tsx scripts/seed-attendance-demo.ts",
+		"db:merge-duplicate-subscribers": "tsx scripts/merge-duplicate-subscribers.ts",
 		"jobs:weekly-attendance-summary": "tsx scripts/send-weekly-attendance-summary.ts"
 	},
 	"devDependencies": {

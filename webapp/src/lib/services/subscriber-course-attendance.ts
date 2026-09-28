@@ -101,6 +101,20 @@ export function getEnrollmentAttendancePeriod(
 	};
 }
 
+export type EnrollmentCourseState = 'active' | 'expired';
+
+/**
+ * A course is expired once its end date (a Europe/Rome calendar day) is in the past;
+ * without an end date it stays active.
+ */
+export function getEnrollmentCourseState(
+	endDate: Date | string | null,
+	now: Date = new Date()
+): EnrollmentCourseState {
+	const endDateKey = toCourseDateKey(endDate);
+	return endDateKey && endDateKey < romeDateKey(now) ? 'expired' : 'active';
+}
+
 export function buildSubscriberCourseAttendanceSummary(
 	enrollment: SubscriberEnrollmentRow,
 	attendanceRows: SubscriberAttendanceRow[]

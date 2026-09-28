@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildSubscriberCourseAttendanceReportRows,
-	buildSubscriberCourseAttendanceSummaries
+	buildSubscriberCourseAttendanceSummaries,
+	getEnrollmentCourseState
 } from '$lib/services/subscriber-course-attendance';
 
 describe('buildSubscriberCourseAttendanceSummaries', () => {
@@ -96,5 +97,21 @@ describe('buildSubscriberCourseAttendanceSummaries', () => {
 			totalLabel: '2h',
 			anomalyCount: 1
 		});
+	});
+});
+
+describe('getEnrollmentCourseState', () => {
+	// 25/09/2026 00:30 a Roma, ancora 24/09 in UTC
+	const now = new Date('2026-09-24T22:30:00Z');
+
+	it('marks as expired only courses ended before today in Europe/Rome', () => {
+		expect(getEnrollmentCourseState('2026-09-24', now)).toBe('expired');
+		expect(getEnrollmentCourseState(new Date('2026-09-24T00:00:00Z'), now)).toBe('expired');
+		expect(getEnrollmentCourseState('2026-09-25', now)).toBe('active');
+		expect(getEnrollmentCourseState('2026-10-31', now)).toBe('active');
+	});
+
+	it('keeps courses without end date active', () => {
+		expect(getEnrollmentCourseState(null, now)).toBe('active');
 	});
 });

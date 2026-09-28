@@ -10,7 +10,7 @@ import {
 } from '$lib/db/schema';
 import type { DbTransaction } from '$lib/db/types';
 import { getSetting, getSettings, setSettings } from './settings';
-import { eq } from 'drizzle-orm';
+import { and, asc, eq, or } from 'drizzle-orm';
 import { createLogger } from '$lib/server/logger';
 
 const log = createLogger('enrollments');
@@ -502,8 +502,14 @@ export interface EnrollmentTarget {
 	enrollment: EnrollmentRowValues;
 	externalCreatedAt: Date;
 	subscriber: SubscriberRowValues;
-	/** Legacy flat enrollments reuse an existing subscriber with the same email on first import. */
-	matchSubscriberByEmail: boolean;
+	/**
+	 * How a new enrollment row finds an existing subscriber, so that a person enrolled in
+	 * several courses stays a single subscriber with many enrollments:
+	 * - `person`: same first and last name plus same fiscal code or email; used for
+	 *   participants, since one buyer email or fiscal code can cover several people.
+	 * - `email`: same email; legacy flat enrollments.
+	 */
+	subscriberMatch: 'person' | 'email';
 }
 
 /** Single mapping from the API payload to the `enrollments` columns. */
@@ -572,8 +578,7 @@ export function buildParticipantTarget(
 			courseStartDate: getCourseStartDate(item),
 			courseEndDate: getCourseEndDate(item)
 		},
-		// First sync: always a fresh subscriber for each participant
-		matchSubscriberByEmail: false
+		subscriberMatch: 'person'
 	};
 }
 
@@ -599,8 +604,38 @@ export function buildFlatTarget(item: ApiEnrollment): EnrollmentTarget {
 			courseStartDate: getCourseStartDate(item),
 			courseEndDate: getCourseEndDate(item)
 		},
-		matchSubscriberByEmail: true
+		subscriberMatch: 'email'
 	};
+}
+
+/** Existing subscriber the target's enrollment belongs to (see `subscriberMatch`). */
+async function findMatchingSubscriber(
+	tx: DbTransaction,
+	target: EnrollmentTarget
+): Promise<number | null> {
+	const { email, taxId, firstName, lastName } = target.subscriber;
+	const fiscalCode = taxId?.trim();
+
+	// Root `fiscalCode` may be shared by every participant of an order, so a person
+	// always needs the same name as well.
+	const condition =
+		target.subscriberMatch === 'email'
+			? eq(subscribers.email, email)
+			: and(
+					eq(subscribers.firstName, firstName),
+					eq(subscribers.lastName, lastName),
+					fiscalCode
+						? or(eq(subscribers.taxId, fiscalCode), eq(subscribers.email, email))
+						: eq(subscribers.email, email)
+				);
+
+	const [existing] = await tx
+		.select({ id: subscribers.id })
+		.from(subscribers)
+		.where(condition)
+		.orderBy(asc(subscribers.id))
+		.limit(1);
+	return existing?.id ?? null;
 }
 
 async function createSubscriber(tx: DbTransaction, values: SubscriberRowValues): Promise<number> {
@@ -648,17 +683,10 @@ async function upsertEnrollmentRow(
 		if (subscriberId) {
 			// Reuse the subscriber already linked to this enrollment row
 			await updateSubscriber(tx, subscriberId, target.subscriber);
-		} else if (!existing && target.matchSubscriberByEmail) {
-			const [existingSub] = await tx
-				.select({ id: subscribers.id })
-				.from(subscribers)
-				.where(eq(subscribers.email, target.subscriber.email))
-				.limit(1);
-
-			if (existingSub) {
-				subscriberId = existingSub.id;
-				if (upsert) await updateSubscriber(tx, subscriberId, target.subscriber);
-			}
+		} else if (!existing) {
+			// New course for a person already known: attach it instead of duplicating the subscriber
+			subscriberId = await findMatchingSubscriber(tx, target);
+			if (subscriberId && upsert) await updateSubscriber(tx, subscriberId, target.subscriber);
 		}
 
 		if (!subscriberId) {

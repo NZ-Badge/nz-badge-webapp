@@ -4,7 +4,10 @@ import { requirePageStaff } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { subscribers, cardRfid, attendance, enrollments } from '$lib/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { buildSubscriberCourseAttendanceSummaries } from '$lib/services/subscriber-course-attendance';
+import {
+	buildSubscriberCourseAttendanceSummaries,
+	getEnrollmentCourseState
+} from '$lib/services/subscriber-course-attendance';
 import {
 	removeSubscriber,
 	SubscriberServiceError,
@@ -26,7 +29,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	if (!subscriber) error(404, 'Subscriber not found');
 
-	const [cards, recentAttendance, allAttendance, subscriberEnrollments] = await Promise.all([
+	const [cards, recentAttendance, allAttendance, enrollmentRows] = await Promise.all([
 		db
 			.select({
 				id: cardRfid.id,
@@ -76,8 +79,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			})
 			.from(enrollments)
 			.where(eq(enrollments.subscriberId, subscriberId))
-			.orderBy(desc(enrollments.externalCreatedAt))
+			.orderBy(desc(enrollments.startDate), desc(enrollments.externalCreatedAt))
 	]);
+
+	// Tutti i corsi dell'iscritto: prima quelli attivi, poi gli scaduti (entrambi dal più recente).
+	const now = new Date();
+	const subscriberEnrollments = enrollmentRows
+		.map((enrollment) => ({
+			...enrollment,
+			courseState: getEnrollmentCourseState(enrollment.endDate, now)
+		}))
+		.sort(
+			(left, right) =>
+				Number(left.courseState === 'expired') - Number(right.courseState === 'expired')
+		);
 
 	const courseAttendance = buildSubscriberCourseAttendanceSummaries(
 		subscriberEnrollments,
