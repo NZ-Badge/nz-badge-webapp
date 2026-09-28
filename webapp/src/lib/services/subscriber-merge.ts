@@ -52,6 +52,10 @@ export interface MergePlan {
 	conflicts: string[];
 }
 
+export interface MergeOptions {
+	preserveSurvivorData?: boolean;
+}
+
 export interface MergeGroupResult {
 	survivorId: number;
 	mergedIds: number[];
@@ -159,7 +163,7 @@ function compareRank(left: MergeCandidate, right: MergeCandidate): number {
 	return 0;
 }
 
-export function planMerge(group: MergeCandidate[]): MergePlan {
+export function planMerge(group: MergeCandidate[], options: MergeOptions = {}): MergePlan {
 	if (group.length < 2) throw new Error('A merge group needs at least two subscribers');
 
 	const ordered = [...group].sort(compareRank);
@@ -204,7 +208,12 @@ export function planMerge(group: MergeCandidate[]): MergePlan {
 		survivorUpdate.courseEndDate = latestCourse.courseEndDate;
 	}
 
-	return { survivor, duplicates, survivorUpdate, conflicts };
+	return {
+		survivor,
+		duplicates,
+		survivorUpdate: options.preserveSurvivorData ? {} : survivorUpdate,
+		conflicts
+	};
 }
 
 // ── Accesso al database ───────────────────────────────────────────────────────
@@ -265,10 +274,18 @@ async function loadCandidates(database: DbOrTx, ids?: number[]): Promise<MergeCa
 }
 
 /** Piani di unione per tutti i duplicati presenti (sola lettura). */
-export async function planDuplicateSubscriberMerges(database: AppDatabase): Promise<MergePlan[]> {
+export async function planDuplicateSubscriberMerges(
+	database: AppDatabase,
+	options: MergeOptions = {}
+): Promise<MergePlan[]> {
 	const candidates = await loadCandidates(database);
 	const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
-	return findDuplicateGroups(candidates).map((ids) => planMerge(ids.map((id) => byId.get(id)!)));
+	return findDuplicateGroups(candidates).map((ids) =>
+		planMerge(
+			ids.map((id) => byId.get(id)!),
+			options
+		)
+	);
 }
 
 function affectedRows(result: unknown): number {
@@ -285,7 +302,8 @@ export class SubscriberMergeSkippedError extends Error {}
 export async function applySubscriberMerge(
 	database: AppDatabase,
 	plan: MergePlan,
-	userId?: number
+	userId?: number,
+	options: MergeOptions = {}
 ): Promise<MergeGroupResult> {
 	const ids = [plan.survivor.id, ...plan.duplicates.map((d) => d.id)];
 
@@ -294,7 +312,7 @@ export async function applySubscriberMerge(
 		if (current.length !== ids.length || findDuplicateGroups(current)[0]?.length !== ids.length) {
 			throw new SubscriberMergeSkippedError('il gruppo è cambiato dopo l’anteprima');
 		}
-		const fresh = planMerge(current);
+		const fresh = planMerge(current, options);
 		if (fresh.conflicts.length > 0) {
 			throw new SubscriberMergeSkippedError(fresh.conflicts.join('; '));
 		}

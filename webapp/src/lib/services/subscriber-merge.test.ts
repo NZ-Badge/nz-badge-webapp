@@ -58,6 +58,27 @@ describe('findDuplicateGroups', () => {
 });
 
 describe('planMerge', () => {
+	it('preserves every field on the chosen subscriber when requested', () => {
+		const group = [
+			candidate({ id: 7, courseName: 'Primo', courseStartDate: '2026-09-28' }),
+			candidate({
+				id: 43,
+				phone: '333',
+				courseName: 'Secondo',
+				courseStartDate: '2026-10-05'
+			})
+		];
+
+		expect(planMerge(group).survivorUpdate).toMatchObject({
+			phone: '333',
+			courseName: 'Secondo'
+		});
+		const plan = planMerge(group, { preserveSurvivorData: true });
+		expect(plan.survivor.id).toBe(7);
+		expect(plan.duplicates.map((duplicate) => duplicate.id)).toEqual([43]);
+		expect(plan.survivorUpdate).toEqual({});
+	});
+
 	it('keeps the subscriber with the active card and fills missing data from the others', () => {
 		const plan = planMerge([
 			candidate({ id: 1, phone: '333', note: 'Allergia', courseStartDate: '2026-01-10' }),

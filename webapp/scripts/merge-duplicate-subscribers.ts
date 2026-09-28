@@ -9,6 +9,8 @@
  *   --apply        esegue l'unione (senza, è solo un'anteprima)
  *   --only=ID,...  limita l'operazione ai gruppi che contengono questi subscriber
  *   --user-id=ID   utente admin a cui attribuire l'operazione nell'audit log
+ *   --preserve-survivor-data  lascia intatti tutti i dati del subscriber mantenuto
+ *   --expect-survivor=ID  rifiuta l'operazione se l'ID mantenuto non è quello atteso
  *
  * I gruppi con conflitti (più card attive, codici fiscali diversi) vengono solo segnalati
  * e vanno sistemati a mano. Fare un backup del database prima di usare --apply.
@@ -34,6 +36,8 @@ if (!databaseUrl) {
 interface Args {
 	apply: boolean;
 	only: Set<number> | null;
+	preserveSurvivorData: boolean;
+	expectSurvivor?: number;
 	userId?: number;
 }
 
@@ -44,11 +48,18 @@ function parsePositiveInt(value: string, option: string): number {
 }
 
 function parseArgs(args: string[]): Args {
-	const parsed: Args = { apply: false, only: null };
+	const parsed: Args = { apply: false, only: null, preserveSurvivorData: false };
 
 	for (const arg of args) {
 		if (arg === '--apply') {
 			parsed.apply = true;
+		} else if (arg === '--preserve-survivor-data') {
+			parsed.preserveSurvivorData = true;
+		} else if (arg.startsWith('--expect-survivor=')) {
+			parsed.expectSurvivor = parsePositiveInt(
+				arg.slice('--expect-survivor='.length),
+				'--expect-survivor'
+			);
 		} else if (arg.startsWith('--only=')) {
 			parsed.only = new Set(
 				arg
@@ -113,12 +124,21 @@ const connection = await mysql.createConnection(databaseUrl);
 try {
 	const db = drizzle(connection, { schema, mode: 'default' });
 	const only = args.only;
-	const plans = (await planDuplicateSubscriberMerges(db)).filter(
+	const options = { preserveSurvivorData: args.preserveSurvivorData };
+	const plans = (await planDuplicateSubscriberMerges(db, options)).filter(
 		(plan) =>
 			!only ||
 			only.has(plan.survivor.id) ||
 			plan.duplicates.some((duplicate) => only.has(duplicate.id))
 	);
+	if (
+		args.expectSurvivor !== undefined &&
+		(plans.length !== 1 || plans[0].survivor.id !== args.expectSurvivor)
+	) {
+		throw new Error(
+			`Atteso un solo gruppo con subscriber mantenuto #${args.expectSurvivor}; operazione annullata`
+		);
+	}
 
 	if (plans.length === 0) {
 		console.log('Nessun subscriber duplicato trovato.');
@@ -138,7 +158,7 @@ try {
 			let failed = 0;
 			for (const plan of mergeable) {
 				try {
-					const result = await applySubscriberMerge(db, plan, args.userId);
+					const result = await applySubscriberMerge(db, plan, args.userId, options);
 					merged++;
 					console.log(
 						`Unito in #${result.survivorId}: ${result.mergedIds.map((id) => `#${id}`).join(', ')} ` +

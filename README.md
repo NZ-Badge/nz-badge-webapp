@@ -269,6 +269,36 @@ DATABASE_URL=... npm run db:merge-duplicate-subscribers -- --apply        # unio
 DATABASE_URL=... npm run db:merge-duplicate-subscribers -- --apply --only=12,57 --user-id=1
 ```
 
+Per mantenere **tutti** i dati del subscriber scelto dall'anteprima (inclusi i campi legacy
+del primo corso) e spostare soltanto le iscrizioni e gli altri riferimenti, aggiungere
+`--preserve-survivor-data` sia all'anteprima sia all'esecuzione. Controllare che l'ID indicato
+come `mantiene` sia quello desiderato prima di usare `--apply`; `--only=ID` seleziona il gruppo,
+ma non impone quale ID venga mantenuto. `--expect-survivor=ID` fa fallire il comando se il
+superstite non coincide con l'ID atteso.
+
+Procedura per un singolo iscritto in produzione (da `webapp/`, con la versione che include
+queste opzioni e `DATABASE_URL` gia' disponibile nell'ambiente del comando):
+
+1. Individuare nella pagina iscritti gli ID della prima iscrizione e dei duplicati. Controllare
+   nome, cognome, email, eventuale codice fiscale e card; gli ID possono differire da DDEV.
+2. Scaricare un backup `.sql.gz` da **Amministrazione → Manutenzione**, conservarlo in luogo
+   protetto e verificare l'archivio con `gzip -t nome-backup.sql.gz`.
+3. Usare l'ID della prima iscrizione come `ID_PRIMO` e lanciare l'anteprima:
+
+   ```bash
+   npm run db:merge-duplicate-subscribers -- --only=ID_PRIMO --expect-survivor=ID_PRIMO --preserve-survivor-data
+   ```
+
+4. Verificare che il piano mostri solo il gruppo desiderato, `mantiene #ID_PRIMO`, i duplicati
+   previsti, nessun conflitto e nessuna riga `aggiorna`. Eseguire con gli stessi argomenti:
+
+   ```bash
+   npm run db:merge-duplicate-subscribers -- --apply --only=ID_PRIMO --expect-survivor=ID_PRIMO --preserve-survivor-data
+   ```
+
+5. Verificare nella pagina iscritti una sola persona, nel suo dettaglio tutti i corsi e
+   l'anagrafica originale. L'operazione e' registrata come `SUBSCRIBER_MERGE` in `audit_log`.
+
 ## Struttura del progetto
 
 ```text
