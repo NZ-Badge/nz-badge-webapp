@@ -24,8 +24,9 @@ FROM node:22-alpine AS production
 
 WORKDIR /app
 
-# Database export from the administrator maintenance page
-RUN apk add --no-cache mariadb-client
+# Database export from the administrator maintenance page.
+# mariadb-connector-c provides caching_sha2_password.so, the default MySQL 8 auth plugin.
+RUN apk add --no-cache mariadb-client mariadb-connector-c
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
