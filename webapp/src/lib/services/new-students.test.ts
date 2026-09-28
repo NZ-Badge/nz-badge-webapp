@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import { MySqlDialect } from 'drizzle-orm/mysql-core';
 import {
 	groupNewStudents,
+	newStudentsFilter,
 	newStudentsCsv,
 	selectedDateRange,
 	type NewStudentEnrollment
 } from './new-students';
+
+describe('newStudentsFilter', () => {
+	it('uses calendar dates as SQL DATE bounds for the Rome week', () => {
+		const query = new MySqlDialect().sqlToQuery(newStudentsFilter('2026-09-28', '2026-10-05'));
+		expect(query.params.slice(0, 2)).toEqual(['2026-09-28', '2026-10-05']);
+		expect(query.sql).toContain('cast(? as date)');
+	});
+});
 
 function enrollment(
 	overrides: Partial<NewStudentEnrollment> & { id: number }

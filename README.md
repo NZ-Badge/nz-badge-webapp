@@ -401,7 +401,10 @@ La pagina `/new-students` elenca i corsisti con almeno un corso che inizia in un
 inclusivo, preimpostato sulla settimana corrente (lunedì–domenica, calendario `Europe/Rome`).
 Ogni iscritto compare una sola volta, con tutti i suoi corsi in partenza nell'intervallo; le
 iscrizioni non ancora collegate a un iscritto restano righe separate. La tabella mostra 25 corsisti
-per pagina, mantenendo l'intervallo selezionato nella paginazione.
+per pagina, mantenendo l'intervallo selezionato nella paginazione. Una voce `SUBMITTED` non
+collegata viene esclusa se esiste già una voce `COMPLETED` dello stesso ordine, riga d'ordine,
+persona e data di inizio: evita di mostrare due volte la stessa prenotazione senza nascondere
+gli altri corsi ancora in stato `SUBMITTED`.
 `GET /api/v1/new-students/export?from=AAAA-MM-GG&to=AAAA-MM-GG` scarica lo stesso
 elenco completo in CSV (una riga per corsista, più corsi separati da `|` nelle colonne Corso,
 Edizione, Inizio e Fine), con date in formato `gg/mm/aaaa`. Le pagine `/today` e `/new-students`,

@@ -2,7 +2,23 @@ import { db } from '$lib/db';
 import { enrollments, subscribers } from '$lib/db/schema';
 import { addDaysToDateKey, dateKeySchema, formatDateIT, romeDateKey } from '$lib/utils/date';
 import { toCsv } from '$lib/utils/csv';
-import { and, asc, eq, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import {
+	and,
+	asc,
+	eq,
+	exists,
+	gte,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	ne,
+	not,
+	or,
+	sql,
+	type SQL
+} from 'drizzle-orm';
+import { alias } from 'drizzle-orm/mysql-core';
 
 export function selectedDateRange(from: string | null, to: string | null, now = new Date()) {
 	const today = romeDateKey(now);
@@ -14,17 +30,46 @@ export function selectedDateRange(from: string | null, to: string | null, now = 
 	return { start, end, next: addDaysToDateKey(end, 1) };
 }
 
-function inDateRange(start: string, next: string) {
+const completedPeer = alias(enrollments, 'completed_peer');
+
+export function newStudentsFilter(start: string, next: string) {
+	// A submitted, unlinked participant can remain after the same person/course was completed.
+	// Keep other submitted enrollments visible, including ones without a completed counterpart.
+	const redundantSubmitted = and(
+		eq(enrollments.status, 'SUBMITTED'),
+		isNull(enrollments.subscriberId),
+		isNotNull(enrollments.firstName),
+		isNotNull(enrollments.lastName),
+		exists(
+			db
+				.select({ id: completedPeer.id })
+				.from(completedPeer)
+				.where(
+					and(
+						eq(completedPeer.status, 'COMPLETED'),
+						eq(completedPeer.orderId, enrollments.orderId),
+						eq(completedPeer.lineItemId, enrollments.lineItemId),
+						eq(completedPeer.firstName, enrollments.firstName),
+						eq(completedPeer.lastName, enrollments.lastName),
+						eq(completedPeer.customerEmail, enrollments.customerEmail),
+						eq(completedPeer.startDate, enrollments.startDate),
+						ne(completedPeer.id, enrollments.id)
+					)
+				)
+		)
+	)!;
 	return and(
-		gte(enrollments.startDate, new Date(`${start}T00:00:00.000Z`)),
-		lt(enrollments.startDate, new Date(`${next}T00:00:00.000Z`))
-	);
+		gte(enrollments.startDate, sql`cast(${start} as date)`),
+		lt(enrollments.startDate, sql`cast(${next} as date)`),
+		not(redundantSubmitted)
+	)!;
 }
 
 /**
  * Una persona compare una sola volta anche con più corsi in partenza nell'intervallo:
  * le iscrizioni collegate a un iscritto sono raggruppate per `subscriber_id`, quelle non
- * ancora collegate restano una riga ciascuna.
+ * ancora collegate restano una riga ciascuna, salvo le copie SUBMITTED di un corso
+ * già COMPLETED per la stessa persona nello stesso ordine.
  */
 // Letterali inline (non parametri) così SELECT e GROUP BY usano la stessa espressione.
 const personKey = sql<string>`coalesce(concat(${sql.raw("'s:'")}, ${enrollments.subscriberId}), concat(${sql.raw("'e:'")}, ${enrollments.id}))`;
@@ -33,7 +78,7 @@ export async function countNewStudents(start: string, next: string): Promise<num
 	const [{ total }] = await db
 		.select({ total: sql<number>`count(distinct ${personKey})` })
 		.from(enrollments)
-		.where(inDateRange(start, next));
+		.where(newStudentsFilter(start, next));
 	return Number(total);
 }
 
@@ -125,7 +170,7 @@ export async function getNewStudents(
 			.select({ key: personKey })
 			.from(enrollments)
 			.leftJoin(subscribers, eq(enrollments.subscriberId, subscribers.id))
-			.where(inDateRange(start, next))
+			.where(newStudentsFilter(start, next))
 			.groupBy(personKey)
 			.orderBy(
 				sql`min(${enrollments.startDate})`,
@@ -167,7 +212,7 @@ export async function getNewStudents(
 		})
 		.from(enrollments)
 		.leftJoin(subscribers, eq(enrollments.subscriberId, subscribers.id))
-		.where(and(inDateRange(start, next), pageFilter))
+		.where(and(newStudentsFilter(start, next), pageFilter))
 		.orderBy(
 			asc(enrollments.startDate),
 			asc(enrollments.lastName),
