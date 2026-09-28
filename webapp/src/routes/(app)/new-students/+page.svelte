@@ -103,7 +103,7 @@
 		Dal <strong>{formatDateIT(data.range.start)}</strong> al
 		<strong>{formatDateIT(data.range.end)}</strong>
 		· {data.total}
-		{data.total === 1 ? 'iscrizione' : 'iscrizioni'} in partenza
+		{data.total === 1 ? 'corsista' : 'corsisti'} in partenza
 	</p>
 
 	<TablePanel>
@@ -122,7 +122,7 @@
 						</TableCell>
 					</TableRow>
 				{/if}
-				{#each data.rows as row (row.id)}
+				{#each data.rows as row (row.key)}
 					<TableRow>
 						<TableCell>{formatDateIT(row.startDate)}</TableCell>
 						<TableCell class="font-medium">
@@ -136,11 +136,22 @@
 								>
 							{:else}{row.firstName} {row.lastName}{/if}
 						</TableCell>
-						<TableCell
-							>{row.productTitle ?? 'Corso senza nome'}{#if row.variantTitle}<span
-									class="block text-sm text-muted-foreground">{row.variantTitle}</span
-								>{/if}</TableCell
-						>
+						<TableCell>
+							<ul class="space-y-1.5">
+								{#each row.courses as course (course.id)}
+									{@const details = [
+										course.variantTitle,
+										row.courses.length > 1 ? `dal ${formatDateIT(course.startDate)}` : ''
+									].filter(Boolean)}
+									<li>
+										{course.productTitle ?? 'Corso senza nome'}
+										{#if details.length}
+											<span class="block text-sm text-muted-foreground">{details.join(' · ')}</span>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						</TableCell>
 						<TableCell>{row.email}</TableCell>
 						<TableCell>{row.phone ?? '—'}</TableCell>
 					</TableRow>

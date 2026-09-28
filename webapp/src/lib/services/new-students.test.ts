@@ -1,5 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { newStudentsCsv, selectedDateRange } from './new-students';
+import {
+	groupNewStudents,
+	newStudentsCsv,
+	selectedDateRange,
+	type NewStudentEnrollment
+} from './new-students';
+
+function enrollment(
+	overrides: Partial<NewStudentEnrollment> & { id: number }
+): NewStudentEnrollment {
+	return {
+		subscriberId: 7,
+		firstName: 'Mario',
+		lastName: 'Rossi',
+		subscriberFirstName: 'Mario',
+		subscriberLastName: 'Rossi',
+		email: 'mario@example.com',
+		phone: null,
+		productTitle: 'Corso base',
+		variantTitle: null,
+		startDate: '2026-09-21',
+		endDate: null,
+		...overrides
+	};
+}
 
 describe('selectedDateRange', () => {
 	it('uses the current Rome week across a UTC date boundary', () => {
@@ -23,24 +47,62 @@ describe('selectedDateRange', () => {
 	});
 });
 
+describe('groupNewStudents', () => {
+	it('shows a subscriber once with all the courses starting in the range', () => {
+		const rows = groupNewStudents([
+			enrollment({ id: 2, productTitle: 'Avanzato', startDate: '2026-09-24', phone: '333' }),
+			enrollment({ id: 1, startDate: '2026-09-21' }),
+			enrollment({ id: 3, subscriberId: 8, firstName: 'Luca', subscriberFirstName: 'Luca' })
+		]);
+
+		expect(rows).toHaveLength(2);
+		expect(rows[0]).toMatchObject({ key: 's:7', startDate: '2026-09-21', phone: '333' });
+		expect(rows[0].courses.map((course) => course.id)).toEqual([1, 2]);
+		expect(rows[1]).toMatchObject({ key: 's:8', firstName: 'Luca' });
+	});
+
+	it('keeps unlinked enrollments as separate rows', () => {
+		const unlinked = { subscriberId: null, subscriberFirstName: null, subscriberLastName: null };
+		const rows = groupNewStudents([
+			enrollment({ id: 1, ...unlinked }),
+			enrollment({ id: 2, ...unlinked })
+		]);
+
+		expect(rows.map((row) => row.key)).toEqual(['e:1', 'e:2']);
+	});
+});
+
 describe('newStudentsCsv', () => {
 	it('quotes fields and prevents spreadsheet formulas', () => {
-		const csv = newStudentsCsv([
-			{
-				id: 1,
-				subscriberId: null,
-				firstName: '=SUM(1,1)',
-				lastName: 'Rossi',
-				email: 'a@example.com',
-				phone: null,
-				productTitle: 'Corso; base',
-				variantTitle: 'A "mattina"',
-				startDate: new Date('2026-09-25T00:00:00Z'),
-				endDate: null
-			}
-		]);
+		const csv = newStudentsCsv(
+			groupNewStudents([
+				enrollment({
+					id: 1,
+					subscriberId: null,
+					firstName: '=SUM(1,1)',
+					subscriberFirstName: null,
+					email: 'a@example.com',
+					productTitle: 'Corso; base',
+					variantTitle: 'A "mattina"',
+					startDate: new Date('2026-09-25T00:00:00Z')
+				})
+			])
+		);
 		expect(csv).toContain('"\'=SUM(1,1)"');
 		expect(csv).toContain('"Corso; base";"A ""mattina"""');
 		expect(csv).toContain('"25/09/2026"');
+	});
+
+	it('writes one line per student with the courses side by side', () => {
+		const csv = newStudentsCsv(
+			groupNewStudents([
+				enrollment({ id: 1, startDate: '2026-09-21', endDate: '2026-09-30' }),
+				enrollment({ id: 2, productTitle: 'Avanzato', startDate: '2026-09-24' })
+			])
+		);
+		const lines = csv.trim().split('\r\n');
+		expect(lines).toHaveLength(2);
+		expect(lines[1]).toContain('"Corso base | Avanzato"');
+		expect(lines[1]).toContain('"21/09/2026 | 24/09/2026";"30/09/2026 | "');
 	});
 });

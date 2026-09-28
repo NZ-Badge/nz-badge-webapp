@@ -355,11 +355,14 @@ e indica se esiste almeno una timbratura registrata oggi; le iscrizioni senza an
 sono segnalate separatamente. Lo stato dell'iscrizione non filtra l'elenco, come nella validazione
 del corso per i reader.
 
-La pagina `/new-students` elenca le iscrizioni con data di inizio in un intervallo Da/A inclusivo,
-preimpostato sulla settimana corrente (lunedì–domenica, calendario `Europe/Rome`).
-La tabella mostra 25 iscrizioni per pagina, mantenendo l'intervallo selezionato nella paginazione.
+La pagina `/new-students` elenca i corsisti con almeno un corso che inizia in un intervallo Da/A
+inclusivo, preimpostato sulla settimana corrente (lunedì–domenica, calendario `Europe/Rome`).
+Ogni iscritto compare una sola volta, con tutti i suoi corsi in partenza nell'intervallo; le
+iscrizioni non ancora collegate a un iscritto restano righe separate. La tabella mostra 25 corsisti
+per pagina, mantenendo l'intervallo selezionato nella paginazione.
 `GET /api/v1/new-students/export?from=AAAA-MM-GG&to=AAAA-MM-GG` scarica lo stesso
-elenco completo in CSV, con date in formato `gg/mm/aaaa`. Le pagine `/today` e `/new-students`,
+elenco completo in CSV (una riga per corsista, più corsi separati da `|` nelle colonne Corso,
+Edizione, Inizio e Fine), con date in formato `gg/mm/aaaa`. Le pagine `/today` e `/new-students`,
 incluso l'export dei nuovi corsisti, sono accessibili anche ai Collaboratori.
 
 Le pagine `/attendance` e `/staff-attendance` consentono sia l'inserimento manuale sia
