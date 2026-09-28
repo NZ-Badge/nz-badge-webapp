@@ -39,6 +39,9 @@ COPY --from=builder --chown=sveltekit:nodejs /app/node_modules ./node_modules
 # Copy migrations and scripts for init container / migration runner
 COPY --from=builder --chown=sveltekit:nodejs /app/src/lib/db/migrations ./src/lib/db/migrations
 COPY --from=builder --chown=sveltekit:nodejs /app/scripts ./scripts
+# The subscriber merge script imports these modules at runtime via tsx.
+COPY --from=builder --chown=sveltekit:nodejs /app/src/lib/db/schema.ts ./src/lib/db/schema.ts
+COPY --from=builder --chown=sveltekit:nodejs /app/src/lib/services/subscriber-merge.ts ./src/lib/services/subscriber-merge.ts
 
 # Switch to non-root user
 USER sveltekit

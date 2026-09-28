@@ -299,6 +299,18 @@ queste opzioni e `DATABASE_URL` gia' disponibile nell'ambiente del comando):
 5. Verificare nella pagina iscritti una sola persona, nel suo dettaglio tutti i corsi e
    l'anagrafica originale. L'operazione e' registrata come `SUBSCRIBER_MERGE` in `audit_log`.
 
+Su Kubernetes, dopo aver distribuito l'immagine che contiene lo script aggiornato e i moduli
+necessari, usare il container applicativo: `DATABASE_URL` e' gia' configurato nel Deployment.
+L'ID e' quello dell'iscritto da conservare **in produzione**, non quello di DDEV.
+
+```bash
+kubectl rollout status -n http deployment/ril-presenze
+kubectl exec -n http deployment/ril-presenze -c ril-presenze -- npm run db:merge-duplicate-subscribers -- --only=ID_PRIMO --expect-survivor=ID_PRIMO --preserve-survivor-data
+kubectl exec -n http deployment/ril-presenze -c ril-presenze -- npm run db:merge-duplicate-subscribers -- --apply --only=ID_PRIMO --expect-survivor=ID_PRIMO --preserve-survivor-data
+```
+
+Eseguire l'ultimo comando solo dopo il backup e la verifica dell'anteprima descritti sopra.
+
 ## Struttura del progetto
 
 ```text
