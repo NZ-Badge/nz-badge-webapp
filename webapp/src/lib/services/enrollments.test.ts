@@ -235,6 +235,51 @@ describe('syncEnrollments', () => {
 		).toBe(7);
 	});
 
+	it.each([null, '', undefined])(
+		'preserves existing course dates when an upsert receives endDate %s',
+		async (incomingEndDate) => {
+			mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }]);
+			const result = {
+				enrollmentsFound: 0,
+				enrollmentsCreated: 0,
+				subscribersCreated: 0,
+				errors: 0
+			};
+
+			await processEnrollment(
+				apiEnrollment({ participants: [], endDate: incomingEndDate }),
+				result,
+				true
+			);
+
+			const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+			expect(written.values.endDate).toBeNull();
+			expect((written.onDuplicate as { set: Record<string, unknown> }).set).not.toHaveProperty(
+				'endDate'
+			);
+			const subscriberUpdate = mocks.tx.update.mock.results[0].value;
+			expect(subscriberUpdate.set.mock.calls[0][0]).not.toHaveProperty('courseEndDate');
+		}
+	);
+
+	it('updates an existing course date when the upsert provides a new date', async () => {
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(
+			apiEnrollment({ participants: [], endDate: '2026-11-15' }),
+			result,
+			true
+		);
+
+		const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+		expect((written.onDuplicate as { set: Record<string, unknown> }).set.endDate).toEqual(
+			new Date('2026-11-15')
+		);
+		const subscriberUpdate = mocks.tx.update.mock.results[0].value;
+		expect(subscriberUpdate.set.mock.calls[0][0].courseEndDate).toEqual(new Date('2026-11-15'));
+	});
+
 	it('skips rows that already exist when not upserting', async () => {
 		mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }], [{ id: 8, subscriberId: 80 }]);
 

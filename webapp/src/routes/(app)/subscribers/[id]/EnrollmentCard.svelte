@@ -4,6 +4,13 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
 	import { DatePicker } from '$lib/components/ui/date-picker';
+	import {
+		Dialog,
+		DialogContent,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle
+	} from '$lib/components/ui/dialog';
 	import { formatDateIT } from '$lib/utils/date.js';
 	import { formatCourseDuration, pluralize } from './format';
 	import type { PageData } from './$types';
@@ -29,6 +36,16 @@
 	const errorId = $derived(`end-date-error-${enrollment.id}`);
 	const expired = $derived(enrollment.courseState === 'expired');
 	const titleId = $derived(`enrollment-title-${enrollment.id}`);
+	let confirmEndDateOpen = $state(false);
+	let proposedEndDate = $state('');
+	let endDateForm: HTMLFormElement;
+	let endDateConfirmed = false;
+
+	function confirmEndDateChange() {
+		confirmEndDateOpen = false;
+		endDateConfirmed = true;
+		endDateForm.requestSubmit();
+	}
 </script>
 
 {#snippet notice(tone: 'warning' | 'danger' | 'positive' | 'muted', title: string, text: string)}
@@ -186,9 +203,17 @@
 
 	<footer class="border-t bg-muted/20 px-5 py-4">
 		<form
+			bind:this={endDateForm}
 			method="POST"
 			action="?/updateEnrollmentEndDate"
-			use:enhance
+			use:enhance={({ formData, cancel }) => {
+				if (!endDateConfirmed && enrollment.endDate) {
+					proposedEndDate = String(formData.get('endDate') ?? '');
+					confirmEndDateOpen = true;
+					cancel();
+				}
+				endDateConfirmed = false;
+			}}
 			class="flex flex-wrap items-end gap-3"
 		>
 			<input type="hidden" name="enrollmentId" value={enrollment.id} />
@@ -224,3 +249,33 @@
 		</form>
 	</footer>
 </article>
+
+<Dialog bind:open={confirmEndDateOpen}>
+	<DialogContent>
+		<DialogHeader>
+			<DialogTitle>Confermare la modifica della data fine corso?</DialogTitle>
+		</DialogHeader>
+		<p class="text-sm">
+			La data attuale è <strong>{formatDateIT(enrollment.endDate)}</strong>. La nuova data sarà
+			<strong>{proposedEndDate ? formatDateIT(proposedEndDate) : 'non impostata'}</strong>.
+		</p>
+		<p class="text-sm text-muted-foreground">
+			La modifica può cambiare l’attribuzione delle presenze e il calcolo delle ore del corso.
+		</p>
+		<DialogFooter>
+			<Button
+				variant="outline"
+				onclick={() => (confirmEndDateOpen = false)}
+				data-tutorial-title="Annulla modifica data fine corso"
+				data-tutorial-description="Chiude la conferma senza salvare la nuova data fine corso."
+				>Annulla</Button
+			>
+			<Button
+				onclick={confirmEndDateChange}
+				data-tutorial-title="Conferma data fine corso"
+				data-tutorial-description="Salva la nuova data fine corso, aggiornando il periodo usato per attribuire le presenze e calcolare le ore."
+				>Conferma e salva</Button
+			>
+		</DialogFooter>
+	</DialogContent>
+</Dialog>

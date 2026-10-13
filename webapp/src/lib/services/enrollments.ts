@@ -651,7 +651,11 @@ async function updateSubscriber(
 	subscriberId: number,
 	values: SubscriberRowValues
 ): Promise<void> {
-	await tx.update(subscribers).set(values).where(eq(subscribers.id, subscriberId));
+	const { courseEndDate, ...valuesWithoutCourseEndDate } = values;
+	await tx
+		.update(subscribers)
+		.set(courseEndDate === null ? valuesWithoutCourseEndDate : values)
+		.where(eq(subscribers.id, subscriberId));
 }
 
 /**
@@ -695,6 +699,7 @@ async function upsertEnrollmentRow(
 		}
 
 		const values = { ...target.enrollment, subscriberId };
+		const { endDate, ...valuesWithoutEndDate } = values;
 		await tx
 			.insert(enrollments)
 			.values({
@@ -702,7 +707,7 @@ async function upsertEnrollmentRow(
 				externalId: target.externalId,
 				externalCreatedAt: target.externalCreatedAt
 			})
-			.onDuplicateKeyUpdate({ set: values });
+			.onDuplicateKeyUpdate({ set: endDate === null ? valuesWithoutEndDate : values });
 
 		if (!existing) created.enrollments++;
 		return created;

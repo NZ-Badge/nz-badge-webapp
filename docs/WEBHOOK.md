@@ -138,6 +138,9 @@ Vincoli rilevanti:
 - `participants[]` puo' essere vuoto, ma se presente ogni elemento deve rispettare lo schema dell'endpoint
 - `preferredDate` arriva dal remoto e viene salvata localmente come `start_date`
 - `endDate` arriva dal remoto e viene salvata localmente come `end_date`
+- Per un'iscrizione già esistente, un `endDate` valorizzato aggiorna `end_date`; se è `null`,
+  vuoto o assente, la data fine corso già salvata viene conservata. Per una nuova iscrizione senza
+  `endDate`, la data resta non impostata.
 - `variantId` identifica stabilmente la variante Shopify e viene usato per raggruppare la visualizzazione corsi quando presente
 
 ## Regole applicative
