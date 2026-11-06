@@ -6,12 +6,14 @@ import {
 	enrollmentScheduleDays,
 	enrollmentSyncLog,
 	subscribers,
+	type EnrollmentScheduleMode,
 	type NewEnrollment,
 	type NewSubscriber
 } from '$lib/db/schema';
 import type { DbTransaction } from '$lib/db/types';
 import { getSetting, getSettings, setSettings } from './settings';
 import {
+	isNonContiguousMode,
 	normalizeEnrollmentSchedule,
 	type ApiScheduleDay,
 	type EnrollmentSchedule
@@ -717,7 +719,55 @@ async function replaceScheduleDays(
 }
 
 /**
+ * Il calendario ricevuto riguarda un corso non contiguo (prima o dopo la modifica): solo in quel
+ * caso la sync aggiorna un'iscrizione gia' esistente.
+ */
+function scheduleChangeMatters(
+	storedMode: EnrollmentScheduleMode | null | undefined,
+	schedule: EnrollmentSchedule | null
+): schedule is EnrollmentSchedule {
+	if (!schedule) return false;
+	return isNonContiguousMode(schedule.mode) || (!!storedMode && isNonContiguousMode(storedMode));
+}
+
+/**
+ * Allinea un'iscrizione esistente al calendario ricevuto: `schedule_mode`, giornate, date di
+ * inizio/fine dell'iscrizione e del corsista collegato. Come nell'upsert, una data di fine `null`
+ * conserva quella gia' salvata.
+ */
+async function applyScheduleChange(
+	tx: DbTransaction,
+	existing: { id: number; subscriberId: number | null },
+	target: EnrollmentTarget,
+	schedule: EnrollmentSchedule
+): Promise<void> {
+	const { startDate = null, endDate = null } = target.enrollment;
+	await tx
+		.update(enrollments)
+		.set({
+			scheduleMode: schedule.mode,
+			startDate,
+			...(endDate === null ? {} : { endDate })
+		})
+		.where(eq(enrollments.id, existing.id));
+	await replaceScheduleDays(tx, existing.id, schedule.days);
+
+	if (existing.subscriberId) {
+		const { courseStartDate = null, courseEndDate = null } = target.subscriber;
+		await tx
+			.update(subscribers)
+			.set({
+				courseStartDate,
+				...(courseEndDate === null ? {} : { courseEndDate })
+			})
+			.where(eq(subscribers.id, existing.subscriberId));
+	}
+}
+
+/**
  * Creates or (with `upsert`) updates one enrollment row and its subscriber atomically.
+ * Without `upsert` an existing row is skipped, unless the calendar of a non-contiguous course
+ * changed (see `applyScheduleChange`).
  *
  * The existing row is read `FOR UPDATE`, so a webhook and a sync touching the same
  * `externalId` are serialized; the insert uses `ON DUPLICATE KEY UPDATE` on the unique
@@ -732,13 +782,24 @@ async function upsertEnrollmentRow(
 		const created = { enrollments: 0, subscribers: 0 };
 
 		const [existing] = await tx
-			.select({ id: enrollments.id, subscriberId: enrollments.subscriberId })
+			.select({
+				id: enrollments.id,
+				subscriberId: enrollments.subscriberId,
+				scheduleMode: enrollments.scheduleMode
+			})
 			.from(enrollments)
 			.where(eq(enrollments.externalId, target.externalId))
 			.limit(1)
 			.for('update');
 
-		if (existing && !upsert) return created;
+		if (existing && !upsert) {
+			// The sync never overwrites existing rows, except for a calendar change involving a
+			// non-contiguous course: dates and course days must follow the new calendar.
+			if (scheduleChangeMatters(existing.scheduleMode, target.schedule)) {
+				await applyScheduleChange(tx, existing, target, target.schedule);
+			}
+			return created;
+		}
 
 		let subscriberId: number | null = existing?.subscriberId ?? null;
 

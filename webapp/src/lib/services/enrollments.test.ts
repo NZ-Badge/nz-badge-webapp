@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
 		locks: [] as string[],
 		inserts: [] as { table: unknown; values: Record<string, unknown>; onDuplicate?: unknown }[],
 		deletes: [] as unknown[],
+		updates: [] as { table: unknown; values: Record<string, unknown> }[],
 		failInsertFor: null as string | null,
 		nextSubscriberId: 100
 	};
@@ -53,7 +54,12 @@ const mocks = vi.hoisted(() => {
 				};
 			}
 		})),
-		update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => undefined) })) })),
+		update: vi.fn((table: unknown) => ({
+			set: vi.fn((values: Record<string, unknown>) => {
+				state.updates.push({ table, values });
+				return { where: vi.fn(async () => undefined) };
+			})
+		})),
 		delete: vi.fn((table: unknown) => ({
 			where: vi.fn(async () => {
 				state.deletes.push(table);
@@ -135,6 +141,7 @@ beforeEach(() => {
 		locks: [],
 		inserts: [],
 		deletes: [],
+		updates: [],
 		failInsertFor: null,
 		nextSubscriberId: 100
 	});
@@ -349,6 +356,164 @@ describe('syncEnrollments', () => {
 
 		const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
 		expect(written.values.scheduleMode).toBeUndefined();
+		expect(mocks.state.deletes).toEqual([]);
+	});
+
+	it('moves the dates of a contiguous course to its days when it becomes non-contiguous', async () => {
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70, scheduleMode: 'CONTIGUOUS' }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(
+			apiEnrollment({
+				participants: [],
+				preferredDate: null,
+				endDate: null,
+				scheduleMode: 'NON_CONTIGUOUS_CUSTOM',
+				scheduleDays: [{ date: '2026-10-05' }, { date: '2026-10-12' }, { date: '2026-10-19' }]
+			}),
+			result,
+			true
+		);
+
+		const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+		expect((written.onDuplicate as { set: Record<string, unknown> }).set).toMatchObject({
+			scheduleMode: 'NON_CONTIGUOUS_CUSTOM',
+			startDate: new Date('2026-10-05'),
+			endDate: new Date('2026-10-19')
+		});
+		const subscriberUpdate = mocks.state.updates.find((entry) => entry.table === subscribers);
+		expect(subscriberUpdate?.values).toMatchObject({
+			courseStartDate: new Date('2026-10-05'),
+			courseEndDate: new Date('2026-10-19')
+		});
+		expect(mocks.state.deletes).toEqual([enrollmentScheduleDays]);
+		const [days] = mocks.state.inserts.filter((entry) => entry.table === enrollmentScheduleDays);
+		expect(days.values).toHaveLength(3);
+	});
+
+	it('takes the payload dates and clears the days when a course becomes contiguous', async () => {
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70, scheduleMode: 'NON_CONTIGUOUS' }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(
+			apiEnrollment({
+				participants: [],
+				preferredDate: '2026-11-02',
+				endDate: '2026-11-06',
+				scheduleMode: 'CONTIGUOUS',
+				scheduleDays: [{ date: '2026-10-05' }]
+			}),
+			result,
+			true
+		);
+
+		const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+		expect((written.onDuplicate as { set: Record<string, unknown> }).set).toMatchObject({
+			scheduleMode: 'CONTIGUOUS',
+			startDate: new Date('2026-11-02'),
+			endDate: new Date('2026-11-06')
+		});
+		const subscriberUpdate = mocks.state.updates.find((entry) => entry.table === subscribers);
+		expect(subscriberUpdate?.values).toMatchObject({
+			courseStartDate: new Date('2026-11-02'),
+			courseEndDate: new Date('2026-11-06')
+		});
+		expect(mocks.state.deletes).toEqual([enrollmentScheduleDays]);
+		expect(mocks.state.inserts.some((entry) => entry.table === enrollmentScheduleDays)).toBe(false);
+	});
+
+	it('applies a switch to non-contiguous to an existing row during the sync', async () => {
+		fetchMock.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [
+							apiEnrollment({
+								participants: [apiEnrollment().participants[0]],
+								preferredDate: '2026-10-05',
+								endDate: null,
+								scheduleMode: 'NON_CONTIGUOUS',
+								scheduleDays: [{ date: '2026-10-05' }, { date: '2026-10-20' }]
+							})
+						],
+						meta: { total: 1, page: 1, limit: 100, pages: 1 }
+					})
+				)
+		);
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70, scheduleMode: 'CONTIGUOUS' }]);
+
+		const result = await syncEnrollments('manual');
+
+		expect(result).toMatchObject({ enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 });
+		expect(mocks.state.locks).toEqual(['update']);
+		expect(mocks.state.inserts.some((entry) => entry.table === enrollments)).toBe(false);
+		expect(mocks.state.updates.find((entry) => entry.table === enrollments)?.values).toEqual({
+			scheduleMode: 'NON_CONTIGUOUS',
+			startDate: new Date('2026-10-05'),
+			endDate: new Date('2026-10-20')
+		});
+		expect(mocks.state.updates.find((entry) => entry.table === subscribers)?.values).toEqual({
+			courseStartDate: new Date('2026-10-05'),
+			courseEndDate: new Date('2026-10-20')
+		});
+		expect(mocks.state.deletes).toEqual([enrollmentScheduleDays]);
+		const [days] = mocks.state.inserts.filter((entry) => entry.table === enrollmentScheduleDays);
+		const dayRows = days.values as unknown as { enrollmentId: number }[];
+		expect(dayRows.map((day) => day.enrollmentId)).toEqual([7, 7]);
+	});
+
+	it('applies a switch back to contiguous during the sync, keeping a missing end date', async () => {
+		fetchMock.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [
+							apiEnrollment({
+								participants: [apiEnrollment().participants[0]],
+								preferredDate: '2026-11-02',
+								endDate: null,
+								scheduleMode: 'CONTIGUOUS'
+							})
+						],
+						meta: { total: 1, page: 1, limit: 100, pages: 1 }
+					})
+				)
+		);
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70, scheduleMode: 'NON_CONTIGUOUS' }]);
+
+		await syncEnrollments('manual');
+
+		expect(mocks.state.updates.find((entry) => entry.table === enrollments)?.values).toEqual({
+			scheduleMode: 'CONTIGUOUS',
+			startDate: new Date('2026-11-02')
+		});
+		expect(mocks.state.updates.find((entry) => entry.table === subscribers)?.values).toEqual({
+			courseStartDate: new Date('2026-11-02')
+		});
+		expect(mocks.state.deletes).toEqual([enrollmentScheduleDays]);
+		expect(mocks.state.inserts).toEqual([]);
+	});
+
+	it('still skips an existing contiguous row whose payload stays contiguous', async () => {
+		fetchMock.mockImplementation(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [apiEnrollment({ scheduleMode: 'CONTIGUOUS', endDate: '2026-12-31' })],
+						meta: { total: 1, page: 1, limit: 100, pages: 1 }
+					})
+				)
+		);
+		mocks.state.selectResults.push(
+			[{ id: 7, subscriberId: 70, scheduleMode: 'CONTIGUOUS' }],
+			[{ id: 8, subscriberId: 80, scheduleMode: 'CONTIGUOUS' }]
+		);
+
+		const result = await syncEnrollments('manual');
+
+		expect(result).toMatchObject({ enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 });
+		expect(mocks.state.inserts).toEqual([]);
+		expect(mocks.state.updates).toEqual([]);
 		expect(mocks.state.deletes).toEqual([]);
 	});
 

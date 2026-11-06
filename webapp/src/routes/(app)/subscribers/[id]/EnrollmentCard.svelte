@@ -36,6 +36,10 @@
 	const errorId = $derived(`end-date-error-${enrollment.id}`);
 	const expired = $derived(enrollment.courseState === 'expired');
 	const titleId = $derived(`enrollment-title-${enrollment.id}`);
+	// Corsi NON_CONTIGUOUS*: si svolgono solo nelle giornate elencate, non in tutto il periodo.
+	const nonContiguous = $derived(enrollment.scheduleMode !== 'CONTIGUOUS');
+	const scheduleDays = $derived(nonContiguous ? (enrollment.scheduleDays ?? []) : []);
+	const scheduleDaysId = $derived(`enrollment-days-${enrollment.id}`);
 	let confirmEndDateOpen = $state(false);
 	let proposedEndDate = $state('');
 	let endDateForm: HTMLFormElement;
@@ -90,6 +94,11 @@
 				{:else}
 					<Badge variant="positive">Attivo</Badge>
 				{/if}
+				{#if nonContiguous}
+					<Badge variant="outline">
+						<CalendarDays aria-hidden="true" /> Date non contigue
+					</Badge>
+				{/if}
 			</div>
 			{#if enrollment.variantTitle}
 				<p class="mt-1 text-sm text-muted-foreground">{enrollment.variantTitle}</p>
@@ -139,6 +148,11 @@
 					<dd class="mt-1 font-medium">
 						{formatDateIT(enrollment.startDate) || '—'} → {formatDateIT(enrollment.endDate) || '—'}
 					</dd>
+					{#if nonContiguous}
+						<dd class="mt-1 text-xs text-muted-foreground">
+							Corso a date non contigue: presenze solo nelle giornate indicate
+						</dd>
+					{/if}
 				</div>
 				<div>
 					<dt class="text-xs font-medium text-muted-foreground">Ultima sessione valida</dt>
@@ -146,6 +160,28 @@
 						{lastSession ? formatDateIT(lastSession.exitAt) : 'Nessuna sessione'}
 					</dd>
 				</div>
+				{#if nonContiguous}
+					<div class="sm:col-span-2">
+						<dt id={scheduleDaysId} class="text-xs font-medium text-muted-foreground">
+							Giornate del corso ({scheduleDays.length})
+						</dt>
+						<dd class="mt-2">
+							{#if scheduleDays.length > 0}
+								<ul class="flex flex-wrap gap-1.5" aria-labelledby={scheduleDaysId}>
+									{#each scheduleDays as day (day)}
+										<li
+											class="rounded-md border bg-muted/40 px-2 py-0.5 font-mono text-xs font-medium tabular-nums"
+										>
+											<time datetime={day}>{formatDateIT(day)}</time>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<span class="font-medium">Nessuna giornata registrata</span>
+							{/if}
+						</dd>
+					</div>
+				{/if}
 			</dl>
 		</div>
 
@@ -191,7 +227,9 @@
 				{@render notice(
 					'muted',
 					'In attesa di presenze',
-					'Non risultano ancora sessioni valide nel periodo.'
+					nonContiguous
+						? 'Non risultano ancora sessioni valide nelle giornate del corso.'
+						: 'Non risultano ancora sessioni valide nel periodo.'
 				)}
 			{/if}
 

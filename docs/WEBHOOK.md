@@ -43,7 +43,13 @@ Comportamento:
 - richiede sessione admin
 - legge `enrollment_api_url` e `enrollment_api_key` da `settings`
 - chiama `GET {apiUrl}/api/v1/enrollments?status=COMPLETED&page=N&limit=100`
-- importa/upserta le iscrizioni nel DB locale
+- importa le nuove iscrizioni nel DB locale; quelle gia' presenti (stesso `external_id`) non
+  vengono sovrascritte, salvo un cambio di calendario che coinvolge un corso non contiguo: se il
+  payload indica `scheduleMode` e il calendario ricevuto o quello salvato e' `NON_CONTIGUOUS*`,
+  vengono aggiornati `schedule_mode`, le giornate in `enrollment_schedule_days`, `start_date`,
+  `end_date` e le date corso (`course_start_date`/`course_end_date`) del subscriber collegato,
+  con le stesse regole del webhook (date mancanti dalla prima/ultima giornata, `endDate` nullo
+  conserva la fine salvata). Le iscrizioni contigue gia' presenti restano invariate
 - registra l'esito in `enrollment_sync_log` con `triggered_by = 'manual'`
 
 L'endpoint di test connessione usa lo stesso backend, ma interroga solo una pagina minima per verificare raggiungibilita' e autenticazione.
