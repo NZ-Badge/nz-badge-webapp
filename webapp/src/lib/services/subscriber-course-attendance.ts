@@ -1,4 +1,5 @@
-import { romeDateKey, romeDayRange } from '$lib/utils/date';
+import { addDaysToDateKey, romeDateKey, romeDayRange, romeDayStart } from '$lib/utils/date';
+import type { EnrollmentScheduleMode } from '$lib/db/schema';
 import {
 	calculateAttendanceHours,
 	type AttendanceHoursIssue,
@@ -15,6 +16,12 @@ export interface SubscriberEnrollmentRow {
 	variantTitle: string | null;
 	startDate: Date | string | null;
 	endDate?: Date | string | null;
+	/**
+	 * Giornate (`YYYY-MM-DD`) dei corsi non contigui. Se valorizzato, solo le timbrature di
+	 * queste giornate entrano nel conteggio; assente o vuoto = corso contiguo (tutto l'intervallo).
+	 */
+	scheduleDays?: string[] | null;
+	scheduleMode?: EnrollmentScheduleMode | null;
 }
 
 export type CourseAttendanceSession = AttendanceHoursSession;
@@ -101,6 +108,31 @@ export function getEnrollmentAttendancePeriod(
 	};
 }
 
+function getScheduleDaySet(enrollment: SubscriberEnrollmentRow): Set<string> | null {
+	return enrollment.scheduleDays && enrollment.scheduleDays.length > 0
+		? new Set(enrollment.scheduleDays)
+		: null;
+}
+
+/**
+ * Fine (esclusa) del tratto di corso che contiene `timestamp`: per i corsi contigui la fine del
+ * periodo, per quelli non contigui la mezzanotte dopo l'ultima giornata consecutiva del blocco
+ * che contiene il giorno della timbratura.
+ */
+export function getEnrollmentCourseBlockEnd(
+	enrollment: SubscriberEnrollmentRow,
+	timestamp: Date | string
+): number | null {
+	const periodEnd = getEnrollmentAttendancePeriod(enrollment)?.end ?? null;
+	const days = getScheduleDaySet(enrollment);
+	if (!days) return periodEnd;
+
+	let lastDay = romeDateKey(timestamp);
+	while (days.has(addDaysToDateKey(lastDay, 1))) lastDay = addDaysToDateKey(lastDay, 1);
+	const blockEnd = romeDayStart(addDaysToDateKey(lastDay, 1)).getTime();
+	return periodEnd === null ? blockEnd : Math.min(blockEnd, periodEnd);
+}
+
 export type EnrollmentCourseState = 'active' | 'expired';
 
 /**
@@ -155,9 +187,11 @@ export function buildSubscriberCourseAttendanceSummaries(
 			};
 		}
 
+		const scheduleDays = getScheduleDaySet(enrollment);
 		const relevantRows = attendanceRows.filter((row) => {
 			const timestamp = new Date(row.readTimestamp).getTime();
-			return timestamp >= period.start && timestamp < period.end;
+			if (timestamp < period.start || timestamp >= period.end) return false;
+			return !scheduleDays || scheduleDays.has(romeDateKey(row.readTimestamp));
 		});
 		const calculation = calculateAttendanceHours(relevantRows);
 
@@ -167,7 +201,9 @@ export function buildSubscriberCourseAttendanceSummaries(
 			variantTitle: enrollment.variantTitle,
 			startDate: enrollment.startDate,
 			endDate: enrollment.endDate ?? null,
-			periodLabel: period.label,
+			periodLabel: scheduleDays
+				? `${period.label} (${scheduleDays.size} ${scheduleDays.size === 1 ? 'giornata' : 'giornate'})`
+				: period.label,
 			totalMinutes: calculation.totalMinutes,
 			totalLabel: calculation.totalLabel,
 			validSessions: calculation.validSessions,

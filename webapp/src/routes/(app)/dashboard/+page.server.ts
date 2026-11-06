@@ -9,7 +9,7 @@ import {
 	enrollments,
 	staffAttendance
 } from '$lib/db/schema';
-import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
 	enrichSubscribersForList,
 	enrollmentMatchesMonth,
@@ -17,6 +17,7 @@ import {
 } from '$lib/services/subscriber-list';
 import { formatInTimeZone } from 'date-fns-tz';
 import { TIMEZONE, romeDateKey } from '$lib/utils/date';
+import { enrollmentScheduledOn } from '$lib/services/enrollment-schedule';
 import {
 	determineNextStaffEventType,
 	loadStaffAttendanceSettings
@@ -58,7 +59,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}
 
 	// Query aggregate in parallelo per performance
-	const today = new Date(`${romeDateKey(now)}T00:00:00.000Z`);
+	const todayKey = romeDateKey(now);
 	const [
 		[{ activeSubscribers }],
 		[{ todayAttendance }],
@@ -90,7 +91,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 				productTitle: enrollments.productTitle,
 				variantTitle: enrollments.variantTitle,
 				startDate: enrollments.startDate,
-				endDate: enrollments.endDate
+				endDate: enrollments.endDate,
+				scheduleMode: enrollments.scheduleMode
 			})
 			.from(enrollments)
 			.where(isNotNull(enrollments.subscriberId))
@@ -109,7 +111,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				endDate: enrollments.endDate
 			})
 			.from(enrollments)
-			.where(and(lte(enrollments.startDate, today), gte(enrollments.endDate, today)))
+			.where(enrollmentScheduledOn(todayKey))
 			.orderBy(enrollments.endDate, enrollments.productTitle, enrollments.variantTitle)
 	]);
 

@@ -1,10 +1,11 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { eq, and, gte, lt, lte, inArray, asc, SQL } from 'drizzle-orm';
+import { eq, and, gte, lt, inArray, asc, sql, SQL } from 'drizzle-orm';
 import { db } from '$lib/db';
 import { attendance, enrollments, subscribers } from '$lib/db/schema';
 import { badRequest, authErrorResponse } from '$lib/utils/api';
 import { toCsv } from '$lib/utils/csv';
 import { isDateKey, romeDateKey } from '$lib/utils/date';
+import { withScheduleDays } from '$lib/services/enrollment-schedule';
 import {
 	buildSubscriberCourseAttendanceReportRows,
 	getEnrollmentAttendancePeriod,
@@ -99,8 +100,9 @@ function buildEnrollmentWhere(filters: {
 	const conditions: SQL[] = [];
 
 	if (filters.email) conditions.push(eq(subscribers.email, filters.email));
-	if (filters.from) conditions.push(gte(enrollments.endDate, new Date(filters.from)));
-	if (filters.to) conditions.push(lte(enrollments.startDate, new Date(filters.to)));
+	// Compare as DATE: an ISO `...Z` parameter is shifted to the MySQL session time zone.
+	if (filters.from) conditions.push(sql`${enrollments.endDate} >= cast(${filters.from} as date)`);
+	if (filters.to) conditions.push(sql`${enrollments.startDate} <= cast(${filters.to} as date)`);
 
 	return conditions.length > 0 ? and(...conditions) : undefined;
 }
@@ -116,27 +118,30 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	if (!parsed.ok) return badRequest(parsed.message);
 
 	const filename = buildExportFilename(parsed.filters);
-	const enrollmentRows = await db
-		.select({
-			enrollmentId: enrollments.id,
-			subscriberId: subscribers.id,
-			firstName: subscribers.firstName,
-			lastName: subscribers.lastName,
-			email: subscribers.email,
-			productTitle: enrollments.productTitle,
-			variantTitle: enrollments.variantTitle,
-			startDate: enrollments.startDate,
-			endDate: enrollments.endDate
-		})
-		.from(enrollments)
-		.innerJoin(subscribers, eq(enrollments.subscriberId, subscribers.id))
-		.where(buildEnrollmentWhere(parsed.filters))
-		.orderBy(asc(subscribers.lastName), asc(subscribers.firstName), asc(enrollments.startDate));
+	const enrollmentRows = await withScheduleDays(
+		(
+			await db
+				.select({
+					enrollmentId: enrollments.id,
+					subscriberId: subscribers.id,
+					firstName: subscribers.firstName,
+					lastName: subscribers.lastName,
+					email: subscribers.email,
+					productTitle: enrollments.productTitle,
+					variantTitle: enrollments.variantTitle,
+					startDate: enrollments.startDate,
+					endDate: enrollments.endDate,
+					scheduleMode: enrollments.scheduleMode
+				})
+				.from(enrollments)
+				.innerJoin(subscribers, eq(enrollments.subscriberId, subscribers.id))
+				.where(buildEnrollmentWhere(parsed.filters))
+				.orderBy(asc(subscribers.lastName), asc(subscribers.firstName), asc(enrollments.startDate))
+		).map((row) => ({ ...row, id: row.enrollmentId }))
+	);
 
 	const subscriberIds = [...new Set(enrollmentRows.map((row) => row.subscriberId))];
-	const timeWindow = attendanceWindow(
-		enrollmentRows.map((row) => ({ ...row, id: row.enrollmentId }))
-	);
+	const timeWindow = attendanceWindow(enrollmentRows);
 	const attendanceRows =
 		subscriberIds.length > 0 && timeWindow
 			? await db
@@ -174,7 +179,8 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			productTitle: row.productTitle,
 			variantTitle: row.variantTitle,
 			startDate: row.startDate,
-			endDate: row.endDate
+			endDate: row.endDate,
+			scheduleDays: row.scheduleDays
 		});
 		reportInputsBySubscriber.set(row.subscriberId, input);
 	}

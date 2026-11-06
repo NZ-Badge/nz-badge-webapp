@@ -3,6 +3,7 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { db } from '$lib/db';
 import {
 	enrollments,
+	enrollmentScheduleDays,
 	enrollmentSyncLog,
 	subscribers,
 	type NewEnrollment,
@@ -10,7 +11,12 @@ import {
 } from '$lib/db/schema';
 import type { DbTransaction } from '$lib/db/types';
 import { getSetting, getSettings, setSettings } from './settings';
-import { and, asc, eq, or } from 'drizzle-orm';
+import {
+	normalizeEnrollmentSchedule,
+	type ApiScheduleDay,
+	type EnrollmentSchedule
+} from './enrollment-schedule';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import { createLogger } from '$lib/server/logger';
 
 const log = createLogger('enrollments');
@@ -62,6 +68,10 @@ export interface ApiEnrollment {
 	enrollmentType: ApiEnrollmentType | null;
 	preferredDate: string | null;
 	endDate?: string | null;
+	/** `CONTIGUOUS`, `NON_CONTIGUOUS` o `NON_CONTIGUOUS_CUSTOM`; assente = calendario invariato. */
+	scheduleMode?: string | null;
+	/** Giornate effettive dei corsi non contigui (`[{ date: 'YYYY-MM-DD' }]`). */
+	scheduleDays?: ApiScheduleDay[] | null;
 	notes: string | null;
 	submittedAt: string | null;
 	status: 'PENDING' | 'SUBMITTED' | 'COMPLETED';
@@ -445,12 +455,15 @@ function getCourseName(item: ApiEnrollment): string | null {
 	return item.variantTitle ?? item.productTitle ?? item.enrollmentType?.name ?? null;
 }
 
-function getCourseStartDate(item: ApiEnrollment): Date | null {
-	return item.preferredDate ? new Date(item.preferredDate) : null;
+/** Per i corsi non contigui le date mancanti si ricavano dalla prima/ultima giornata. */
+function getCourseStartDate(item: ApiEnrollment, schedule: EnrollmentSchedule | null): Date | null {
+	const value = item.preferredDate || schedule?.days[0];
+	return value ? new Date(value) : null;
 }
 
-function getCourseEndDate(item: ApiEnrollment): Date | null {
-	return item.endDate ? new Date(item.endDate) : null;
+function getCourseEndDate(item: ApiEnrollment, schedule: EnrollmentSchedule | null): Date | null {
+	const value = item.endDate || schedule?.days.at(-1);
+	return value ? new Date(value) : null;
 }
 
 function getParticipantPhone(item: ApiEnrollment, participant: ApiParticipant): string | null {
@@ -503,6 +516,11 @@ export interface EnrollmentTarget {
 	externalCreatedAt: Date;
 	subscriber: SubscriberRowValues;
 	/**
+	 * Calendario ricevuto; `null` lascia invariati `schedule_mode` e le giornate salvate.
+	 * Con un valore, le giornate in `enrollment_schedule_days` vengono sostituite.
+	 */
+	schedule: EnrollmentSchedule | null;
+	/**
 	 * How a new enrollment row finds an existing subscriber, so that a person enrolled in
 	 * several courses stays a single subscriber with many enrollments:
 	 * - `person`: same first and last name plus same fiscal code or email; used for
@@ -515,7 +533,8 @@ export interface EnrollmentTarget {
 /** Single mapping from the API payload to the `enrollments` columns. */
 export function buildEnrollmentValues(
 	item: ApiEnrollment,
-	person: EnrollmentPerson
+	person: EnrollmentPerson,
+	schedule: EnrollmentSchedule | null = normalizeEnrollmentSchedule(item)
 ): EnrollmentRowValues {
 	return {
 		orderId: item.orderId,
@@ -535,8 +554,10 @@ export function buildEnrollmentValues(
 		phone: person.phone,
 		fiscalCode: person.fiscalCode,
 		vatNumber: item.vatNumber ?? null,
-		startDate: getCourseStartDate(item),
-		endDate: getCourseEndDate(item),
+		startDate: getCourseStartDate(item, schedule),
+		endDate: getCourseEndDate(item, schedule),
+		// undefined: on insert uses the column default, on update keeps the stored mode
+		scheduleMode: schedule?.mode,
 		courseDurationDays: item.enrollmentType?.duration ?? null,
 		courseClass: item.courseClass ?? item.enrollmentType?.courseClass ?? null,
 		enrollmentTypeId: item.enrollmentType?.id ?? null,
@@ -556,17 +577,22 @@ export function buildParticipantTarget(
 	const email = participant.email ?? item.customerEmail;
 	const phone = getParticipantPhone(item, participant);
 	const fiscalCode = getParticipantFiscalCode(item, participant);
+	const schedule = normalizeEnrollmentSchedule(item);
 
 	return {
 		externalId: `${item.id}_${participant.index}`,
-		enrollment: buildEnrollmentValues(item, {
-			customerEmail: email,
-			firstName: participant.firstName,
-			lastName: participant.lastName,
-			phone,
-			fiscalCode,
-			quantity: 1
-		}),
+		enrollment: buildEnrollmentValues(
+			item,
+			{
+				customerEmail: email,
+				firstName: participant.firstName,
+				lastName: participant.lastName,
+				phone,
+				fiscalCode,
+				quantity: 1
+			},
+			schedule
+		),
 		externalCreatedAt: new Date(item.createdAt),
 		subscriber: {
 			firstName: participant.firstName,
@@ -575,24 +601,30 @@ export function buildParticipantTarget(
 			phone,
 			taxId: fiscalCode,
 			courseName: getCourseName(item),
-			courseStartDate: getCourseStartDate(item),
-			courseEndDate: getCourseEndDate(item)
+			courseStartDate: getCourseStartDate(item, schedule),
+			courseEndDate: getCourseEndDate(item, schedule)
 		},
+		schedule,
 		subscriberMatch: 'person'
 	};
 }
 
 export function buildFlatTarget(item: ApiEnrollment): EnrollmentTarget {
+	const schedule = normalizeEnrollmentSchedule(item);
 	return {
 		externalId: item.id,
-		enrollment: buildEnrollmentValues(item, {
-			customerEmail: item.customerEmail,
-			firstName: item.firstName ?? null,
-			lastName: item.lastName ?? null,
-			phone: item.phone ?? null,
-			fiscalCode: item.fiscalCode ?? null,
-			quantity: item.quantity
-		}),
+		enrollment: buildEnrollmentValues(
+			item,
+			{
+				customerEmail: item.customerEmail,
+				firstName: item.firstName ?? null,
+				lastName: item.lastName ?? null,
+				phone: item.phone ?? null,
+				fiscalCode: item.fiscalCode ?? null,
+				quantity: item.quantity
+			},
+			schedule
+		),
 		externalCreatedAt: new Date(item.createdAt),
 		subscriber: {
 			firstName: item.firstName ?? item.customerDisplayName?.split(' ')[0] ?? '',
@@ -601,9 +633,10 @@ export function buildFlatTarget(item: ApiEnrollment): EnrollmentTarget {
 			phone: item.phone ?? null,
 			taxId: item.fiscalCode ?? null,
 			courseName: getCourseName(item),
-			courseStartDate: getCourseStartDate(item),
-			courseEndDate: getCourseEndDate(item)
+			courseStartDate: getCourseStartDate(item, schedule),
+			courseEndDate: getCourseEndDate(item, schedule)
 		},
+		schedule,
 		subscriberMatch: 'email'
 	};
 }
@@ -658,6 +691,31 @@ async function updateSubscriber(
 		.where(eq(subscribers.id, subscriberId));
 }
 
+async function findEnrollmentId(tx: DbTransaction, externalId: string): Promise<number | null> {
+	const [row] = await tx
+		.select({ id: enrollments.id })
+		.from(enrollments)
+		.where(eq(enrollments.externalId, externalId))
+		.limit(1);
+	return row?.id ?? null;
+}
+
+/** Sostituisce le giornate del corso; con `days` vuoto (corso contiguo) le rimuove. */
+async function replaceScheduleDays(
+	tx: DbTransaction,
+	enrollmentId: number,
+	days: string[]
+): Promise<void> {
+	await tx
+		.delete(enrollmentScheduleDays)
+		.where(eq(enrollmentScheduleDays.enrollmentId, enrollmentId));
+	if (days.length === 0) return;
+	await tx
+		.insert(enrollmentScheduleDays)
+		// Pass the day as DATE: a JS Date is serialised in the Node time zone and may shift it.
+		.values(days.map((day) => ({ enrollmentId, courseDate: sql`cast(${day} as date)` })));
+}
+
 /**
  * Creates or (with `upsert`) updates one enrollment row and its subscriber atomically.
  *
@@ -708,6 +766,13 @@ async function upsertEnrollmentRow(
 				externalCreatedAt: target.externalCreatedAt
 			})
 			.onDuplicateKeyUpdate({ set: endDate === null ? valuesWithoutEndDate : values });
+
+		if (target.schedule) {
+			const enrollmentId = existing?.id ?? (await findEnrollmentId(tx, target.externalId));
+			if (enrollmentId !== null) {
+				await replaceScheduleDays(tx, enrollmentId, target.schedule.days);
+			}
+		}
 
 		if (!existing) created.enrollments++;
 		return created;

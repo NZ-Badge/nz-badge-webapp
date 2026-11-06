@@ -3,12 +3,12 @@ import { requirePageUser } from '$lib/services/auth';
 import { db } from '$lib/db';
 import { attendance, enrollments, subscribers } from '$lib/db/schema';
 import { buildTodayRoster, getRomeDay } from '$lib/services/today-course-roster';
-import { and, eq, gte, inArray, isNotNull, lte, lt } from 'drizzle-orm';
+import { enrollmentScheduledOn } from '$lib/services/enrollment-schedule';
+import { and, eq, gte, inArray, isNotNull, lt } from 'drizzle-orm';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	await requirePageUser(locals);
 	const day = getRomeDay(new Date());
-	const courseDate = new Date(`${day.dateKey}T00:00:00.000Z`);
 	const enrollmentRows = await db
 		.select({
 			id: enrollments.id,
@@ -26,8 +26,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			and(
 				isNotNull(enrollments.startDate),
 				isNotNull(enrollments.endDate),
-				lte(enrollments.startDate, courseDate),
-				gte(enrollments.endDate, courseDate)
+				enrollmentScheduledOn(day.dateKey)
 			)
 		);
 

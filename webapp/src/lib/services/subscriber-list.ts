@@ -8,6 +8,7 @@ import {
 	type SubscriberEnrollmentRow
 } from '$lib/services/subscriber-course-attendance';
 import { TIMEZONE } from '$lib/utils/date';
+import { withScheduleDays } from '$lib/services/enrollment-schedule';
 import { formatInTimeZone } from 'date-fns-tz';
 
 export interface SubscriberListBaseRow {
@@ -93,7 +94,8 @@ const enrollmentListColumns = {
 	productTitle: enrollments.productTitle,
 	variantTitle: enrollments.variantTitle,
 	startDate: enrollments.startDate,
-	endDate: enrollments.endDate
+	endDate: enrollments.endDate,
+	scheduleMode: enrollments.scheduleMode
 };
 
 // Same order the "latest enrollment" pick relies on for ties.
@@ -109,6 +111,15 @@ function chunk<T>(values: T[], size = IN_CHUNK_SIZE): T[][] {
 	const chunks: T[][] = [];
 	for (let i = 0; i < values.length; i += size) chunks.push(values.slice(i, i + size));
 	return chunks;
+}
+
+/** Same map with the course days of non-contiguous enrollments loaded. */
+async function withMapScheduleDays(
+	enrollmentBySubscriber: Map<number, SubscriberEnrollmentRow>
+): Promise<Map<number, SubscriberEnrollmentRow>> {
+	const entries = [...enrollmentBySubscriber];
+	const enriched = await withScheduleDays(entries.map(([, enrollment]) => enrollment));
+	return new Map(entries.map(([subscriberId], index) => [subscriberId, enriched[index]]));
 }
 
 /**
@@ -214,12 +225,15 @@ export async function enrichSubscribersForList(
 	}
 
 	const latestEnrollmentBySubscriber = pickLatestEnrollments(enrollmentRows);
-	const attendanceEnrollmentBySubscriber = new Map<number, SubscriberEnrollmentRow>();
+	const selectedEnrollmentBySubscriber = new Map<number, SubscriberEnrollmentRow>();
 	for (const id of ids) {
 		const enrollment =
 			options.attendanceEnrollmentBySubscriber?.get(id) ?? latestEnrollmentBySubscriber.get(id);
-		if (enrollment) attendanceEnrollmentBySubscriber.set(id, enrollment);
+		if (enrollment) selectedEnrollmentBySubscriber.set(id, enrollment);
 	}
+	const attendanceEnrollmentBySubscriber = await withMapScheduleDays(
+		selectedEnrollmentBySubscriber
+	);
 	const attendanceBySubscriber = await loadAttendanceInPeriods(attendanceEnrollmentBySubscriber);
 
 	const lastEntryBySubscriber = new Map<number, Date | string>();
@@ -459,7 +473,9 @@ async function sortByCourseMinutes(
 			.orderBy(...enrollmentListOrder)
 	]);
 
-	const latestEnrollmentBySubscriber = pickLatestEnrollments(enrollmentRows);
+	const latestEnrollmentBySubscriber = await withMapScheduleDays(
+		pickLatestEnrollments(enrollmentRows)
+	);
 	const attendanceBySubscriber = await loadAttendanceInPeriods(latestEnrollmentBySubscriber);
 
 	const rows = subscriberRows.map((subscriber) => ({

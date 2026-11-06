@@ -100,12 +100,14 @@ percorso corsista ed e' applicato solo quando il setting `enforce_course_date_ra
 | -------------------------- | ------------- | ---------------------------------------------------------------------------------------------- |
 | `unknown_card`             | tutti         | UID non registrato oppure card con stato diverso da `active`; per lo staff, account non attivo |
 | `timestamp_out_of_range`   | tutti         | timestamp effettivo distante piu' di 30 giorni dall'ora del server                             |
-| `course_date_out_of_range` | solo corsisti | nessuna iscrizione dell'intestatario include la data della strisciata                          |
+| `course_date_out_of_range` | solo corsisti | nessuna iscrizione dell'intestatario prevede una giornata di corso nella data della strisciata |
 
 Il lookup distingue il proprietario della card:
 
 - una card corsista salva l'evento in `attendance` e applica anche
-  `course_date_out_of_range`;
+  `course_date_out_of_range`: per i corsi contigui vale l'intervallo `start_date`..`end_date`,
+  per quelli non contigui (`schedule_mode` `NON_CONTIGUOUS*`) solo le singole giornate in
+  `enrollment_schedule_days`;
 - una card associata a un utente di sistema attivo salva l'evento in `staff_attendance` e non
   esegue alcun controllo sulle date dei corsi;
 - una card staff appartenente a un account soft-deleted viene trattata come `unknown_card`.

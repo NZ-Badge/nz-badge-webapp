@@ -88,4 +88,51 @@ describe('webhook log', () => {
 		expect(mocks.finishWebhookLog).toHaveBeenCalledWith(42, 'failed', 500, 'enrollment-1');
 		expect(mocks.createWebhookLog.mock.calls[0][0]).not.toContain('database unavailable');
 	});
+
+	it('accepts the schedule of a non-contiguous course', async () => {
+		const response = await POST(
+			event(
+				JSON.stringify({
+					...validPayload,
+					scheduleMode: 'NON_CONTIGUOUS',
+					scheduleDays: [{ date: '2026-09-28' }, { date: '2026-10-02' }]
+				})
+			)
+		);
+		expect(response.status).toBe(200);
+		expect(mocks.processWebhookEnrollment).toHaveBeenCalledWith(
+			expect.objectContaining({
+				scheduleMode: 'NON_CONTIGUOUS',
+				scheduleDays: [{ date: '2026-09-28' }, { date: '2026-10-02' }]
+			})
+		);
+	});
+
+	it.each([
+		{ scheduleMode: 'NON_CONTIGUOUS_CUSTOM', scheduleDays: [] },
+		{ scheduleMode: 'NON_CONTIGUOUS' },
+		{ scheduleMode: 'NON_CONTIGUOUS', scheduleDays: [{ date: '28/09/2026' }] },
+		{ scheduleMode: 'WEEKLY', scheduleDays: [] },
+		{ scheduleMode: 'contiguous' }
+	])('rejects an invalid course schedule %o', async (schedule) => {
+		const response = await POST(event(JSON.stringify({ ...validPayload, ...schedule })));
+		expect(response.status).toBe(400);
+		expect(mocks.processWebhookEnrollment).not.toHaveBeenCalled();
+		expect(mocks.finishWebhookLog).toHaveBeenCalledWith(42, 'invalid_payload', 400, undefined);
+	});
+
+	it.each([
+		{ scheduleMode: 'CONTIGUOUS', scheduleDays: [{}] },
+		{ scheduleMode: 'CONTIGUOUS', scheduleDays: [{ date: '28/09/2026' }] },
+		{ scheduleMode: '', scheduleDays: 'invalid' },
+		{ scheduleDays: [{ date: 'x' }] }
+	])('ignores the course days of a contiguous or unspecified schedule %o', async (schedule) => {
+		const response = await POST(event(JSON.stringify({ ...validPayload, ...schedule })));
+		expect(response.status).toBe(200);
+		const [item] = mocks.processWebhookEnrollment.mock.calls[0] as unknown as [
+			Record<string, unknown>
+		];
+		expect(item.scheduleDays).toBeUndefined();
+		expect(item.scheduleMode ?? null).toBe(schedule.scheduleMode || null);
+	});
 });

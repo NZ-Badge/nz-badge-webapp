@@ -1,5 +1,6 @@
 import {
 	mysqlTable,
+	primaryKey,
 	int,
 	bigint,
 	varchar,
@@ -15,6 +16,13 @@ import {
 	index,
 	unique
 } from 'drizzle-orm/mysql-core';
+
+export const ENROLLMENT_SCHEDULE_MODES = [
+	'CONTIGUOUS',
+	'NON_CONTIGUOUS',
+	'NON_CONTIGUOUS_CUSTOM'
+] as const;
+export type EnrollmentScheduleMode = (typeof ENROLLMENT_SCHEDULE_MODES)[number];
 
 // ── users ────────────────────────────────────────────────────────────────────
 export const users = mysqlTable(
@@ -89,6 +97,9 @@ export const enrollments = mysqlTable(
 		vatNumber: varchar('vat_number', { length: 32 }),
 		startDate: date('start_date'),
 		endDate: date('end_date'),
+		scheduleMode: mysqlEnum('schedule_mode', ENROLLMENT_SCHEDULE_MODES)
+			.notNull()
+			.default('CONTIGUOUS'),
 		courseDurationDays: int('course_duration_days'),
 		courseClass: varchar('course_class', { length: 50 }),
 		enrollmentTypeId: int('enrollment_type_id'),
@@ -110,6 +121,22 @@ export const enrollments = mysqlTable(
 		index('idx_enrollment_variant').on(t.variantId),
 		index('idx_enrollment_start_end').on(t.startDate, t.endDate),
 		index('idx_enrollment_end_date').on(t.endDate)
+	]
+);
+
+// ── enrollment_schedule_days ─────────────────────────────────────────────────
+// Giornate effettive dei corsi NON_CONTIGUOUS*; vuota per i corsi CONTIGUOUS.
+export const enrollmentScheduleDays = mysqlTable(
+	'enrollment_schedule_days',
+	{
+		enrollmentId: int('enrollment_id')
+			.notNull()
+			.references(() => enrollments.id, { onDelete: 'cascade' }),
+		courseDate: date('course_date').notNull()
+	},
+	(t) => [
+		primaryKey({ columns: [t.enrollmentId, t.courseDate] }),
+		index('idx_enrollment_schedule_days_date').on(t.courseDate)
 	]
 );
 

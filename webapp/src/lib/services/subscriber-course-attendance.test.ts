@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildSubscriberCourseAttendanceReportRows,
 	buildSubscriberCourseAttendanceSummaries,
+	getEnrollmentCourseBlockEnd,
 	getEnrollmentCourseState
 } from '$lib/services/subscriber-course-attendance';
 
@@ -113,5 +114,63 @@ describe('getEnrollmentCourseState', () => {
 
 	it('keeps courses without end date active', () => {
 		expect(getEnrollmentCourseState(null, now)).toBe('active');
+	});
+});
+
+describe('non-contiguous courses', () => {
+	const nonContiguous = {
+		id: 20,
+		productTitle: 'Mosaico',
+		variantTitle: null,
+		startDate: '2026-06-15',
+		endDate: '2026-06-22',
+		scheduleDays: ['2026-06-15', '2026-06-16', '2026-06-22']
+	};
+	const swipes = [
+		{ id: 1, eventType: 'entry' as const, readTimestamp: '2026-06-15T07:00:00Z' },
+		{ id: 2, eventType: 'exit' as const, readTimestamp: '2026-06-15T09:00:00Z' },
+		{ id: 3, eventType: 'entry' as const, readTimestamp: '2026-06-17T07:00:00Z' },
+		{ id: 4, eventType: 'exit' as const, readTimestamp: '2026-06-17T12:00:00Z' },
+		{ id: 5, eventType: 'entry' as const, readTimestamp: '2026-06-22T07:00:00Z' },
+		{ id: 6, eventType: 'exit' as const, readTimestamp: '2026-06-22T08:00:00Z' }
+	];
+
+	it('counts only the swipes on the course days', () => {
+		const [summary] = buildSubscriberCourseAttendanceSummaries([nonContiguous], swipes);
+		expect(summary.totalMinutes).toBe(180);
+		expect(summary.eventCount).toBe(4);
+		expect(summary.periodLabel).toBe('15/06/2026 - 22/06/2026 (3 giornate)');
+	});
+
+	it('keeps counting the whole range for contiguous courses', () => {
+		for (const scheduleDays of [undefined, null, []]) {
+			const [summary] = buildSubscriberCourseAttendanceSummaries(
+				[{ ...nonContiguous, scheduleDays }],
+				swipes
+			);
+			expect(summary.totalMinutes).toBe(480);
+			expect(summary.periodLabel).toBe('15/06/2026 - 22/06/2026');
+		}
+	});
+
+	it('ends a course block after the last consecutive course day', () => {
+		expect(getEnrollmentCourseBlockEnd(nonContiguous, '2026-06-15T07:00:00Z')).toBe(
+			new Date('2026-06-16T22:00:00Z').getTime()
+		);
+		expect(getEnrollmentCourseBlockEnd(nonContiguous, '2026-06-22T07:00:00Z')).toBe(
+			new Date('2026-06-22T22:00:00Z').getTime()
+		);
+		// Capped at the course end date even if listed days go past it.
+		expect(
+			getEnrollmentCourseBlockEnd(
+				{ ...nonContiguous, scheduleDays: ['2026-06-22', '2026-06-23'] },
+				'2026-06-22T07:00:00Z'
+			)
+		).toBe(new Date('2026-06-22T22:00:00Z').getTime());
+		const { scheduleDays: _ignored, ...contiguous } = nonContiguous;
+		void _ignored;
+		expect(getEnrollmentCourseBlockEnd(contiguous, '2026-06-15T07:00:00Z')).toBe(
+			new Date('2026-06-22T22:00:00Z').getTime()
+		);
 	});
 });

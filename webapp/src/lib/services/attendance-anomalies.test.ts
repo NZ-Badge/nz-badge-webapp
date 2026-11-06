@@ -105,4 +105,31 @@ describe('attendance anomaly resolution', () => {
 		);
 		expect(result).toEqual({ status: 'no_period' });
 	});
+
+	it('limits the exit to the course days of a non-contiguous course', () => {
+		const nonContiguous = {
+			...enrollment,
+			scheduleDays: ['2026-10-05', '2026-10-07']
+		};
+		const rows = [row(20, 'entry', '2026-10-05T20:00:00.000Z')];
+		const ctx = {
+			allAttendance: rows,
+			enrollment: nonContiguous,
+			summary: buildSubscriberCourseAttendanceSummary(nonContiguous, rows),
+			period: getEnrollmentAttendancePeriod(nonContiguous)
+		};
+		const field = getHoursFieldName(20);
+
+		// 2026-10-05 ends at 22:00Z (midnight Europe/Rome): at most 1h59.
+		expect(validateAnomalyResolutions(ctx, () => '3')).toEqual({
+			status: 'invalid',
+			fieldErrors: { [field]: 'Il massimo consentito per questo ingresso è 1.98 ore.' },
+			values: { [field]: '3' }
+		});
+		expect(validateAnomalyResolutions(ctx, () => '1')).toMatchObject({ status: 'valid' });
+		// Same entry in a contiguous course may run until the 24h cap.
+		expect(validateAnomalyResolutions({ ...ctx, enrollment }, () => '3')).toMatchObject({
+			status: 'valid'
+		});
+	});
 });

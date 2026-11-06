@@ -169,6 +169,13 @@
 			"when": 1790902800000,
 			"tag": "0022_enrollment_webhook_log",
 			"breakpoints": true
+		},
+		{
+			"idx": 24,
+			"version": "7",
+			"when": 1790906400000,
+			"tag": "0023_enrollment_schedule_days",
+			"breakpoints": true
 		}
 	]
 }

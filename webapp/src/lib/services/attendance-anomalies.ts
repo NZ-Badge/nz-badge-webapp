@@ -12,8 +12,11 @@ import { attendance, enrollments, subscribers } from '$lib/db/schema';
 import {
 	buildSubscriberCourseAttendanceSummary,
 	getEnrollmentAttendancePeriod,
-	type CourseAttendanceResolvableIssue
+	getEnrollmentCourseBlockEnd,
+	type CourseAttendanceResolvableIssue,
+	type SubscriberEnrollmentRow
 } from '$lib/services/subscriber-course-attendance';
+import { withScheduleDays } from '$lib/services/enrollment-schedule';
 import { logAudit } from '$lib/services/audit';
 
 export const MANUAL_FIX_DEVICE_ID = 'admin_manual_fix';
@@ -114,7 +117,7 @@ export async function loadResolutionContext(subscriberId: number, enrollmentId: 
 		throw new AttendanceAnomalyError('Iscritto non trovato', 'SUBSCRIBER_NOT_FOUND');
 	}
 
-	const [enrollment] = await db
+	const [enrollmentRow] = await db
 		.select({
 			id: enrollments.id,
 			orderName: enrollments.orderName,
@@ -122,15 +125,17 @@ export async function loadResolutionContext(subscriberId: number, enrollmentId: 
 			variantTitle: enrollments.variantTitle,
 			startDate: enrollments.startDate,
 			endDate: enrollments.endDate,
+			scheduleMode: enrollments.scheduleMode,
 			status: enrollments.status
 		})
 		.from(enrollments)
 		.where(and(eq(enrollments.id, enrollmentId), eq(enrollments.subscriberId, subscriberId)))
 		.limit(1);
 
-	if (!enrollment) {
+	if (!enrollmentRow) {
 		throw new AttendanceAnomalyError('Iscrizione non trovata', 'ENROLLMENT_NOT_FOUND');
 	}
+	const [enrollment] = await withScheduleDays([enrollmentRow]);
 
 	const allAttendance: AttendanceRow[] = await db
 		.select({
@@ -154,10 +159,23 @@ export async function loadResolutionContext(subscriberId: number, enrollmentId: 
 
 export type ResolutionContext = Awaited<ReturnType<typeof loadResolutionContext>>;
 
+/**
+ * Limite oltre il quale l'uscita non puo' cadere: fine del periodo per i corsi contigui, fine
+ * del blocco di giornate consecutive per quelli non contigui (altrimenti l'uscita finirebbe in
+ * un giorno senza lezione e non verrebbe conteggiata).
+ */
+function getIssueBoundary(
+	context: { period: ResolutionContext['period']; enrollment?: SubscriberEnrollmentRow },
+	issue: CourseAttendanceResolvableIssue
+): number | null {
+	if (!context.period) return null;
+	if (!context.enrollment?.scheduleDays?.length) return context.period.end;
+	return getEnrollmentCourseBlockEnd(context.enrollment, issue.entryAt);
+}
+
 /** Dati per la pagina: riepilogo e una riga per ogni ingresso risolvibile. */
 export async function getAnomalyResolutionView(subscriberId: number, enrollmentId: number) {
 	const context = await loadResolutionContext(subscriberId, enrollmentId);
-	const periodEnd = context.period?.end ?? null;
 
 	return {
 		subscriber: context.subscriber,
@@ -166,7 +184,7 @@ export async function getAnomalyResolutionView(subscriberId: number, enrollmentI
 		resolutionRows: context.summary.resolvableIssues.map((issue) => ({
 			...issue,
 			fieldName: getHoursFieldName(issue.entryAttendanceId),
-			...buildResolutionLimits(issue, periodEnd)
+			...buildResolutionLimits(issue, getIssueBoundary(context, issue))
 		}))
 	};
 }
@@ -183,7 +201,9 @@ export type ResolutionValidation =
  * Funzione pura: `getValue` legge il valore del campo `hours_<entryId>` dal form.
  */
 export function validateAnomalyResolutions(
-	context: Pick<ResolutionContext, 'allAttendance' | 'summary' | 'period'>,
+	context: Pick<ResolutionContext, 'allAttendance' | 'summary' | 'period'> & {
+		enrollment?: SubscriberEnrollmentRow;
+	},
 	getValue: (fieldName: string) => FormDataEntryValue | null
 ): ResolutionValidation {
 	if (!context.summary.canCalculate || !context.period) {
@@ -194,7 +214,6 @@ export function validateAnomalyResolutions(
 		return { status: 'nothing_to_resolve' };
 	}
 
-	const periodEnd = context.period.end ?? null;
 	const attendanceById = new Map(context.allAttendance.map((row) => [row.id, row]));
 	const fieldErrors: Record<string, string> = {};
 	const values: Record<string, string> = {};
@@ -222,6 +241,7 @@ export function validateAnomalyResolutions(
 			continue;
 		}
 
+		const periodEnd = getIssueBoundary(context, issue);
 		const limits = buildResolutionLimits(issue, periodEnd);
 		if (limits.maxHours !== null && hours > limits.maxHours) {
 			fieldErrors[fieldName] =
@@ -243,7 +263,9 @@ export function validateAnomalyResolutions(
 		}
 
 		if (periodEnd !== null && exitAt.getTime() >= periodEnd) {
-			fieldErrors[fieldName] = 'L’uscita calcolata esce dal mese associato a questo corso.';
+			fieldErrors[fieldName] = context.enrollment?.scheduleDays?.length
+				? 'L’uscita calcolata esce dalle giornate di questo corso.'
+				: 'L’uscita calcolata esce dal mese associato a questo corso.';
 			continue;
 		}
 

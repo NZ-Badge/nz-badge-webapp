@@ -396,11 +396,18 @@ Dal pannello amministrativo, data e ora di una presenza corsista possono essere 
 `POST /api/v1/attendance/manual`. Le operazioni richiedono una sessione
 Amministratore/Operatore e sono registrate nell'audit log.
 
-La pagina `/today` mostra i corsisti con almeno un'iscrizione le cui date di inizio e fine
-comprendono la giornata corrente in `Europe/Rome`. Riunisce le iscrizioni dello stesso corsista
-e indica se esiste almeno una timbratura registrata oggi; le iscrizioni senza anagrafica collegata
+La pagina `/today` mostra i corsisti con almeno un'iscrizione che prevede una giornata di corso
+nella data corrente in `Europe/Rome`: per i corsi contigui le date di inizio e fine devono
+comprenderla, per quelli non contigui deve essere una delle giornate ricevute in `scheduleDays`.
+Riunisce le iscrizioni dello stesso corsista e indica se esiste almeno una timbratura registrata oggi; le iscrizioni senza anagrafica collegata
 sono segnalate separatamente. Lo stato dell'iscrizione non filtra l'elenco, come nella validazione
 del corso per i reader.
+
+La stessa regola vale per i "Corsi attivi" della dashboard. Per i corsi non contigui il riepilogo
+ore del corsista (dettaglio iscritto, elenchi e `GET /api/v1/attendance/export`) conta solo le
+timbrature delle giornate di corso, e nella risoluzione delle anomalie l'uscita non può superare la
+fine del blocco di giornate consecutive che contiene l'ingresso. I corsi contigui continuano a usare
+l'intero intervallo `start_date`..`end_date`.
 
 La pagina `/new-students` elenca i corsisti con almeno un corso che inizia in un intervallo Da/A
 inclusivo, preimpostato sulla settimana corrente (lunedì–domenica, calendario `Europe/Rome`).

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enrollments, subscribers } from '$lib/db/schema';
+import { enrollments, enrollmentScheduleDays, subscribers } from '$lib/db/schema';
 
 const mocks = vi.hoisted(() => {
 	const state = {
@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
 		selectResults: [] as unknown[][],
 		locks: [] as string[],
 		inserts: [] as { table: unknown; values: Record<string, unknown>; onDuplicate?: unknown }[],
+		deletes: [] as unknown[],
 		failInsertFor: null as string | null,
 		nextSubscriberId: 100
 	};
@@ -35,6 +36,10 @@ const mocks = vi.hoisted(() => {
 			values: (values: Record<string, unknown>) => {
 				const entry: (typeof state.inserts)[number] = { table, values };
 				return {
+					then: (resolve: (value: unknown) => void) => {
+						state.inserts.push(entry);
+						resolve(undefined);
+					},
 					$returningId: async () => {
 						state.inserts.push(entry);
 						return [{ id: state.nextSubscriberId++ }];
@@ -48,7 +53,12 @@ const mocks = vi.hoisted(() => {
 				};
 			}
 		})),
-		update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => undefined) })) }))
+		update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn(async () => undefined) })) })),
+		delete: vi.fn((table: unknown) => ({
+			where: vi.fn(async () => {
+				state.deletes.push(table);
+			})
+		}))
 	};
 
 	const db = {
@@ -124,6 +134,7 @@ beforeEach(() => {
 		selectResults: [],
 		locks: [],
 		inserts: [],
+		deletes: [],
 		failInsertFor: null,
 		nextSubscriberId: 100
 	});
@@ -231,7 +242,12 @@ describe('syncEnrollments', () => {
 		expect(result).toMatchObject({ enrollmentsCreated: 0, subscribersCreated: 0 });
 		expect(mocks.state.inserts.filter((entry) => entry.table === subscribers)).toHaveLength(0);
 		expect(
-			mocks.state.inserts.filter((entry) => entry.table === enrollments)[0].values.subscriberId
+			(
+				mocks.state.inserts.filter((entry) => entry.table === enrollments)[0].values as Record<
+					string,
+					unknown
+				>
+			).subscriberId
 		).toBe(7);
 	});
 
@@ -278,6 +294,62 @@ describe('syncEnrollments', () => {
 		);
 		const subscriberUpdate = mocks.tx.update.mock.results[0].value;
 		expect(subscriberUpdate.set.mock.calls[0][0].courseEndDate).toEqual(new Date('2026-11-15'));
+	});
+
+	it('replaces the course days of a non-contiguous enrollment', async () => {
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(
+			apiEnrollment({
+				participants: [],
+				preferredDate: null,
+				endDate: null,
+				scheduleMode: 'NON_CONTIGUOUS',
+				scheduleDays: [{ date: '2026-10-08' }, { date: '2026-10-01' }, { date: '2026-10-08' }]
+			}),
+			result,
+			true
+		);
+
+		const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+		expect(written.values).toMatchObject({
+			scheduleMode: 'NON_CONTIGUOUS',
+			startDate: new Date('2026-10-01'),
+			endDate: new Date('2026-10-08')
+		});
+		expect(mocks.state.deletes).toEqual([enrollmentScheduleDays]);
+		const [days] = mocks.state.inserts.filter((entry) => entry.table === enrollmentScheduleDays);
+		const dayRows = days.values as unknown as { enrollmentId: number; courseDate: unknown }[];
+		expect(dayRows.map((day) => day.enrollmentId)).toEqual([7, 7]);
+		expect(
+			dayRows.map((day) => (day.courseDate as { queryChunks: unknown[] }).queryChunks[1])
+		).toEqual(['2026-10-01', '2026-10-08']);
+	});
+
+	it('clears stored course days when the course becomes contiguous', async () => {
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(
+			apiEnrollment({ participants: [], scheduleMode: 'CONTIGUOUS', scheduleDays: [] }),
+			result,
+			true
+		);
+
+		expect(mocks.state.deletes).toEqual([enrollmentScheduleDays]);
+		expect(mocks.state.inserts.some((entry) => entry.table === enrollmentScheduleDays)).toBe(false);
+	});
+
+	it('keeps the stored schedule when scheduleMode is missing', async () => {
+		mocks.state.selectResults.push([{ id: 7, subscriberId: 70 }]);
+		const result = { enrollmentsFound: 0, enrollmentsCreated: 0, subscribersCreated: 0, errors: 0 };
+
+		await processEnrollment(apiEnrollment({ participants: [] }), result, true);
+
+		const [written] = mocks.state.inserts.filter((entry) => entry.table === enrollments);
+		expect(written.values.scheduleMode).toBeUndefined();
+		expect(mocks.state.deletes).toEqual([]);
 	});
 
 	it('skips rows that already exist when not upserting', async () => {

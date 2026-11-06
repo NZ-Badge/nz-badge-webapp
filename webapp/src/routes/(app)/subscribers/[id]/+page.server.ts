@@ -15,6 +15,7 @@ import {
 	updateSubscriber
 } from '$lib/services/subscribers';
 import { isDateKey } from '$lib/utils/date';
+import { withScheduleDays } from '$lib/services/enrollment-schedule';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	await requirePageStaff(locals);
@@ -72,6 +73,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				variantTitle: enrollments.variantTitle,
 				startDate: enrollments.startDate,
 				endDate: enrollments.endDate,
+				scheduleMode: enrollments.scheduleMode,
 				courseDurationDays: enrollments.courseDurationDays,
 				status: enrollments.status,
 				submittedAt: enrollments.submittedAt,
@@ -84,7 +86,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 	// Tutti i corsi dell'iscritto: prima quelli attivi, poi gli scaduti (entrambi dal più recente).
 	const now = new Date();
-	const subscriberEnrollments = enrollmentRows
+	const subscriberEnrollments = (await withScheduleDays(enrollmentRows))
 		.map((enrollment) => ({
 			...enrollment,
 			courseState: getEnrollmentCourseState(enrollment.endDate, now)

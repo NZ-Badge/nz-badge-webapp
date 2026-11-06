@@ -123,6 +123,8 @@ Campi principali:
   },
   "preferredDate": "2026-06-15",
   "endDate": "2026-06-20",
+  "scheduleMode": "CONTIGUOUS",
+  "scheduleDays": [],
   "notes": "Preferenza mattino",
   "submittedAt": "2026-04-01T10:00:00Z",
   "status": "COMPLETED",
@@ -141,6 +143,23 @@ Vincoli rilevanti:
 - Per un'iscrizione già esistente, un `endDate` valorizzato aggiorna `end_date`; se è `null`,
   vuoto o assente, la data fine corso già salvata viene conservata. Per una nuova iscrizione senza
   `endDate`, la data resta non impostata.
+- `scheduleMode` (opzionale) indica il calendario del corso: `CONTIGUOUS` (giorni lavorativi
+  consecutivi da `preferredDate` a `endDate`), `NON_CONTIGUOUS` o `NON_CONTIGUOUS_CUSTOM`
+  (giornate scelte singolarmente)
+- `scheduleDays[]` (opzionale) elenca le giornate del corso ordinate per data, nel formato
+  `[{ "date": "YYYY-MM-DD" }]`. Per i corsi `NON_CONTIGUOUS*` contiene tutte le giornate effettive:
+  la prima coincide con `preferredDate`, l'ultima con `endDate`, e i giorni intermedi non sono
+  necessariamente consecutivi. Per i corsi `CONTIGUOUS` puo' essere vuoto
+- `scheduleMode` viene salvato in `enrollments.schedule_mode`; le giornate dei corsi
+  `NON_CONTIGUOUS*` in `enrollment_schedule_days` (sostituite a ogni aggiornamento, rimosse se il
+  corso torna `CONTIGUOUS`). Un corso `NON_CONTIGUOUS*` senza `scheduleDays` o con date non nel
+  formato `YYYY-MM-DD` restituisce `400`; per i corsi `CONTIGUOUS` o senza `scheduleMode`,
+  `scheduleDays` viene ignorato senza validarlo. Un `scheduleMode` diverso dai tre valori
+  (maiuscoli) restituisce `400`. Se `scheduleMode` e' `null`, vuoto o assente, il calendario
+  gia' salvato resta invariato (nuova iscrizione: `CONTIGUOUS`). Se `preferredDate` o `endDate`
+  mancano, per i corsi non contigui si usano la prima e l'ultima giornata
+- La validita' del badge (`course_date_out_of_range`) e la pagina `/today` usano l'intervallo
+  `start_date`..`end_date` per i corsi `CONTIGUOUS` e le singole giornate per quelli non contigui
 - `variantId` identifica stabilmente la variante Shopify e viene usato per raggruppare la visualizzazione corsi quando presente
 
 ## Regole applicative

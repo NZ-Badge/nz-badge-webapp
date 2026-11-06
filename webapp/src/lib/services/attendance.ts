@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, sql, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, lt, sql, gte } from 'drizzle-orm';
 import type { MySql2Database } from 'drizzle-orm/mysql2';
 import { db } from '$lib/db';
 import * as schema from '$lib/db/schema';
@@ -14,6 +14,7 @@ import type { CardRfid, Subscriber, User } from '$lib/db/schema';
 import type { AttendanceEvent, QueueStatus, BatchInfo } from '$lib/utils/validation';
 import { formatToRomeISO, romeDateKey } from '$lib/utils/date';
 import { tryClaimPairing } from '$lib/services/nfc-pairing';
+import { enrollmentScheduledOn } from '$lib/services/enrollment-schedule';
 import { getSettings } from '$lib/services/settings';
 import {
 	determineNextStaffEventType,
@@ -153,7 +154,6 @@ async function isWithinSubscriberCourseRange(
 	if (!subscriberId) return false;
 
 	const dbInstance = tx ?? db;
-	const courseDate = new Date(`${getCourseDateKey(timestamp)}T00:00:00.000Z`);
 
 	const [matchingEnrollment] = await dbInstance
 		.select({ id: enrollments.id })
@@ -161,8 +161,7 @@ async function isWithinSubscriberCourseRange(
 		.where(
 			and(
 				eq(enrollments.subscriberId, subscriberId),
-				lte(enrollments.startDate, courseDate),
-				gte(enrollments.endDate, courseDate)
+				enrollmentScheduledOn(getCourseDateKey(timestamp))
 			)
 		)
 		.limit(1);
